@@ -38,25 +38,25 @@ liftF f = Free $ pure <$> f
 
 -- heterogenous lists
 
--- data HeteroList f (types :: [Type]) where
---     HNil :: HeteroList f '[]
---     HCons :: f t -> HeteroList f ts -> HeteroList f (t : ts)
+data HeteroList f (types :: [Type]) where
+    HNil :: HeteroList f '[]
+    HCons :: f t -> HeteroList f ts -> HeteroList f (t : ts)
 
 data InList x xs where
     Here :: InList x (x : xs)
     There :: InList x xs -> InList x (y : xs)
 
--- heteroListGet :: HeteroList f types -> InList x types -> f x
--- heteroListGet (HCons x xs) Here = x
--- heteroListGet (HCons x xs) (There t) = heteroListGet xs t
+heteroListGet :: HeteroList f types -> InList x types -> f x
+heteroListGet (HCons x xs) Here = x
+heteroListGet (HCons x xs) (There t) = heteroListGet xs t
 
--- data SomeIndex xs where
---     SomeIndex :: InList x xs -> SomeIndex xs
-
--- domain-specific definitions
+data SomeIndex xs where
+    SomeIndex :: InList x xs -> SomeIndex xs
 
 data SomeMessage xs where
   SomeMessage :: InList x xs -> x -> SomeMessage xs
+
+-- domain-specific definitions
 
 data CryptoActions (send :: [Type]) (recv :: [Type]) a where
     ReceiveAnyAction :: (SomeMessage recv -> a) -> CryptoActions send recv a
