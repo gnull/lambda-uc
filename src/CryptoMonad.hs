@@ -11,10 +11,13 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE EmptyCase #-}
+{-# LANGUAGE StandaloneKindSignatures #-}
 
 module CryptoMonad where
 
 import Data.Kind (Type)
+
+import qualified Control.Concurrent as CC
 
 -- free monads
 
@@ -123,12 +126,14 @@ alg1' :: CryptoMonad' [(Int, Bool), (Void, Void), (BobAlgo, String)] Bool
 alg1' = alg1
 
 -- This is not a good idea. I must add an extra constructor for CryptoActions
--- if I want to hide parties in a clean way
+-- if I want to hide parties in a clean way. The implementation here is buggy.
 hidingRecvParty :: CryptoMonad send recv a -> CryptoMonad send (x:recv) a
 hidingRecvParty (Pure x) = Pure x
 hidingRecvParty (Free (ReceiveAnyAction f))
   = Free
   $ ReceiveAnyAction
+  -- BUG is here: we throw an error if we get message from a party we don't
+  -- expect a message from
   $ \(SomeMessage (There i) x) -> hidingRecvParty $ f (SomeMessage i x)
 hidingRecvParty (Free (ReceiveAction i f))
   = Free
@@ -138,12 +143,18 @@ hidingRecvParty (Free (SendAction i m a))
   $ SendAction i m
   $ hidingRecvParty a
 
--- the original idea
+-- Interpretation of the CryptoMonad
 
-class InteractWithBob m v | m -> v where
-    recvBob :: m v
-    sendBob :: v -> m ()
-
--- instance InteractWithBob (CryptoMonad (Alice : v : xs) (Alice : v : xs')) v where
---     recvBob = recv bob
---     sendBob = send bob
+run :: HeteroList CC.Chan send
+    -> HeteroList CC.Chan receive
+    -> CryptoMonad send receive a
+    -> IO a
+run s r = \case
+  Pure x -> pure x
+  Free (ReceiveAnyAction f) -> undefined
+  Free (ReceiveAction i f) -> do
+    m <- CC.readChan $ heteroListGet r i
+    run s r $ f m
+  Free (SendAction i m a) -> do
+    CC.writeChan (heteroListGet s i) m
+    run s r a
