@@ -51,20 +51,26 @@ data SomeIndex xs where
 
 -- domain-specific definitions
 
+data SomeMessage xs where
+  SomeMessage :: InList x xs -> x -> SomeMessage xs
+
 data CryptoActions (send :: [*]) (receive :: [*]) a where
-    ReceiveAction :: InList b receive -> (b -> a) -> CryptoActions send receive a
+    ReceiveAction :: (SomeMessage receive -> a) -> CryptoActions send receive a
     SendAction :: InList b send -> b -> a -> CryptoActions send receive a
 
 instance Functor (CryptoActions send receive) where
-    fmap f (ReceiveAction i g) = ReceiveAction i (f . g)
+    fmap f (ReceiveAction g) = ReceiveAction (f . g)
     fmap f (SendAction i b a) = SendAction i b $ f a
 
 -- wrappers
 
 type CryptoMonad send receive = Free (CryptoActions send receive)
 
-receive :: InList b receive -> CryptoMonad send receive b
-receive i = liftF (ReceiveAction i id)
+-- receiveAny :: CryptoMonad send receive (SomeMessage receive)
+-- receiveAny = undefined
+
+receive :: CryptoMonad send receive (SomeMessage receive)
+receive = liftF (ReceiveAction id)
 
 send :: InList b send -> b -> CryptoMonad send receive ()
 send i b = liftF (SendAction i b ())
