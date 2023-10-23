@@ -9,6 +9,8 @@
 {-# LANGUAGE TypeFamilies  #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE EmptyCase #-}
 
 module CryptoMonad where
 
@@ -34,20 +36,20 @@ liftF f = Free $ pure <$> f
 
 -- heterogenous lists
 
-data HeteroList f (types :: [*]) where
-    HNil :: HeteroList f '[]
-    HCons :: f t -> HeteroList f ts -> HeteroList f (t : ts)
+-- data HeteroList f (types :: [*]) where
+--     HNil :: HeteroList f '[]
+--     HCons :: f t -> HeteroList f ts -> HeteroList f (t : ts)
 
 data InList x xs where
     Here :: InList x (x : xs)
     There :: InList x xs -> InList x (y : xs)
 
-heteroListGet :: HeteroList f types -> InList x types -> f x
-heteroListGet (HCons x xs) Here = x
-heteroListGet (HCons x xs) (There t) = heteroListGet xs t
+-- heteroListGet :: HeteroList f types -> InList x types -> f x
+-- heteroListGet (HCons x xs) Here = x
+-- heteroListGet (HCons x xs) (There t) = heteroListGet xs t
 
-data SomeIndex xs where
-    SomeIndex :: InList x xs -> SomeIndex xs
+-- data SomeIndex xs where
+--     SomeIndex :: InList x xs -> SomeIndex xs
 
 -- domain-specific definitions
 
@@ -75,21 +77,34 @@ receive = liftF (ReceiveAction id)
 send :: InList b send -> b -> CryptoMonad send receive ()
 send i b = liftF (SendAction i b ())
 
-alice = Here
-
-bob = There Here
-
-charlie = There $ There Here
+pattern Alice = Here
+pattern Bob = There Here
+pattern Charlie = There (There Here)
 
 -- usage
 
 data BobAlgo = BobAlgo (CryptoMonad [Int, Void, BobAlgo] [Bool, Void, String] Bool)
 
+-- | Keep running an operation until it becomes a 'Just', then return the value
+--   inside the 'Just' as the result of the overall loop.
+untilJustM :: Monad m => m (Maybe a) -> m a
+untilJustM act = do
+    res <- act
+    case res of
+        Just r  -> pure r
+        Nothing -> untilJustM act
+
 alg1 :: CryptoMonad [Int, Void, BobAlgo] [Bool, Void, String] Bool
-alg1 = do str <- receive charlie
-          send alice $ length str
-          send charlie $ BobAlgo alg1
-          receive alice
+alg1 = do str <- untilJustM $ do
+            receive >>= \case
+              SomeMessage Alice _ -> pure Nothing
+              SomeMessage Bob _ -> pure Nothing
+              SomeMessage Charlie x -> pure $ Just x
+              SomeMessage contra _ -> case contra of
+          -- send Alice $ length str
+          send Charlie $ BobAlgo alg1
+          -- receive Alice
+          pure False
 
 -- zipped version for when there's exactly one interface per person
 
@@ -112,6 +127,6 @@ class InteractWithBob m v | m -> v where
     receiveBob :: m v
     sendBob :: v -> m ()
 
-instance InteractWithBob (CryptoMonad (alice : v : xs) (alice' : v : xs')) v where
-    receiveBob = receive bob
-    sendBob = send bob
+-- instance InteractWithBob (CryptoMonad (Alice : v : xs) (Alice : v : xs')) v where
+--     receiveBob = receive bob
+--     sendBob = send bob
