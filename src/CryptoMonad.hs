@@ -57,24 +57,24 @@ data SomeMessage xs where
   SomeMessage :: InList x xs -> x -> SomeMessage xs
 
 data CryptoActions (send :: [*]) (receive :: [*]) a where
-    ReceiveAction :: (SomeMessage receive -> a) -> CryptoActions send receive a
-    ReceiveOneAction :: InList b receive -> (b -> a) -> CryptoActions send receive a
+    ReceiveAnyAction :: (SomeMessage receive -> a) -> CryptoActions send receive a
+    ReceiveAction :: InList b receive -> (b -> a) -> CryptoActions send receive a
     SendAction :: InList b send -> b -> a -> CryptoActions send receive a
 
 instance Functor (CryptoActions send receive) where
-    fmap f (ReceiveAction g) = ReceiveAction (f . g)
-    fmap f (ReceiveOneAction i g) = ReceiveOneAction i (f . g)
+    fmap f (ReceiveAnyAction g) = ReceiveAnyAction (f . g)
+    fmap f (ReceiveAction i g) = ReceiveAction i (f . g)
     fmap f (SendAction i b a) = SendAction i b $ f a
 
 -- wrappers
 
 type CryptoMonad send receive = Free (CryptoActions send receive)
 
-receive :: CryptoMonad send receive (SomeMessage receive)
-receive = liftF (ReceiveAction id)
+receiveAny :: CryptoMonad send receive (SomeMessage receive)
+receiveAny = liftF (ReceiveAnyAction id)
 
-receiveOne :: InList b receive -> CryptoMonad send receive b
-receiveOne i = liftF (ReceiveOneAction i id)
+receive :: InList b receive -> CryptoMonad send receive b
+receive i = liftF (ReceiveAction i id)
 
 send :: InList b send -> b -> CryptoMonad send receive ()
 send i b = liftF (SendAction i b ())
@@ -100,10 +100,10 @@ untilJustM act = do
         Nothing -> untilJustM act
 
 alg1 :: CryptoMonad [Int, Void, BobAlgo] [Bool, Void, String] Bool
-alg1 = do str <- receiveOne Charlie
+alg1 = do str <- receive Charlie
           send Alice $ length str
           send Charlie $ BobAlgo alg1
-          receiveOne Alice
+          receive Alice
 
 -- zipped version for when there's exactly one interface per person
 
