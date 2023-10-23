@@ -122,6 +122,22 @@ type CryptoMonad' people = CryptoMonad (MapFst people) (MapSnd people)
 alg1' :: CryptoMonad' [(Int, Bool), (Void, Void), (BobAlgo, String)] Bool
 alg1' = alg1
 
+-- This is not a good idea. I must add an extra constructor for CryptoActions
+-- if I want to hide parties in a clean way
+hidingRecvParty :: CryptoMonad send recv a -> CryptoMonad send (x:recv) a
+hidingRecvParty (Pure x) = Pure x
+hidingRecvParty (Free (ReceiveAnyAction f))
+  = Free
+  $ ReceiveAnyAction
+  $ \(SomeMessage (There i) x) -> hidingRecvParty $ f (SomeMessage i x)
+hidingRecvParty (Free (ReceiveAction i f))
+  = Free
+  $ ReceiveAction (There i) (hidingRecvParty . f)
+hidingRecvParty (Free (SendAction i m a))
+  = Free
+  $ SendAction i m
+  $ hidingRecvParty a
+
 -- the original idea
 
 class InteractWithBob m v | m -> v where
