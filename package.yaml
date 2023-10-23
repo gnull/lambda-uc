@@ -17,6 +17,7 @@ dependencies:
   - mtl
   - random
   - async
+  - stm
 
 ghc-options:
 - -Wall

@@ -13,12 +13,18 @@
 {-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module CryptoMonad where
 
 import Data.Kind (Type)
 
-import qualified Control.Concurrent as CC
+import Data.Functor.Identity (Identity)
+
+import qualified Control.Concurrent.STM.TChan as STM
+import qualified Control.Concurrent.Async as A
+import Control.Monad (msum)
+import qualified Control.Monad.STM as STM --also supplies instance MonadPlus STM
 
 -- free monads
 
@@ -54,14 +60,16 @@ heteroListGet :: HeteroList f types -> InList x types -> f x
 heteroListGet (HCons x xs) Here = x
 heteroListGet (HCons x xs) (There t) = heteroListGet xs t
 
-homogenize :: Applicative f
-  => (forall x. InList x types -> x -> a)
+homogenize
+  :: (forall x. InList x types -> f x -> a)
   -> HeteroList f types
-  -> f [a]
-homogenize _ HNil = pure []
-homogenize g (HCons x xs) = (:)
-  <$> fmap (g Here) x
-  <*> homogenize (g . There) xs
+  -> [a]
+homogenize _ HNil = []
+homogenize g (HCons x xs) = g Here x : homogenize (g . There) xs
+
+-- heteroTraverse :: (InList x types -> fInList x types -> x -> f x) -> HeteroList Identity types -> HeteroList f types
+-- heteroTraverse _ HNil = HNil
+-- heteroTraverse g (HCons x xs) =
 
 data SomeIndex xs where
     SomeIndex :: InList x xs -> SomeIndex xs
@@ -155,16 +163,40 @@ hidingRecvParty (Free (SendAction i m a))
 
 -- Interpretation of the CryptoMonad
 
-run :: HeteroList CC.Chan send
-    -> HeteroList CC.Chan receive
+run :: HeteroList STM.TChan send
+    -> HeteroList STM.TChan receive
     -> CryptoMonad send receive a
     -> IO a
 run s r = \case
   Pure x -> pure x
-  Free (ReceiveAnyAction f) -> undefined
+  Free (ReceiveAnyAction f) -> do
+    let chans = homogenize (\i c -> SomeMessage i <$> STM.readTChan c) r
+    m <- STM.atomically $ msum chans
+    run s r $ f m
   Free (ReceiveAction i f) -> do
-    m <- CC.readChan $ heteroListGet r i
+    m <- STM.atomically $ STM.readTChan
+                        $ heteroListGet r i
     run s r $ f m
   Free (SendAction i m a) -> do
-    CC.writeChan (heteroListGet s i) m
+    STM.atomically $ STM.writeTChan (heteroListGet s i) m
     run s r a
+
+test :: String -> String -> IO (Int, String)
+test a b = do
+    aToBChan <- STM.newTChanIO
+    bToAChan <- STM.newTChanIO
+    let aToB = HCons aToBChan HNil
+    let bToA = HCons bToAChan HNil
+    aliceA <- A.async $ run aToB bToA alice
+    bobA <- A.async $ run bToA aToB bob
+    A.waitBoth aliceA bobA
+  where
+    alice :: CryptoMonad' '[(String, Int)] Int
+    alice = do
+      send Here a
+      recv Here
+    bob :: CryptoMonad' '[(Int, String)] String
+    bob = do
+      s <- recv Here
+      send Here $ length s
+      pure $ "got from Alice " ++ show s ++ " while my input is " ++ show b
