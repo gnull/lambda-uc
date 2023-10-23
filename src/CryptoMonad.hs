@@ -14,6 +14,8 @@
 
 module CryptoMonad where
 
+import Data.Kind (Type)
+
 -- free monads
 
 import Control.Monad (ap)
@@ -36,7 +38,7 @@ liftF f = Free $ pure <$> f
 
 -- heterogenous lists
 
--- data HeteroList f (types :: [*]) where
+-- data HeteroList f (types :: [Type]) where
 --     HNil :: HeteroList f '[]
 --     HCons :: f t -> HeteroList f ts -> HeteroList f (t : ts)
 
@@ -56,7 +58,7 @@ data InList x xs where
 data SomeMessage xs where
   SomeMessage :: InList x xs -> x -> SomeMessage xs
 
-data CryptoActions (send :: [*]) (receive :: [*]) a where
+data CryptoActions (send :: [Type]) (receive :: [Type]) a where
     ReceiveAnyAction :: (SomeMessage receive -> a) -> CryptoActions send receive a
     ReceiveAction :: InList b receive -> (b -> a) -> CryptoActions send receive a
     SendAction :: InList b send -> b -> a -> CryptoActions send receive a
