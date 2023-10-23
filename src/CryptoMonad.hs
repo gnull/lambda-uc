@@ -194,7 +194,9 @@ test a b = do
     alice :: CryptoMonad' '[(String, Int)] Int
     alice = do
       send Here a
-      recv Here
+      recvAny >>= \case
+        SomeMessage Here x -> pure x
+        SomeMessage contra _ -> case contra of
     bob :: CryptoMonad' '[(Int, String)] String
     bob = do
       s <- recv Here
