@@ -33,5 +33,4 @@ ghc-options:
 library:
   source-dirs:      src
   exposed-modules:
-    - UC
     - CryptoMonad
