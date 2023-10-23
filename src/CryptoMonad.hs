@@ -70,9 +70,6 @@ instance Functor (CryptoActions send receive) where
 
 type CryptoMonad send receive = Free (CryptoActions send receive)
 
--- receiveAny :: CryptoMonad send receive (SomeMessage receive)
--- receiveAny = undefined
-
 receive :: CryptoMonad send receive (SomeMessage receive)
 receive = liftF (ReceiveAction id)
 
@@ -103,16 +100,10 @@ untilJustM act = do
         Nothing -> untilJustM act
 
 alg1 :: CryptoMonad [Int, Void, BobAlgo] [Bool, Void, String] Bool
-alg1 = do str <- untilJustM $
-            receive >>= \case
-              SomeMessage Charlie x -> pure $ Just x
-              SomeMessage _ _ -> pure Nothing
-          send Alice $ (length :: String -> Int) str
+alg1 = do str <- receiveOne Charlie
+          send Alice $ length str
           send Charlie $ BobAlgo alg1
-          untilJustM $
-            receive >>= \case
-              SomeMessage Alice x -> pure $ Just x
-              SomeMessage _ _ -> pure $ Nothing
+          receiveOne Alice
 
 -- zipped version for when there's exactly one interface per person
 
