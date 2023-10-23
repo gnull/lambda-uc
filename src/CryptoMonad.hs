@@ -12,6 +12,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
+{-# LANGUAGE RankNTypes #-}
 
 module CryptoMonad where
 
@@ -52,6 +53,15 @@ data InList x xs where
 heteroListGet :: HeteroList f types -> InList x types -> f x
 heteroListGet (HCons x xs) Here = x
 heteroListGet (HCons x xs) (There t) = heteroListGet xs t
+
+homogenize :: Applicative f
+  => (forall x. InList x types -> x -> a)
+  -> HeteroList f types
+  -> f [a]
+homogenize _ HNil = pure []
+homogenize g (HCons x xs) = (:)
+  <$> fmap (g Here) x
+  <*> homogenize (g . There) xs
 
 data SomeIndex xs where
     SomeIndex :: InList x xs -> SomeIndex xs
