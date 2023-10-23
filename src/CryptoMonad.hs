@@ -58,10 +58,12 @@ data SomeMessage xs where
 
 data CryptoActions (send :: [*]) (receive :: [*]) a where
     ReceiveAction :: (SomeMessage receive -> a) -> CryptoActions send receive a
+    ReceiveOneAction :: InList b receive -> (b -> a) -> CryptoActions send receive a
     SendAction :: InList b send -> b -> a -> CryptoActions send receive a
 
 instance Functor (CryptoActions send receive) where
     fmap f (ReceiveAction g) = ReceiveAction (f . g)
+    fmap f (ReceiveOneAction i g) = ReceiveOneAction i (f . g)
     fmap f (SendAction i b a) = SendAction i b $ f a
 
 -- wrappers
@@ -74,11 +76,17 @@ type CryptoMonad send receive = Free (CryptoActions send receive)
 receive :: CryptoMonad send receive (SomeMessage receive)
 receive = liftF (ReceiveAction id)
 
+receiveOne :: InList b receive -> CryptoMonad send receive b
+receiveOne i = liftF (ReceiveOneAction i id)
+
 send :: InList b send -> b -> CryptoMonad send receive ()
 send i b = liftF (SendAction i b ())
 
+pattern Alice :: () => (xs ~ (x : xs1)) => InList x xs
 pattern Alice = Here
+pattern Bob :: () => (xs ~ (y : xs1), xs1 ~ (x : xs2)) => InList x xs
 pattern Bob = There Here
+pattern Charlie :: () => (xs ~ (y1 : xs1), xs1 ~ (y2 : xs2), xs2 ~ (x : xs3)) => InList x xs
 pattern Charlie = There (There Here)
 
 -- usage
@@ -95,16 +103,16 @@ untilJustM act = do
         Nothing -> untilJustM act
 
 alg1 :: CryptoMonad [Int, Void, BobAlgo] [Bool, Void, String] Bool
-alg1 = do str <- untilJustM $ do
+alg1 = do str <- untilJustM $
             receive >>= \case
-              SomeMessage Alice _ -> pure Nothing
-              SomeMessage Bob _ -> pure Nothing
               SomeMessage Charlie x -> pure $ Just x
-              SomeMessage contra _ -> case contra of
-          -- send Alice $ length str
+              SomeMessage _ _ -> pure Nothing
+          send Alice $ (length :: String -> Int) str
           send Charlie $ BobAlgo alg1
-          -- receive Alice
-          pure False
+          untilJustM $
+            receive >>= \case
+              SomeMessage Alice x -> pure $ Just x
+              SomeMessage _ _ -> pure $ Nothing
 
 -- zipped version for when there's exactly one interface per person
 
