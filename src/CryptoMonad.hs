@@ -58,27 +58,27 @@ data InList x xs where
 data SomeMessage xs where
   SomeMessage :: InList x xs -> x -> SomeMessage xs
 
-data CryptoActions (send :: [Type]) (receive :: [Type]) a where
-    ReceiveAnyAction :: (SomeMessage receive -> a) -> CryptoActions send receive a
-    ReceiveAction :: InList b receive -> (b -> a) -> CryptoActions send receive a
-    SendAction :: InList b send -> b -> a -> CryptoActions send receive a
+data CryptoActions (send :: [Type]) (recv :: [Type]) a where
+    ReceiveAnyAction :: (SomeMessage recv -> a) -> CryptoActions send recv a
+    ReceiveAction :: InList b recv -> (b -> a) -> CryptoActions send recv a
+    SendAction :: InList b send -> b -> a -> CryptoActions send recv a
 
-instance Functor (CryptoActions send receive) where
+instance Functor (CryptoActions send recv) where
     fmap f (ReceiveAnyAction g) = ReceiveAnyAction (f . g)
     fmap f (ReceiveAction i g) = ReceiveAction i (f . g)
     fmap f (SendAction i b a) = SendAction i b $ f a
 
 -- wrappers
 
-type CryptoMonad send receive = Free (CryptoActions send receive)
+type CryptoMonad send recv = Free (CryptoActions send recv)
 
-receiveAny :: CryptoMonad send receive (SomeMessage receive)
-receiveAny = liftF (ReceiveAnyAction id)
+recvAny :: CryptoMonad send recv (SomeMessage recv)
+recvAny = liftF (ReceiveAnyAction id)
 
-receive :: InList b receive -> CryptoMonad send receive b
-receive i = liftF (ReceiveAction i id)
+recv :: InList b recv -> CryptoMonad send recv b
+recv i = liftF (ReceiveAction i id)
 
-send :: InList b send -> b -> CryptoMonad send receive ()
+send :: InList b send -> b -> CryptoMonad send recv ()
 send i b = liftF (SendAction i b ())
 
 pattern Alice :: () => (xs ~ (x : xs1)) => InList x xs
@@ -102,10 +102,10 @@ untilJustM act = do
         Nothing -> untilJustM act
 
 alg1 :: CryptoMonad [Int, Void, BobAlgo] [Bool, Void, String] Bool
-alg1 = do str <- receive Charlie
+alg1 = do str <- recv Charlie
           send Alice $ length str
           send Charlie $ BobAlgo alg1
-          receive Alice
+          recv Alice
 
 -- zipped version for when there's exactly one interface per person
 
@@ -125,9 +125,9 @@ alg1' = alg1
 -- the original idea
 
 class InteractWithBob m v | m -> v where
-    receiveBob :: m v
+    recvBob :: m v
     sendBob :: v -> m ()
 
 -- instance InteractWithBob (CryptoMonad (Alice : v : xs) (Alice : v : xs')) v where
---     receiveBob = receive bob
+--     recvBob = recv bob
 --     sendBob = send bob
