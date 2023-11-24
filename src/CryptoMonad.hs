@@ -90,11 +90,11 @@ padMessageIndex (SomeMessage i' x') = SomeMessage (There i') x'
 
 data CryptoActions (send :: [Type]) (recv :: [Type]) a where
     RecvAction :: (SomeMessage recv -> a) -> CryptoActions send recv a
-    SendAction :: InList b send -> b -> a -> CryptoActions send recv a
+    SendAction :: SomeMessage send -> a -> CryptoActions send recv a
 
 instance Functor (CryptoActions send recv) where
     fmap f (RecvAction g) = RecvAction (f . g)
-    fmap f (SendAction i b a) = SendAction i b $ f a
+    fmap f (SendAction m a) = SendAction m $ f a
 
 -- wrappers
 
@@ -138,8 +138,11 @@ recvOneOfDropping i = do
     Nothing -> recvOneOfDropping i
     Just m' -> pure m'
 
+sendSomeMess :: SomeMessage send -> CryptoMonad send recv ()
+sendSomeMess m = liftF (SendAction m ())
+
 send :: InList b send -> b -> CryptoMonad send recv ()
-send i b = liftF (SendAction i b ())
+send i b = sendSomeMess $ SomeMessage i b
 
 -- usage
 
@@ -192,9 +195,9 @@ hidingRecvParty y@(Free (RecvAction f))
   $ \case
     (SomeMessage Here x) -> Pure $ Left (x, y)
     (SomeMessage (There i) x) -> hidingRecvParty $ f (SomeMessage i x)
-hidingRecvParty (Free (SendAction i m a))
+hidingRecvParty (Free (SendAction m a))
   = Free
-  $ SendAction i m
+  $ SendAction m
   $ hidingRecvParty a
 
 -- Interpretation of the CryptoMonad
@@ -209,7 +212,7 @@ runSTM s r = \case
     let chans = homogenize (\i c -> SomeMessage i <$> STM.readTChan c) r
     m <- STM.atomically $ msum chans
     runSTM s r $ f m
-  Free (SendAction i m a) -> do
+  Free (SendAction (SomeMessage i m) a) -> do
     STM.atomically $ STM.writeTChan (heteroListGet s i) m
     runSTM s r a
 
@@ -243,3 +246,23 @@ test2 a b = do
       s <- recvDropping aliceName
       send aliceName $ length s
       pure $ "got from Alice " ++ show s ++ " while my input is " ++ show b
+
+
+-- Single-threaded Cooperative Multitasking Interpretation of the Monad
+
+data Thread send recv a
+  = ThDone a
+  | ThRunning (SomeMessage recv -> Free (CryptoActions send recv) a)
+
+-- |Start a new thread and run it until it terminates or tries to recv. Collect
+-- messages that it tries to send.
+newThread :: CryptoMonad send recv a -> (Thread send recv a, [SomeMessage send])
+newThread (Pure x) = (ThDone x, [])
+newThread (Free (RecvAction a)) = (ThRunning a, [])
+newThread (Free (SendAction m a)) = second (m:) $ newThread a
+
+deliverThread :: SomeMessage recv -> Thread send recv a -> (Thread send recv a, [SomeMessage send])
+deliverThread _ t@(ThDone _) = (t, [])
+deliverThread m (ThRunning a) = case a m of
+  Pure x -> (ThDone x, [])
+  a' -> newThread a'
