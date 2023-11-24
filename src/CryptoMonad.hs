@@ -151,7 +151,12 @@ type family MapSnd xs where
     MapSnd '[] = '[]
     MapSnd ((,) a b : xs) = b : MapSnd xs
 
+type family Swap p where
+    Swap ((,) x y) = (,) y x
+
 type CryptoMonad' people = CryptoMonad (MapFst people) (MapSnd people)
+
+type PartyMonad e f parties = CryptoMonad' (e:f:parties)
 
 alg1' :: CryptoMonad' [(Int, Bool), (Void, Void), (BobAlgo, String)] Bool
 alg1' = alg1
