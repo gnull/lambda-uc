@@ -248,7 +248,9 @@ test2 a b = do
       pure $ "got from Alice " ++ show s ++ " while my input is " ++ show b
 
 
--- Single-threaded Cooperative Multitasking Interpretation of the Monad
+-- Single-threaded Cooperative Multitasking Interpretation of the Monad.
+--
+-- This is defined by the original UC paper
 
 data Thread send recv a
   = ThDone a
@@ -256,12 +258,15 @@ data Thread send recv a
 
 -- |Start a new thread and run it until it terminates or tries to recv. Collect
 -- messages that it tries to send.
-newThread :: CryptoMonad send recv a -> (Thread send recv a, [SomeMessage send])
+newThread :: CryptoMonad send recv a
+          -> (Thread send recv a, [SomeMessage send])
 newThread (Pure x) = (ThDone x, [])
 newThread (Free (RecvAction a)) = (ThRunning a, [])
 newThread (Free (SendAction m a)) = second (m:) $ newThread a
 
-deliverThread :: SomeMessage recv -> Thread send recv a -> (Thread send recv a, [SomeMessage send])
+deliverThread :: SomeMessage recv
+              -> Thread send recv a
+              -> (Thread send recv a, [SomeMessage send])
 deliverThread _ t@(ThDone _) = (t, [])
 deliverThread m (ThRunning a) = case a m of
   Pure x -> (ThDone x, [])
