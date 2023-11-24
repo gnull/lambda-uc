@@ -215,7 +215,6 @@ runSTM s r = \case
 
 type VoidInterface = (Void, Void)
 type AliceBobInterface = (String, Int)
-type BobAliceInterface = (Int, String)
 
 test2 :: String -> String -> IO (Int, String)
 test2 a b = do
@@ -239,7 +238,7 @@ test2 a b = do
       case m of
         (SomeMessage Here x) -> pure x
         (SomeMessage (There contra) _) -> case contra of
-    bob :: CryptoMonad' '[BobAliceInterface, VoidInterface] String
+    bob :: CryptoMonad' '[Swap AliceBobInterface, VoidInterface] String
     bob = do
       s <- recvDropping aliceName
       send aliceName $ length s
