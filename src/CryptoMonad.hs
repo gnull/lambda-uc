@@ -180,19 +180,19 @@ hidingRecvParty (Free (SendAction i m a))
 
 -- Interpretation of the CryptoMonad
 
-run :: HeteroList STM.TChan send
+runSTM :: HeteroList STM.TChan send
     -> HeteroList STM.TChan receive
     -> CryptoMonad send receive a
     -> IO a
-run s r = \case
+runSTM s r = \case
   Pure x -> pure x
   Free (ReceiveAction f) -> do
     let chans = homogenize (\i c -> SomeMessage i <$> STM.readTChan c) r
     m <- STM.atomically $ msum chans
-    run s r $ f m
+    runSTM s r $ f m
   Free (SendAction i m a) -> do
     STM.atomically $ STM.writeTChan (heteroListGet s i) m
-    run s r a
+    runSTM s r a
 
 test :: String -> String -> IO (Int, String)
 test a b = do
@@ -200,8 +200,8 @@ test a b = do
     bToAChan <- STM.newTChanIO
     let aToB = HCons aToBChan HNil
     let bToA = HCons bToAChan HNil
-    aliceA <- A.async $ run aToB bToA alice
-    bobA <- A.async $ run bToA aToB bob
+    aliceA <- A.async $ runSTM aToB bToA alice
+    bobA <- A.async $ runSTM bToA aToB bob
     A.waitBoth aliceA bobA
   where
     alice :: CryptoMonad' '[(String, Int)] Int
