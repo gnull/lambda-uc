@@ -143,16 +143,23 @@ type CryptoMonad' people = CryptoMonad (MapFst people) (MapSnd people)
 alg1' :: CryptoMonad' [(Int, Bool), (Void, Void), (BobAlgo, String)] Bool
 alg1' = alg1
 
--- This is not a good idea. I must add an extra constructor for CryptoActions
--- if I want to hide parties in a clean way. The implementation here is buggy.
-hidingRecvParty :: CryptoMonad send recv a -> CryptoMonad send (x:recv) a
-hidingRecvParty (Pure x) = Pure x
-hidingRecvParty (Free (ReceiveAnyAction f))
+-- |Returns @Left (x, f)@ if the underlying monad has received message x
+-- intended for the hidden party. The f returned is the remaining computation
+-- tail. You can handle the x yourself and then continues executing the
+-- remaining f if you wish to.
+--
+-- Returns @Right a@ if the simulated computation exited successfully (and all
+-- arrived messages were ok) with result @a@.
+hidingRecvParty
+  :: CryptoMonad send recv a
+  -> CryptoMonad send (x:recv) (Either (x, CryptoMonad send recv a) a)
+hidingRecvParty (Pure x) = Pure $ Right x
+hidingRecvParty y@(Free (ReceiveAnyAction f))
   = Free
   $ ReceiveAnyAction
-  -- BUG is here: we throw an error if we get message from a party we don't
-  -- expect a message from
-  $ \(SomeMessage (There i) x) -> hidingRecvParty $ f (SomeMessage i x)
+  $ \case
+    (SomeMessage Here x) -> Pure $ Left (x, y)
+    (SomeMessage (There i) x) -> hidingRecvParty $ f (SomeMessage i x)
 hidingRecvParty (Free (ReceiveAction i f))
   = Free
   $ ReceiveAction (There i) (hidingRecvParty . f)
