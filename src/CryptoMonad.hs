@@ -130,17 +130,15 @@ alg1 = do str <- recv Charlie
 
 -- zipped version for when there's exactly one interface per person
 
-type family Fst p where
-  Fst (a, b) = a
+type family MapFst xs where
+    MapFst '[] = '[]
+    MapFst ((,) a b : xs) = a : MapFst xs
 
-type family Snd p where
-  Snd (a, b) = b
+type family MapSnd xs where
+    MapSnd '[] = '[]
+    MapSnd ((,) a b : xs) = b : MapSnd xs
 
-type family Map (f :: Type -> Type) xs where
-  Map f '[] = '[]
-  Map f (x : xs) = f x : Map f xs
-
-type CryptoMonad' people = CryptoMonad (Map Fst people) (Map Snd people)
+type CryptoMonad' people = CryptoMonad (MapFst people) (MapSnd people)
 
 alg1' :: CryptoMonad' [(Int, Bool), (Void, Void), (BobAlgo, String)] Bool
 alg1' = alg1
@@ -182,19 +180,6 @@ run s r = \case
   Free (SendAction i m a) -> do
     STM.atomically $ STM.writeTChan (heteroListGet s i) m
     run s r a
-
--- The parties available will go in order:
---
---  * Environment
---  * Adversary
---  * F₁
---  * F₂
---  * …
---  * P₁
---  * P₂
---  * …
-
--- signatureFunctionality :: CryptoMonad' parties a
 
 test :: String -> String -> IO (Int, String)
 test a b = do
