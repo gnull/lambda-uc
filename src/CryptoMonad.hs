@@ -236,8 +236,8 @@ test2 a b = do
       send bobName a
       m <- recvOneOfDropping (HConsP2 bobName HNilP2)
       case m of
-        (SomeMessage Here x) -> pure x
-        (SomeMessage (There contra) _) -> case contra of
+        SomeMessage Here x -> pure x
+        SomeMessage (There contra) _ -> case contra of
     bob :: CryptoMonad' '[Swap AliceBobInterface, VoidInterface] String
     bob = do
       s <- recvDropping aliceName
