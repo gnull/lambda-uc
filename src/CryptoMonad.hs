@@ -64,8 +64,9 @@ areInListEqual (There a) (There b) = areInListEqual a b
 areInListEqual _ _ = Nothing
 
 heteroListGet :: HeteroList f types -> InList x types -> f x
-heteroListGet (HCons x xs) Here = x
-heteroListGet (HCons x xs) (There t) = heteroListGet xs t
+heteroListGet (HCons x _) Here = x
+heteroListGet (HCons _ xs) (There t) = heteroListGet xs t
+heteroListGet HNil contra = case contra of
 
 homogenize
   :: (forall x. InList x types -> f x -> a)
