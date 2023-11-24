@@ -14,16 +14,18 @@
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ImpredicativeTypes #-}
 
 module CryptoMonad where
 
 import Data.Kind (Type)
 
-import Data.Functor.Identity (Identity)
+import Data.Functor ((<&>))
 
 import qualified Control.Concurrent.STM.TChan as STM
 import qualified Control.Concurrent.Async as A
 import Control.Monad (msum)
+import Control.Arrow (second)
 import qualified Control.Monad.STM as STM --also supplies instance MonadPlus STM
 
 import Data.Type.Equality ((:~:)(Refl))
@@ -81,6 +83,9 @@ data SomeIndex xs where
 data SomeMessage xs where
   SomeMessage :: InList x xs -> x -> SomeMessage xs
 
+padMessageIndex :: SomeMessage ts -> SomeMessage (t : ts)
+padMessageIndex (SomeMessage i' x') = SomeMessage (There i') x'
+
 -- domain-specific definitions
 
 data CryptoActions (send :: [Type]) (recv :: [Type]) a where
@@ -112,6 +117,26 @@ recvCollecting i = do
 -- |Same as @recvCollecting@, but drops the messages from other parties.
 recvDropping :: InList b recv -> CryptoMonad send recv b
 recvDropping i = snd <$> recvCollecting i
+
+data HeteroListP2 f a (types :: [Type]) where
+    HNilP2 :: HeteroListP2 f a '[]
+    HConsP2 :: f t a -> HeteroListP2 f a ts -> HeteroListP2 f a (t : ts)
+
+-- |Allows for cleaner code than pattern-matching over @SomeMessage recv@, or
+-- pairwise comparisons using @areInListEqual@
+repackMessage :: HeteroListP2 InList recv is -> SomeMessage recv -> Maybe (SomeMessage is)
+repackMessage HNilP2 _ = Nothing
+repackMessage (HConsP2 i is) m@(SomeMessage j x) = case areInListEqual i j of
+    Just Refl -> Just $ SomeMessage Here x
+    Nothing -> padMessageIndex <$> repackMessage is m
+
+-- |Same as @recvDropping@, but takes a list of valid senders to get messages from
+recvOneOfDropping :: HeteroListP2 InList recv is -> CryptoMonad send recv (SomeMessage is)
+recvOneOfDropping i = do
+  m <- recvAny
+  case repackMessage i m of
+    Nothing -> recvOneOfDropping i
+    Just m' -> pure m'
 
 send :: InList b send -> b -> CryptoMonad send recv ()
 send i b = liftF (SendAction i b ())
@@ -188,24 +213,34 @@ runSTM s r = \case
     STM.atomically $ STM.writeTChan (heteroListGet s i) m
     runSTM s r a
 
-test :: String -> String -> IO (Int, String)
-test a b = do
+type VoidInterface = (Void, Void)
+type AliceBobInterface = (String, Int)
+type BobAliceInterface = (Int, String)
+
+test2 :: String -> String -> IO (Int, String)
+test2 a b = do
     aToBChan <- STM.newTChanIO
     bToAChan <- STM.newTChanIO
-    let aToB = HCons aToBChan HNil
-    let bToA = HCons bToAChan HNil
-    aliceA <- A.async $ runSTM aToB bToA alice
-    bobA <- A.async $ runSTM bToA aToB bob
+    voidChan <- STM.newTChanIO
+    let aliceSend = HCons voidChan (HCons aToBChan HNil)
+    let aliceRecv = HCons voidChan (HCons bToAChan HNil)
+    let bobSend = HCons bToAChan (HCons voidChan HNil)
+    let bobRecv = HCons aToBChan (HCons voidChan HNil)
+    aliceA <- A.async $ runSTM aliceSend aliceRecv alice
+    bobA <- A.async $ runSTM bobSend bobRecv bob
     A.waitBoth aliceA bobA
   where
-    alice :: CryptoMonad' '[(String, Int)] Int
+    aliceName = Here
+    bobName = There Here
+    alice :: CryptoMonad' '[VoidInterface, AliceBobInterface] Int
     alice = do
-      send Here a
-      recvAny >>= \case
-        SomeMessage Here x -> pure x
-        SomeMessage (There contra) _ -> case contra of
-    bob :: CryptoMonad' '[(Int, String)] String
+      send bobName a
+      m <- recvOneOfDropping (HConsP2 bobName HNilP2)
+      case m of
+        (SomeMessage Here x) -> pure x
+        (SomeMessage (There contra) _) -> case contra of
+    bob :: CryptoMonad' '[BobAliceInterface, VoidInterface] String
     bob = do
-      s <- recvDropping Here
-      send Here $ length s
+      s <- recvDropping aliceName
+      send aliceName $ length s
       pure $ "got from Alice " ++ show s ++ " while my input is " ++ show b
