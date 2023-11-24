@@ -83,11 +83,11 @@ data SomeMessage xs where
 -- domain-specific definitions
 
 data CryptoActions (send :: [Type]) (recv :: [Type]) a where
-    ReceiveAction :: (SomeMessage recv -> a) -> CryptoActions send recv a
+    RecvAction :: (SomeMessage recv -> a) -> CryptoActions send recv a
     SendAction :: InList b send -> b -> a -> CryptoActions send recv a
 
 instance Functor (CryptoActions send recv) where
-    fmap f (ReceiveAction g) = ReceiveAction (f . g)
+    fmap f (RecvAction g) = RecvAction (f . g)
     fmap f (SendAction i b a) = SendAction i b $ f a
 
 -- wrappers
@@ -95,7 +95,7 @@ instance Functor (CryptoActions send recv) where
 type CryptoMonad send recv = Free (CryptoActions send recv)
 
 recvAny :: CryptoMonad send recv (SomeMessage recv)
-recvAny = liftF (ReceiveAction id)
+recvAny = liftF (RecvAction id)
 
 -- |Waits for message from this specific party. Until it arrives, collect all
 -- the messages from all other parties.
@@ -172,9 +172,9 @@ hidingRecvParty
   :: CryptoMonad send recv a
   -> CryptoMonad send (x:recv) (Either (x, CryptoMonad send recv a) a)
 hidingRecvParty (Pure x) = Pure $ Right x
-hidingRecvParty y@(Free (ReceiveAction f))
+hidingRecvParty y@(Free (RecvAction f))
   = Free
-  $ ReceiveAction
+  $ RecvAction
   $ \case
     (SomeMessage Here x) -> Pure $ Left (x, y)
     (SomeMessage (There i) x) -> hidingRecvParty $ f (SomeMessage i x)
@@ -191,7 +191,7 @@ runSTM :: HeteroList STM.TChan send
     -> IO a
 runSTM s r = \case
   Pure x -> pure x
-  Free (ReceiveAction f) -> do
+  Free (RecvAction f) -> do
     let chans = homogenize (\i c -> SomeMessage i <$> STM.readTChan c) r
     m <- STM.atomically $ msum chans
     runSTM s r $ f m
