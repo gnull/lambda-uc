@@ -116,31 +116,19 @@ recvDropping i = snd <$> recvCollecting i
 send :: InList b send -> b -> CryptoMonad send recv ()
 send i b = liftF (SendAction i b ())
 
-pattern Alice :: () => (xs ~ (x : xs1)) => InList x xs
-pattern Alice = Here
-pattern Bob :: () => (xs ~ (y : xs1), xs1 ~ (x : xs2)) => InList x xs
-pattern Bob = There Here
-pattern Charlie :: () => (xs ~ (y1 : xs1), xs1 ~ (y2 : xs2), xs2 ~ (x : xs3)) => InList x xs
-pattern Charlie = There (There Here)
-
 -- usage
 
 data BobAlgo = BobAlgo (CryptoMonad [Int, Void, BobAlgo] [Bool, Void, String] Bool)
 
--- | Keep running an operation until it becomes a 'Just', then return the value
---   inside the 'Just' as the result of the overall loop.
-untilJustM :: Monad m => m (Maybe a) -> m a
-untilJustM act = do
-    res <- act
-    case res of
-        Just r  -> pure r
-        Nothing -> untilJustM act
-
 alg1 :: CryptoMonad [Int, Void, BobAlgo] [Bool, Void, String] Bool
-alg1 = do str <- recvDropping Charlie
-          send Alice $ length str
-          send Charlie $ BobAlgo alg1
-          recvDropping Alice
+alg1 = do str <- recvDropping charlie
+          send alice $ length str
+          send charlie $ BobAlgo alg1
+          recvDropping alice
+  where
+    alice = Here
+    bob = There Here
+    charlie = There (There Here)
 
 -- zipped version for when there's exactly one interface per person
 
