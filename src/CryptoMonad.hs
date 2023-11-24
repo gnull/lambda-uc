@@ -26,6 +26,8 @@ import qualified Control.Concurrent.Async as A
 import Control.Monad (msum)
 import qualified Control.Monad.STM as STM --also supplies instance MonadPlus STM
 
+import Data.Type.Equality ((:~:)(Refl))
+
 -- free monads
 
 import Control.Monad (ap)
@@ -56,6 +58,11 @@ data InList x xs where
     Here :: InList x (x : xs)
     There :: InList x xs -> InList x (y : xs)
 
+areInListEqual :: InList x xs -> InList y xs -> Maybe (x :~: y)
+areInListEqual Here Here = Just Refl
+areInListEqual (There a) (There b) = areInListEqual a b
+areInListEqual _ _ = Nothing
+
 heteroListGet :: HeteroList f types -> InList x types -> f x
 heteroListGet (HCons x xs) Here = x
 heteroListGet (HCons x xs) (There t) = heteroListGet xs t
@@ -67,10 +74,6 @@ homogenize
 homogenize _ HNil = []
 homogenize g (HCons x xs) = g Here x : homogenize (g . There) xs
 
--- heteroTraverse :: (InList x types -> fInList x types -> x -> f x) -> HeteroList Identity types -> HeteroList f types
--- heteroTraverse _ HNil = HNil
--- heteroTraverse g (HCons x xs) =
-
 data SomeIndex xs where
     SomeIndex :: InList x xs -> SomeIndex xs
 
@@ -81,12 +84,10 @@ data SomeMessage xs where
 
 data CryptoActions (send :: [Type]) (recv :: [Type]) a where
     ReceiveAnyAction :: (SomeMessage recv -> a) -> CryptoActions send recv a
-    ReceiveAction :: InList b recv -> (b -> a) -> CryptoActions send recv a
     SendAction :: InList b send -> b -> a -> CryptoActions send recv a
 
 instance Functor (CryptoActions send recv) where
     fmap f (ReceiveAnyAction g) = ReceiveAnyAction (f . g)
-    fmap f (ReceiveAction i g) = ReceiveAction i (f . g)
     fmap f (SendAction i b a) = SendAction i b $ f a
 
 -- wrappers
@@ -96,8 +97,20 @@ type CryptoMonad send recv = Free (CryptoActions send recv)
 recvAny :: CryptoMonad send recv (SomeMessage recv)
 recvAny = liftF (ReceiveAnyAction id)
 
-recv :: InList b recv -> CryptoMonad send recv b
-recv i = liftF (ReceiveAction i id)
+-- |Waits for message from this specific party. Until it arrives, collect all
+-- the messages from all other parties.
+recvCollecting :: InList b recv -> CryptoMonad send recv ([SomeMessage recv], b)
+recvCollecting i = do
+  m@(SomeMessage j x) <- recvAny
+  case areInListEqual i j of
+    Nothing -> do
+      (ms, res) <- recvCollecting i
+      pure (m : ms, res)
+    Just Refl -> pure ([], x)
+
+-- |Same as @recvCollecting@, but drops the messages from other parties.
+recvDropping :: InList b recv -> CryptoMonad send recv b
+recvDropping i = snd <$> recvCollecting i
 
 send :: InList b send -> b -> CryptoMonad send recv ()
 send i b = liftF (SendAction i b ())
@@ -123,10 +136,10 @@ untilJustM act = do
         Nothing -> untilJustM act
 
 alg1 :: CryptoMonad [Int, Void, BobAlgo] [Bool, Void, String] Bool
-alg1 = do str <- recv Charlie
+alg1 = do str <- recvDropping Charlie
           send Alice $ length str
           send Charlie $ BobAlgo alg1
-          recv Alice
+          recvDropping Alice
 
 -- zipped version for when there's exactly one interface per person
 
@@ -160,9 +173,6 @@ hidingRecvParty y@(Free (ReceiveAnyAction f))
   $ \case
     (SomeMessage Here x) -> Pure $ Left (x, y)
     (SomeMessage (There i) x) -> hidingRecvParty $ f (SomeMessage i x)
-hidingRecvParty (Free (ReceiveAction i f))
-  = Free
-  $ ReceiveAction (There i) (hidingRecvParty . f)
 hidingRecvParty (Free (SendAction i m a))
   = Free
   $ SendAction i m
@@ -179,10 +189,6 @@ run s r = \case
   Free (ReceiveAnyAction f) -> do
     let chans = homogenize (\i c -> SomeMessage i <$> STM.readTChan c) r
     m <- STM.atomically $ msum chans
-    run s r $ f m
-  Free (ReceiveAction i f) -> do
-    m <- STM.atomically $ STM.readTChan
-                        $ heteroListGet r i
     run s r $ f m
   Free (SendAction i m a) -> do
     STM.atomically $ STM.writeTChan (heteroListGet s i) m
@@ -203,9 +209,9 @@ test a b = do
       send Here a
       recvAny >>= \case
         SomeMessage Here x -> pure x
-        SomeMessage contra _ -> case contra of
+        SomeMessage (There contra) _ -> case contra of
     bob :: CryptoMonad' '[(Int, String)] String
     bob = do
-      s <- recv Here
+      s <- recvDropping Here
       send Here $ length s
       pure $ "got from Alice " ++ show s ++ " while my input is " ++ show b
