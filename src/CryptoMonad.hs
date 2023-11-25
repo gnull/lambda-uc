@@ -175,8 +175,8 @@ type family Swap p where
 
 type CryptoMonad' people = CryptoMonad (MapFst people) (MapSnd people)
 
--- inListFst :: forall (a :: Type) (b :: Type) (l :: [(Type, Type)])
---            . InList ('(,) a b) l -> InList a (MapFst l)
+-- inListFst :: forall (a :: Type) (b :: Type) (l :: [(,) Type Type]).
+--     InList ('(,) a b) l -> InList a (MapFst l)
 -- inListFst Here = Here
 -- inListFst (There x) = There $ inListFst x
 
@@ -226,8 +226,10 @@ runSTM s r = \case
 type VoidInterface = '(,) Void Void
 type AliceBobInterface = '(,) String Int
 
-test2 :: String -> String -> IO (Int, String)
-test2 a b = do
+-- aliceName = Here
+
+test2STM :: String -> String -> IO (Int, String)
+test2STM a b = do
     aToBChan <- STM.newTChanIO
     bToAChan <- STM.newTChanIO
     voidChan <- STM.newTChanIO
@@ -278,3 +280,20 @@ deliverThread _ t@(ThDone _) = (t, [])
 deliverThread m (ThRunning a) = case a m of
   Pure x -> (ThDone x, [])
   a' -> newThread a'
+
+runCoop2PC :: CryptoMonad' ['(,) Void Void, '(,) a b] c
+           -> CryptoMonad' ['(,) b a, '(,) Void Void] d
+           -> (Maybe c, Maybe d)
+runCoop2PC p1 p2 = helper (t1, t2, map Left m1 ++ map Right m2)
+  where
+    returned (ThDone a) = Just a
+    returned (ThRunning _) = Nothing
+
+    (t1, m1) = newThread p1
+    (t2, m2) = newThread p2
+
+    helper :: (Thread [Void, a] [Void, b] c, Thread [b, Void] [a, Void] d, Either (SomeMessage )
+    helper (th1, th2, []) = (returned th1, returned th2)
+    helper (th1, th2, (m:ms)) = case m of
+      Left m -> _
+      Right _ -> undefined
