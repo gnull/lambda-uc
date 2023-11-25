@@ -162,20 +162,27 @@ alg1 = do str <- recvDropping charlie
 
 type family MapFst xs where
     MapFst '[] = '[]
-    MapFst ((,) a b : xs) = a : MapFst xs
+    MapFst ('(,) a b : xs) = a : MapFst xs
+
+-- type Kek = MapFst '[ '(,,) Int Char Char]
 
 type family MapSnd xs where
     MapSnd '[] = '[]
-    MapSnd ((,) a b : xs) = b : MapSnd xs
+    MapSnd ('(,) a b : xs) = b : MapSnd xs
 
 type family Swap p where
-    Swap ((,) x y) = (,) y x
+    Swap ('(,) x y) = '(,) y x
 
 type CryptoMonad' people = CryptoMonad (MapFst people) (MapSnd people)
 
+-- inListFst :: forall (a :: Type) (b :: Type) (l :: [(Type, Type)])
+--            . InList ('(,) a b) l -> InList a (MapFst l)
+-- inListFst Here = Here
+-- inListFst (There x) = There $ inListFst x
+
 type PartyMonad e f parties = CryptoMonad' (e:f:parties)
 
-alg1' :: CryptoMonad' [(Int, Bool), (Void, Void), (BobAlgo, String)] Bool
+alg1' :: CryptoMonad' ['(,) Int Bool, '(,) Void Void, '(,) BobAlgo String] Bool
 alg1' = alg1
 
 -- |Returns @Left (x, f)@ if the underlying monad has received message x
@@ -216,8 +223,8 @@ runSTM s r = \case
     STM.atomically $ STM.writeTChan (heteroListGet s i) m
     runSTM s r a
 
-type VoidInterface = (Void, Void)
-type AliceBobInterface = (String, Int)
+type VoidInterface = '(,) Void Void
+type AliceBobInterface = '(,) String Int
 
 test2 :: String -> String -> IO (Int, String)
 test2 a b = do
