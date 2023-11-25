@@ -179,10 +179,9 @@ type family Swap p where
 
 type CryptoMonad' people = CryptoMonad (MapFst people) (MapSnd people)
 
--- inListFst :: forall (a :: Type) (b :: Type) (l :: [(,) Type Type]).
---     InList ('(,) a b) l -> InList a (MapFst l)
--- inListFst Here = Here
--- inListFst (There x) = There $ inListFst x
+inListFst :: InList ((,) a b) l -> InList a (MapFst l)
+inListFst Here = Here
+inListFst (There x) = There $ inListFst x
 
 type PartyMonad e f parties = CryptoMonad' (e:f:parties)
 
