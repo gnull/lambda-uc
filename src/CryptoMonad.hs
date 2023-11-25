@@ -160,18 +160,22 @@ alg1 = do str <- recvDropping charlie
 
 -- zipped version for when there's exactly one interface per person
 
+type family Fst p where
+    Fst (a, b) = a
+
+type family Snd p where
+    Snd (a, b) = b
+
 type family MapFst xs where
     MapFst '[] = '[]
-    MapFst ('(,) a b : xs) = a : MapFst xs
-
--- type Kek = MapFst '[ '(,,) Int Char Char]
+    MapFst (p : xs) = Fst p : MapFst xs
 
 type family MapSnd xs where
     MapSnd '[] = '[]
-    MapSnd ('(,) a b : xs) = b : MapSnd xs
+    MapSnd (p : xs) = Snd p : MapSnd xs
 
 type family Swap p where
-    Swap ('(,) x y) = '(,) y x
+    Swap ((,) x y) = (,) y x
 
 type CryptoMonad' people = CryptoMonad (MapFst people) (MapSnd people)
 
@@ -182,7 +186,7 @@ type CryptoMonad' people = CryptoMonad (MapFst people) (MapSnd people)
 
 type PartyMonad e f parties = CryptoMonad' (e:f:parties)
 
-alg1' :: CryptoMonad' ['(,) Int Bool, '(,) Void Void, '(,) BobAlgo String] Bool
+alg1' :: CryptoMonad' [(Int, Bool), (Void, Void), (BobAlgo, String)] Bool
 alg1' = alg1
 
 -- |Returns @Left (x, f)@ if the underlying monad has received message x
@@ -223,8 +227,8 @@ runSTM s r = \case
     STM.atomically $ STM.writeTChan (heteroListGet s i) m
     runSTM s r a
 
-type VoidInterface = '(,) Void Void
-type AliceBobInterface = '(,) String Int
+type VoidInterface = (Void, Void)
+type AliceBobInterface = (String, Int)
 
 -- aliceName = Here
 
@@ -281,19 +285,19 @@ deliverThread m (ThRunning a) = case a m of
   Pure x -> (ThDone x, [])
   a' -> newThread a'
 
-runCoop2PC :: CryptoMonad' ['(,) Void Void, '(,) a b] c
-           -> CryptoMonad' ['(,) b a, '(,) Void Void] d
-           -> (Maybe c, Maybe d)
-runCoop2PC p1 p2 = helper (t1, t2, map Left m1 ++ map Right m2)
-  where
-    returned (ThDone a) = Just a
-    returned (ThRunning _) = Nothing
+-- runCoop2PC :: CryptoMonad' [(Void, Void), (a, b)] c
+--            -> CryptoMonad' [(b, a), (Void, Void)] d
+--            -> (Maybe c, Maybe d)
+-- runCoop2PC p1 p2 = helper (t1, t2, map Left m1 ++ map Right m2)
+--   where
+--     returned (ThDone a) = Just a
+--     returned (ThRunning _) = Nothing
 
-    (t1, m1) = newThread p1
-    (t2, m2) = newThread p2
+--     (t1, m1) = newThread p1
+--     (t2, m2) = newThread p2
 
-    helper :: (Thread [Void, a] [Void, b] c, Thread [b, Void] [a, Void] d, Either (SomeMessage )
-    helper (th1, th2, []) = (returned th1, returned th2)
-    helper (th1, th2, (m:ms)) = case m of
-      Left m -> _
-      Right _ -> undefined
+--     helper :: (Thread [Void, a] [Void, b] c, Thread [b, Void] [a, Void] d, Either (SomeMessage )
+--     helper (th1, th2, []) = (returned th1, returned th2)
+--     helper (th1, th2, (m:ms)) = case m of
+--       Left m -> _
+--       Right _ -> undefined
