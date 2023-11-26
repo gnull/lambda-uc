@@ -25,7 +25,7 @@ import Data.Functor ((<&>))
 import qualified Control.Concurrent.STM.TChan as STM
 import qualified Control.Concurrent.Async as A
 import Control.Monad (msum)
-import Control.Arrow (second)
+import Control.Arrow (second, (***))
 import qualified Control.Monad.STM as STM --also supplies instance MonadPlus STM
 
 import Data.Type.Equality ((:~:)(Refl))
@@ -303,19 +303,42 @@ deliverThread m (ThRunning a) = case a m of
   Pure x -> (ThDone x, [])
   a' -> newThread a'
 
--- runCoop2PC :: CryptoMonad [(Void, Void), (a, b)] c
---            -> CryptoMonad [(b, a), (Void, Void)] d
---            -> (Maybe c, Maybe d)
--- runCoop2PC p1 p2 = helper (t1, t2, map Left m1 ++ map Right m2)
---   where
---     returned (ThDone a) = Just a
---     returned (ThRunning _) = Nothing
+type TransFunc s v = (s -> v -> (s, [v]))
 
---     (t1, m1) = newThread p1
---     (t2, m2) = newThread p2
+stackMachine :: [v] -> TransFunc s v -> s -> s
+stackMachine [] _ s = s
+stackMachine (v:vs) f s = stackMachine (vs' ++ vs) f s'
+  where
+    (s', vs') = f s v
 
---     helper :: (Thread [Void, a] [Void, b] c, Thread [b, Void] [a, Void] d, Either (SomeMessage )
---     helper (th1, th2, []) = (returned th1, returned th2)
---     helper (th1, th2, (m:ms)) = case m of
---       Left m -> _
---       Right _ -> undefined
+runCoop2PC :: CryptoMonad [(Void, Void), (a, b)] c
+           -> CryptoMonad [(b, a), (Void, Void)] d
+           -> (Maybe c, Maybe d)
+runCoop2PC p1 p2 = (returned *** returned)
+                 $ stackMachine (map Left m1 ++ map Right m2) f (t1, t2)
+  where
+    (t1, m1) = newThread p1
+    (t2, m2) = newThread p2
+
+    returned :: Thread l a -> Maybe a
+    returned (ThDone a) = Just a
+    returned (ThRunning _) = Nothing
+
+    f :: TransFunc (Thread [(Void, Void), (a, b)] c, Thread [(b, a), (Void, Void)] d)
+                   (Either (SomeFstMessage [(Void, Void), (a, b)]) (SomeFstMessage [(b, a), (Void, Void)]))
+    f (th1, th2) = \case
+      Left (SomeFstMessage i m) -> case i of
+        There Here -> let
+             (th2', ms) = deliverThread (SomeSndMessage Here m) th2
+          in ((th1, th2'), map Right ms)
+        Here -> case m of
+        There (There contra) -> case contra of
+      Right (SomeFstMessage i m) -> case i of
+        Here -> let
+             (th1', ms) = deliverThread (SomeSndMessage (There Here) m) th1
+          in ((th1', th2), map Left ms)
+        There Here -> case m of
+        There (There contra) -> case contra of
+
+test2Coop :: (Maybe Int, Maybe String)
+test2Coop = runCoop2PC (alice $ There Here) (bob Here)
