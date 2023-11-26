@@ -179,11 +179,26 @@ type family Swap p where
 
 type CryptoMonad' people = CryptoMonad (MapFst people) (MapSnd people)
 
+send' :: InList (a, b) l -> a -> CryptoMonad' l ()
+send' i m = send (inListFst i) m
+
+-- heteroListP2mapSnd :: HeteroListP2 InList l is -> HeteroListP2 InList (MapSnd l) (MapSnd is)
+-- heteroListP2mapSnd HNilP2 = HNilP2
+-- heteroListP2mapSnd (HConsP2 x xs) = HConsP2 (inListSnd x) (heteroListP2mapSnd xs)
+
+-- recvOneOfDropping' :: HeteroListP2 InList l is -> CryptoMonad' l (SomeMessage is)
+-- recvOneOfDropping' i = recvOneOfDropping $ inListSnd i
+
+recvDropping' :: InList (a, b) l -> CryptoMonad' l b
+recvDropping' i = recvDropping $ inListSnd i
+
 inListFst :: InList ((,) a b) l -> InList a (MapFst l)
 inListFst Here = Here
 inListFst (There x) = There $ inListFst x
 
-type PartyMonad e f parties = CryptoMonad' (e:f:parties)
+inListSnd :: InList ((,) a b) l -> InList b (MapSnd l)
+inListSnd Here = Here
+inListSnd (There x) = There $ inListSnd x
 
 alg1' :: CryptoMonad' [(Int, Bool), (Void, Void), (BobAlgo, String)] Bool
 alg1' = alg1
@@ -231,8 +246,25 @@ type AliceBobInterface = (String, Int)
 
 -- aliceName = Here
 
-test2STM :: String -> String -> IO (Int, String)
-test2STM a b = do
+alice :: (l ~ '[VoidInterface, AliceBobInterface])
+      => InList AliceBobInterface l -> CryptoMonad' l Int
+alice bobName = do
+  let bobRecv = inListSnd bobName
+  send' bobName "alice to bob string"
+  m <- recvOneOfDropping (HConsP2 bobRecv HNilP2)
+  case m of
+    SomeMessage Here x -> pure x
+    SomeMessage (There contra) _ -> case contra of
+
+bob :: (l ~ '[Swap AliceBobInterface, VoidInterface])
+    => InList (Swap AliceBobInterface) l -> CryptoMonad' l String
+bob aliceName = do
+  s <- recvDropping' aliceName
+  send' aliceName $ length s
+  pure $ "got from Alice " ++ show s
+
+test2STM :: IO (Int, String)
+test2STM = do
     aToBChan <- STM.newTChanIO
     bToAChan <- STM.newTChanIO
     voidChan <- STM.newTChanIO
@@ -240,25 +272,9 @@ test2STM a b = do
     let aliceRecv = HCons voidChan (HCons bToAChan HNil)
     let bobSend = HCons bToAChan (HCons voidChan HNil)
     let bobRecv = HCons aToBChan (HCons voidChan HNil)
-    aliceA <- A.async $ runSTM aliceSend aliceRecv alice
-    bobA <- A.async $ runSTM bobSend bobRecv bob
+    aliceA <- A.async $ runSTM aliceSend aliceRecv $ alice (There Here)
+    bobA <- A.async $ runSTM bobSend bobRecv $ bob Here
     A.waitBoth aliceA bobA
-  where
-    aliceName = Here
-    bobName = There Here
-    alice :: CryptoMonad' '[VoidInterface, AliceBobInterface] Int
-    alice = do
-      send bobName a
-      m <- recvOneOfDropping (HConsP2 bobName HNilP2)
-      case m of
-        SomeMessage Here x -> pure x
-        SomeMessage (There contra) _ -> case contra of
-    bob :: CryptoMonad' '[Swap AliceBobInterface, VoidInterface] String
-    bob = do
-      s <- recvDropping aliceName
-      send aliceName $ length s
-      pure $ "got from Alice " ++ show s ++ " while my input is " ++ show b
-
 
 -- Single-threaded Cooperative Multitasking Interpretation of the Monad.
 --
