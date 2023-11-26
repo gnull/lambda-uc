@@ -256,15 +256,13 @@ type AliceBobInterface = (String, Int)
 
 -- aliceName = Here
 
-alice :: (l ~ '[VoidInterface, AliceBobInterface])
-      => InList AliceBobInterface l -> CryptoMonad l Int
+alice :: InList AliceBobInterface l -> CryptoMonad l Int
 alice bobName = do
   -- let bobRecv = inListSnd bobName
   send bobName "alice to bob string"
   recvDropping bobName
 
-bob :: (l ~ '[Swap AliceBobInterface, VoidInterface])
-    => InList (Swap AliceBobInterface) l -> CryptoMonad l String
+bob :: InList (Swap AliceBobInterface) l -> CryptoMonad l String
 bob aliceName = do
   s <- recvDropping aliceName
   send aliceName $ length s
