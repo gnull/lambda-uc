@@ -16,27 +16,19 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE QualifiedDo #-}
 
 module GADTApproach where
 
+import Prelude hiding ((>>=), return)
+import Control.XFreer
+import qualified Control.XMonad.Do as M
+
 import Data.Kind (Type)
-import Data.Void (Void)
-
-type family Not (t :: Bool) where
-  Not True = False
-  Not False = True
-
-type family ToType (t :: Bool) where
-  ToType True = ()
-  ToType False = Void
-
-data Free (bef :: Bool) (aft :: Bool) (f :: Bool -> Bool -> Type -> Type) (a :: Type) where
-  Pure :: a -> Free x x f a
-  Free :: f bef x (Free x aft f a) -> Free bef aft f a
 
 data CryptoActions (bef :: Bool) (aft :: Bool) (a :: Type) where
-  RecvAction :: (String -> a) -> CryptoActions True False a
-  SendAction :: String -> a -> CryptoActions False True a
+  RecvAction :: (String -> a) -> CryptoActions False True a
+  SendAction :: String -> a -> CryptoActions True False a
   RandAction :: (Bool -> a) -> CryptoActions bef aft a
 
 instance Functor (CryptoActions bef aft) where
@@ -44,15 +36,21 @@ instance Functor (CryptoActions bef aft) where
   fmap f (SendAction m x) = SendAction m $ f x
   fmap f (RandAction cont) = RandAction $ f . cont
 
-type CryptoMonad bef aft = Free bef aft CryptoActions
+type CryptoMonad bef aft = XFree CryptoActions bef aft
 
-bind :: CryptoMonad bef x a -> (a -> CryptoMonad x aft b) -> CryptoMonad bef aft b
-bind (Pure a) f = f a
-bind (Free g) f = Free $ fmap (`bind` f) g
+recv :: CryptoMonad False True String
+recv = xfree $ RecvAction id
 
-liftF :: CryptoActions bef aft a -> CryptoMonad bef aft a
-liftF f = Free $ Pure <$> f
+send :: String -> CryptoMonad True False ()
+send m = xfree $ SendAction m ()
 
-instance Functor (CryptoMonad bef aft) where
-  fmap f (Pure x) = Pure $ f x
-  fmap f (Free x) = Free $ fmap (fmap f) x
+test :: String -> CryptoMonad True True String
+test s = M.do
+  send s
+  recv
+
+-- testFail :: CryptoMonad False False ()
+-- testFail = send "hey"
+
+hey :: IO ()
+hey = putStrLn "hello"
