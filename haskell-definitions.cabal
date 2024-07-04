@@ -20,8 +20,9 @@ extra-source-files:
 
 library
   exposed-modules:
-      CryptoMonad
-      GADTApproach
+      ApproachMonad
+      ApproachXMonad
+      HeterogenousLists
   other-modules:
       Paths_haskell_definitions
   hs-source-dirs:

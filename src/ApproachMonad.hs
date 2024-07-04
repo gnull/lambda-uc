@@ -1,4 +1,4 @@
-module CryptoMonad where
+module ApproachMonad where
 
 import Data.Kind (Type)
 

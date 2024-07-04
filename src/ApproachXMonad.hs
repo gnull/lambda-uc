@@ -1,4 +1,4 @@
-module GADTApproach where
+module ApproachXMonad where
 
 import Prelude hiding ((>>=), return)
 import Control.XFreer
