@@ -1,21 +1,5 @@
-# haskell-definitions
+# Universal Composability in Haskell
 
-You'll need
-[Stack](https://docs.haskellstack.org/en/stable/install_and_upgrade/) to build
-and run this code.
+To ender development enviornment, run `nix-shell` in this directory.
 
-To build documentation, do
-
-```sh
-stack haddock --open
-```
-
-This will give you a huge list of modules, you'll need to find
-`haskell-definitions` there. Inside each module, you can click on ‘source’ link
-to see the Literate Haskell implementation.
-
-To run Haskell repl with modules described here, you need to do
-
-```sh
-stack ghci
-```
+From there, you can run `cabal build` or `cabal repl` to inspect the code.
