@@ -17,6 +17,7 @@ data CryptoActions (l :: [Type]) (bef :: Bool) (aft :: Bool) (a :: Type) where
   WakeAction :: InList (x, y) l -> a -> CryptoActions l True False a
   RandAction :: (Bool -> a) -> CryptoActions l x x a
   PrintAction :: String -> a -> CryptoActions l x x a
+  GetWTAction :: (SBool b -> a) -> CryptoActions l b b a
 
 instance Functor (CryptoActions l bef aft) where
   fmap f (RecvAction cont) = RecvAction $ f . cont
@@ -24,11 +25,15 @@ instance Functor (CryptoActions l bef aft) where
   fmap f (WakeAction m x) = WakeAction m $ f x
   fmap f (RandAction cont) = RandAction $ f . cont
   fmap f (PrintAction m x) = PrintAction m $ f x
+  fmap f (GetWTAction cont) = GetWTAction $ f . cont
 
 type CryptoMonad l bef aft = XFree (CryptoActions l) bef aft
 
 recvAny :: CryptoMonad l False True (SomeSndMessage l)
 recvAny = xfree $ RecvAction id
+
+getWT :: CryptoMonad l b b (SBool b)
+getWT = xfree $ GetWTAction id
 
 sendMess :: SomeFstMessage l -> CryptoMonad l True False ()
 sendMess m = xfree $ SendAction m ()
@@ -70,19 +75,32 @@ data SBool (a :: Bool) where
 -- |Allows you to express computations that may leave write token in either of
 -- the two states. But the decision on which state to leave the monad in must
 -- not be based on side-effects.
-data PackWT l bef x = forall aft. SomeWT (SBool aft) (CryptoMonad l bef aft x)
+data PackWT l bef x = forall aft. SomeWT (CryptoMonad l bef aft x)
 
 -- |Hide the given aft index from the type.
-packWT :: SBool aft -> CryptoMonad l bef aft x -> PackWT l bef x
+packWT :: CryptoMonad l bef aft x -> PackWT l bef x
 packWT = SomeWT
+
+unpackWT :: PackWT l bef x -> (forall aft. CryptoMonad l bef aft x -> a) -> a
+unpackWT (SomeWT m) cont = cont m
 
 -- |Wakes up whoever is on the other end of first channel if the passed
 -- argument was True
 maybeSends :: Bool -> PackWT ((x, y) : l) True ()
-maybeSends True = packWT SFalse $ M.do
+maybeSends True = packWT $ M.do
   wake Here
-maybeSends False = packWT STrue $ M.do
-  pure ()
+maybeSends False = packWT $ M.do
+  xreturn ()
+
+useMaybeSends :: CryptoMonad ((x, y) : l) True True ()
+useMaybeSends = M.do
+  unpackWT (maybeSends False) $ \m -> M.do
+    m
+    getWT >>=: \case
+      STrue -> xreturn ()
+      SFalse -> M.do
+        m <- recvAny
+        xreturn ()
 
 -- testFail :: CryptoMonad l False False ()
 -- testFail = send "hey"
