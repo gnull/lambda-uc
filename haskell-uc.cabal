@@ -1,0 +1,42 @@
+cabal-version: 1.12
+
+name:           haskell-uc
+version:        0.1.0.0
+category:       Web
+homepage:       https://git.sr.ht/~ph14nix/haskell-uc
+author:         Ivan Oleynikov
+maintainer:     ivan.oleynikov95@gmail.com
+copyright:      2023 Ivan Oleynikov
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    CHANGELOG.md
+
+library
+  exposed-modules:
+      ApproachMonad
+      ApproachXMonad
+  other-modules:
+      HeterogenousList
+  hs-source-dirs:
+      src
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  build-depends:
+      base >=4.7 && <5
+    , mtl
+    , random
+    , async
+    , stm
+    , freer-indexed
+  default-language: GHC2021
+  default-extensions:
+    DataKinds
+    FunctionalDependencies
+    GADTs
+    ImpredicativeTypes
+    LambdaCase
+    PatternSynonyms
+    QualifiedDo
+    TypeFamilies
