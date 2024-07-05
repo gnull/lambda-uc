@@ -99,8 +99,24 @@ useMaybeSends = M.do
     getWT >>=: \case
       STrue -> xreturn ()
       SFalse -> M.do
-        m <- recvAny
+        _ <- recvAny
         xreturn ()
+
+-- |Flips quantifiers inside o
+type FlipQuantifier o = forall i. (o -> i) -> i
+
+-- type AnyWT l bef x = FlipQuantifier (forall aft. CryptoMonad l bef aft x)
+-- type AnyWT l bef x = FlipQuantifier (forall i. CryptoMonad l bef i (FlipQuantifier (forall aft. CryptoMonad l i aft x)))
+-- data PackWT l bef x = forall aft. SomeWT (CryptoMonad l bef aft x)
+data AnyWT l bef x = forall i. AnyWT (CryptoMonad l bef i (PackWT l i x))
+
+maybeSends' :: AnyWT ((Bool, Bool) : l) True ()
+maybeSends' = AnyWT $ M.do
+  wake Here
+  b <- recv Here
+  case b of
+    True -> xreturn $ SomeWT $ wake Here
+    False -> xreturn $ SomeWT $ xreturn ()
 
 -- testFail :: CryptoMonad l False False ()
 -- testFail = send "hey"
