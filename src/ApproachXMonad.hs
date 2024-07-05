@@ -75,48 +75,54 @@ data SBool (a :: Bool) where
 -- |Allows you to express computations that may leave write token in either of
 -- the two states. But the decision on which state to leave the monad in must
 -- not be based on side-effects.
-data PackWT l bef x = forall aft. SomeWT (CryptoMonad l bef aft x)
+data SomeWT l bef x = forall aft. SomeWT (CryptoMonad l bef aft x)
 
--- |Hide the given aft index from the type.
-packWT :: CryptoMonad l bef aft x -> PackWT l bef x
-packWT = SomeWT
+-- |Like @SomeWT@, but lets you do some monadic computations before you decide
+-- what state to leave the monad in.
+data SomeWTM l bef x = forall i. SomeWTM (CryptoMonad l bef i (SomeWT l i x))
 
-unpackWT :: PackWT l bef x -> (forall aft. CryptoMonad l bef aft x -> a) -> a
-unpackWT (SomeWT m) cont = cont m
+-- |Make a decision inside @SomeWTM@ computation.
+decided :: CryptoMonad l i aft a -> CryptoMonad l bef bef (SomeWT l i a)
+decided = xreturn . SomeWT
 
--- |Wakes up whoever is on the other end of first channel if the passed
--- argument was True
-maybeSends :: Bool -> PackWT ((x, y) : l) True ()
-maybeSends True = packWT $ M.do
-  wake Here
-maybeSends False = packWT $ M.do
-  xreturn ()
+-- |Consume a @SomeWTM@ computation.
+dispatchSomeWTM :: SomeWTM l bef x -> (forall i. x -> CryptoMonad l i aft a) -> CryptoMonad l bef aft a
+dispatchSomeWTM (SomeWTM w) cont = M.do
+  (SomeWT x) <- w
+  x >>=: cont
 
-useMaybeSends :: CryptoMonad ((x, y) : l) True True ()
-useMaybeSends = M.do
-  unpackWT (maybeSends False) $ \m -> M.do
-    m
-    getWT >>=: \case
-      STrue -> xreturn ()
-      SFalse -> M.do
-        _ <- recvAny
-        xreturn ()
-
--- |Flips quantifiers inside o
-type FlipQuantifier o = forall i. (o -> i) -> i
-
--- type AnyWT l bef x = FlipQuantifier (forall aft. CryptoMonad l bef aft x)
--- type AnyWT l bef x = FlipQuantifier (forall i. CryptoMonad l bef i (FlipQuantifier (forall aft. CryptoMonad l i aft x)))
--- data PackWT l bef x = forall aft. SomeWT (CryptoMonad l bef aft x)
-data AnyWT l bef x = forall i. AnyWT (CryptoMonad l bef i (PackWT l i x))
-
-maybeSends' :: AnyWT ((Bool, Bool) : l) True ()
-maybeSends' = AnyWT $ M.do
+-- |Demonstrates the use of @SomeWTM@. To express a computation that
+-- dynamically chooses what state to leave the monad in, do the following:
+--
+-- 1. Wrap the whole thing in @SomeWTM@.
+--
+-- 2. Inside @SomeWTM@, wrap each branch where your WT state is fixed in
+-- @decided@.
+maybeSends :: SomeWTM ((Bool, Bool) : l) True Bool
+maybeSends = SomeWTM $ M.do
   wake Here
   b <- recv Here
   case b of
-    True -> xreturn $ SomeWT $ wake Here
-    False -> xreturn $ SomeWT $ xreturn ()
+    True -> decided $ M.do
+      wake Here
+      xreturn b
+    False -> decided $ xreturn b
+
+
+useMaybeSends :: CryptoMonad ((Bool, Bool) : l) True True Bool
+useMaybeSends = M.do
+  -- Step #1: pass @maybeSends@ to dispatchSomeWTM
+  -- Step #2: pass it a continuation that starts from unknown WT state
+  res <- dispatchSomeWTM maybeSends $ \b -> M.do
+    -- _ -- in this context, the state of WT is unknown
+    -- Step #3: match on the current WT and provide actions for every branch
+    getWT >>=: \case
+      STrue -> xreturn b
+      SFalse -> M.do
+        c <- recv Here
+        xreturn c
+  -- _ -- in this context, the state of WT is fixed
+  xreturn $ not res
 
 -- testFail :: CryptoMonad l False False ()
 -- testFail = send "hey"
