@@ -82,7 +82,7 @@ data SomeWT l bef x = forall aft. SomeWT (CryptoMonad l bef aft x)
 data SomeWTM l bef x = forall i. SomeWTM (CryptoMonad l bef i (SomeWT l i x))
 
 -- |Make a decision inside @SomeWTM@ computation.
-decided :: CryptoMonad l i aft a -> CryptoMonad l bef bef (SomeWT l i a)
+decided :: CryptoMonad l i aft a -> CryptoMonad l i i (SomeWT l i a)
 decided = xreturn . SomeWT
 
 -- |Consume a @SomeWTM@ computation.
@@ -98,28 +98,29 @@ dispatchSomeWTM (SomeWTM w) cont = M.do
 --
 -- 2. Inside @SomeWTM@, wrap each branch where your WT state is fixed in
 -- @decided@.
-maybeSends :: SomeWTM ((Bool, Bool) : l) True Bool
-maybeSends = SomeWTM $ M.do
-  wake Here
-  b <- recv Here
+maybeSends :: InList (Bool, Bool) l -> SomeWTM l True Bool
+maybeSends chan = SomeWTM $ M.do
+  wake chan
+  b <- recv chan
+  -- wake chan
   case b of
     True -> decided $ M.do
-      wake Here
+      wake chan
       xreturn b
     False -> decided $ xreturn b
 
 
-useMaybeSends :: CryptoMonad ((Bool, Bool) : l) True True Bool
-useMaybeSends = M.do
+useMaybeSends :: InList (Bool, Bool) l -> CryptoMonad l True True Bool
+useMaybeSends chan = M.do
   -- Step #1: pass @maybeSends@ to dispatchSomeWTM
   -- Step #2: pass it a continuation that starts from unknown WT state
-  res <- dispatchSomeWTM maybeSends $ \b -> M.do
+  res <- dispatchSomeWTM (maybeSends chan) $ \b -> M.do
     -- _ -- in this context, the state of WT is unknown
     -- Step #3: match on the current WT and provide actions for every branch
     getWT >>=: \case
       STrue -> xreturn b
       SFalse -> M.do
-        c <- recv Here
+        c <- recv chan
         xreturn c
   -- _ -- in this context, the state of WT is fixed
   xreturn $ not res
