@@ -8,7 +8,7 @@ import qualified Control.XMonad.Do as M
 
 import MachineMonad
 import MachineMonad.SomeWTM
-import HeterogenousList
+import Types
 
 main :: IO ()
 main = defaultMain tests

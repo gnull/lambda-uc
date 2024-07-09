@@ -7,7 +7,7 @@ import Test.Tasty.HUnit      (testCase, assertEqual)
 import Test.ShouldNotTypecheck (shouldNotTypecheck)
 
 import MachineMonad
-import HeterogenousList
+import Types
 
 main :: IO ()
 main = defaultMain tests

@@ -12,7 +12,7 @@ import qualified Control.Monad.STM as STM --also supplies instance MonadPlus STM
 
 import Data.Type.Equality ((:~:)(Refl))
 
-import HeterogenousList
+import Types
 
 -- free monads
 
@@ -56,7 +56,7 @@ recvAny = liftF (RecvAction id)
 recvCollecting :: InList (a, b) l -> CryptoMonad l ([SomeSndMessage l], b)
 recvCollecting i = do
   m@(SomeSndMessage j x) <- recvAny
-  case areInListEqual i j of
+  case testEquality i j of
     Nothing -> do
       (ms, res) <- recvCollecting i
       pure (m : ms, res)
@@ -70,16 +70,16 @@ data HeteroListP2 f a (types :: [Type]) where
     HNilP2 :: HeteroListP2 f a '[]
     HConsP2 :: f t a -> HeteroListP2 f a ts -> HeteroListP2 f a (t : ts)
 
--- |Allows for cleaner code than pattern-matching over @SomeMessage recv@, or
--- pairwise comparisons using @areInListEqual@
-repackMessage :: HeteroListP2 InList recv is -> SomeMessage recv -> Maybe (SomeMessage is)
+-- |Allows for cleaner code than pattern-matching over @SomeValue recv@, or
+-- pairwise comparisons using @testEquality@
+repackMessage :: HeteroListP2 InList recv is -> SomeValue recv -> Maybe (SomeValue is)
 repackMessage HNilP2 _ = Nothing
-repackMessage (HConsP2 i is) m@(SomeMessage j x) = case areInListEqual i j of
-    Just Refl -> Just $ SomeMessage Here x
+repackMessage (HConsP2 i is) m@(SomeValue j x) = case testEquality i j of
+    Just Refl -> Just $ SomeValue Here x
     Nothing -> padMessageIndex <$> repackMessage is m
 
 -- -- |Same as @recvDropping@, but takes a list of valid senders to get messages from
--- recvOneOfDropping :: HeteroListP2 InList l is -> CryptoMonad l (SomeMessage (MapSnd is))
+-- recvOneOfDropping :: HeteroListP2 InList l is -> CryptoMonad l (SomeValue (MapSnd is))
 -- recvOneOfDropping i = do
 --   m <- recvAny
 --   case repackMessage i m of
@@ -134,7 +134,7 @@ type family Swap p where
 -- heteroListP2mapSnd HNilP2 = HNilP2
 -- heteroListP2mapSnd (HConsP2 x xs) = HConsP2 (inListSnd x) (heteroListP2mapSnd xs)
 
--- recvOneOfDropping' :: HeteroListP2 InList l is -> CryptoMonad l (SomeMessage is)
+-- recvOneOfDropping' :: HeteroListP2 InList l is -> CryptoMonad l (SomeValue is)
 -- recvOneOfDropping' i = recvOneOfDropping $ inListSnd i
 
 -- recvDropping' :: InList (a, b) l -> CryptoMonad l b
@@ -178,7 +178,7 @@ hidingParty (Free (SendAction (SomeFstMessage i m) a))
 data TwoChans t where
   TwoChans :: STM.TChan a -> STM.TChan b -> TwoChans (a, b)
 
-runSTM :: HeteroList TwoChans l
+runSTM :: HList TwoChans l
     -> CryptoMonad l a
     -> IO a
 runSTM l = \case
@@ -189,7 +189,7 @@ runSTM l = \case
     runSTM l $ f m
   Free (SendAction (SomeFstMessage i m) a) -> do
     STM.atomically $ do
-      let (TwoChans s _) = heteroListGet l i
+      let (TwoChans s _) = l Types.!! i
       STM.writeTChan s m
     runSTM l a
 

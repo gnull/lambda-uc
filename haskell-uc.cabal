@@ -47,7 +47,8 @@ common deft
 library
   import: deft
   exposed-modules:
-      HeterogenousList
+      Types
+      Data.HList
       MachineMonad
       MachineMonad.SomeWTM
       Ideas.Monad

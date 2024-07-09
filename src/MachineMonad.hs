@@ -34,7 +34,7 @@ import qualified Control.XMonad.Do as M
 
 import Data.Type.Equality ((:~:)(Refl))
 
-import HeterogenousList
+import Types
 
 import Data.Kind (Type)
 
@@ -113,7 +113,7 @@ recvAny = cryptoXFree $ RecvAction id
 recv :: InList (x, y) l -> CryptoMonad m l False True y
 recv i = M.do
   SomeSndMessage j m <- recvAny
-  case areInListEqual i j of
+  case testEquality i j of
     Just Refl -> xpure m
     Nothing -> M.do
       yield j
