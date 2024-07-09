@@ -1,4 +1,4 @@
-cabal-version: 1.12
+cabal-version: 2.2
 
 name:           haskell-uc
 version:        0.1.0.0
@@ -7,29 +7,32 @@ homepage:       https://git.sr.ht/~ph14nix/haskell-uc
 author:         Ivan Oleynikov
 maintainer:     ivan.oleynikov95@gmail.com
 copyright:      2023 Ivan Oleynikov
-license:        BSD3
+license:        BSD-3-Clause
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
     README.md
     CHANGELOG.md
 
-library
-  exposed-modules:
-      Ideas.Monad
-      MachineMonad
-  other-modules:
-      HeterogenousList
-  hs-source-dirs:
-      src
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+common deft
   build-depends:
       base >=4.7 && <5
     , mtl
+    , transformers
     , random
     , async
     , stm
     , freer-indexed
+  ghc-options:
+    -Wall
+    -Wcompat
+    -Widentities
+    -Wincomplete-record-updates
+    -Wincomplete-uni-patterns
+    -Wmissing-export-lists
+    -Wmissing-home-modules
+    -Wpartial-fields
+    -Wredundant-constraints
   default-language: GHC2021
   default-extensions:
     DataKinds
@@ -40,3 +43,42 @@ library
     PatternSynonyms
     QualifiedDo
     TypeFamilies
+
+library
+  import: deft
+  exposed-modules:
+      HeterogenousList
+      MachineMonad
+      MachineMonad.SomeWTM
+      Ideas.Monad
+  other-modules:
+  hs-source-dirs:
+      src
+
+common deft-test
+  import: deft
+  build-depends:       base
+                     , haskell-uc
+                     , tasty
+                     , tasty-hunit
+                     , HUnit
+  ghc-options:
+    -Wno-unused-imports
+    -Wno-missing-export-lists
+    -threaded
+    -rtsopts
+    -with-rtsopts=-N
+  default-language:    GHC2021
+
+test-suite type-checks
+  import: deft-test
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test/TypeChecks/
+  build-depends:       should-not-typecheck
+
+test-suite machine-monad
+  import: deft-test
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test/MachineMonad/
