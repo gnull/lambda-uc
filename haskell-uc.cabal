@@ -16,8 +16,8 @@ extra-source-files:
 
 library
   exposed-modules:
-      ApproachMonad
-      ApproachXMonad
+      Ideas.Monad
+      MachineMonad
   other-modules:
       HeterogenousList
   hs-source-dirs:

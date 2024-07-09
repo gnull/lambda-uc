@@ -1,4 +1,4 @@
-module ApproachXMonad where
+module MachineMonad where
 
 import Prelude hiding ((>>=), return)
 import Control.XFreer

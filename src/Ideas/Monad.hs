@@ -1,4 +1,4 @@
-module ApproachMonad where
+module Ideas.Monad where
 
 import Data.Kind (Type)
 
