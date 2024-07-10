@@ -2,10 +2,11 @@
 
 module MachineMonad (
   -- * Interactive Algorithm Monad
-  --
   -- $monad
     CryptoMonad(..)
+
   -- * Basic Operations
+  -- $basic
   , lift
   , yield
   , getWT
@@ -16,7 +17,6 @@ module MachineMonad (
   , sendSync
   , SBool(..)
   -- * Syntax
-  --
   -- $actions
   , CryptoActions(..)
   -- * Helper functions
@@ -65,6 +65,17 @@ instance Functor (CryptoActions m l bef aft) where
   fmap f (GetWTAction cont) = GetWTAction $ f . cont
 
 -- $monad
+--
+-- By instantiating @CryptoMonad@ with different parameters, you can finely
+-- control what side-effects you allow:
+--
+-- - @CryptoMonad m [] True True a ≈ m a@ since it prohibits messages.
+-- - @CryptoMonad Random l b b a@ allows only communicating with
+--   @l@ and sampling random values.
+-- - @CryptoMonad Identity l b b a@ is deterministic algorithm that can send
+--   messages to @l@.
+-- - You can enable logging to user's terminal if you pass an approriate monad
+--   as @m@.
 
 newtype CryptoMonad (m :: Type -> Type) -- ^Inner monad
                  (l :: [Type]) -- ^List of available communication channels
@@ -86,6 +97,10 @@ instance Monad (CryptoMonad m l bef bef) where
 
 cryptoXFree :: CryptoActions m l bef aft a -> CryptoMonad m l bef aft a
 cryptoXFree = CryptoMonad . xfree
+
+-- $basic
+--
+-- The basic operations you can do in @CryptoMonad@.
 
 -- |Run a computation from the inner monad
 lift :: Monad m => m a -> CryptoMonad m l x x a
