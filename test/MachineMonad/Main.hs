@@ -17,7 +17,7 @@ tests :: TestTree
 tests = testCase "none" $ pure ()
 
 -- |Sends String s to the given channel, waits for the other side to repond with
-test :: String -> InList (String, Int) l -> CryptoMonad m l True True Int
+test :: String -> InList (String, Int) l -> CryptoMonad pr ra l True True Int
 test s chan = M.do
   send chan s
   recv chan
@@ -29,7 +29,7 @@ test s chan = M.do
 --
 -- 2. Inside @SomeWTM@, wrap each branch where your WT state is fixed in
 -- @decided@.
-maybeSends :: InList (Bool, Bool) l -> SomeWTM m l True Bool
+maybeSends :: InList (Bool, Bool) l -> SomeWTM pr ra l True Bool
 maybeSends chan = SomeWTM $ M.do
   yield chan
   b <- recv chan
@@ -41,7 +41,7 @@ maybeSends chan = SomeWTM $ M.do
     False -> decided $ xreturn b
 
 
-useMaybeSends :: InList (Bool, Bool) l -> CryptoMonad m l True True Bool
+useMaybeSends :: InList (Bool, Bool) l -> CryptoMonad pr ra l True True Bool
 useMaybeSends chan = M.do
   -- Step #1: pass @maybeSends@ to dispatchSomeWTM
   -- Step #2: pass it a continuation that starts from unknown WT state

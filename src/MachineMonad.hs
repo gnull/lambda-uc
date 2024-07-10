@@ -7,15 +7,18 @@ module MachineMonad (
 
   -- * Basic Operations
   -- $basic
-  , lift
   , yield
-  , getWT
   , recvAny
+  , sendMess
+  , SBool(..)
+  , getWT
+  , debugPrint
+  , rand
+  -- * Derived Operations
+  -- $derived
   , recv
   , send
-  , sendMess
   , sendSync
-  , SBool(..)
   -- * Syntax
   -- $actions
   , CryptoActions(..)
@@ -45,69 +48,73 @@ import Data.Kind (Type)
 
 -- |Augments the inner monad m with extra network actions.
 --
--- * @m@ is the inner monad that may implement random values sampling and
---   logging.
--- * @l@ is the list of channels we can talk to.
--- * @bef@ and @aft@ are the states of write token before and after the given
+-- - @pr@ flag enables debug printing.
+-- - @ra@ flag enables sampling random bits.
+-- - @l@ is the list of channels we can talk to.
+-- - @bef@ and @aft@ are the states of write token before and after the given
 --   action.
-data CryptoActions (m :: Type -> Type) (l :: [Type]) (bef :: Bool) (aft :: Bool) (a :: Type) where
-  LiftAction :: Monad m => m x -> (x -> a) -> CryptoActions m l b b a
-  YieldAction :: InList (x, y) l -> a -> CryptoActions m l True False a
-  GetWTAction :: (SBool b -> a) -> CryptoActions m l b b a
-  RecvAction :: (SomeSndMessage l -> a) -> CryptoActions m l False True a
-  SendAction :: SomeFstMessage l -> a -> CryptoActions m l True False a
+data CryptoActions (pr :: Bool) (ra :: Bool) (l :: [Type]) (bef :: Bool) (aft :: Bool) (a :: Type) where
+  -- IPC actions: recv, send and yield control to another thread
+  YieldAction :: InList (x, y) l -> a -> CryptoActions pr ra l True False a
+  RecvAction :: (SomeSndMessage l -> a) -> CryptoActions pr ra l False True a
+  SendAction :: SomeFstMessage l -> a -> CryptoActions pr ra l True False a
 
-instance Functor (CryptoActions m l bef aft) where
-  fmap f (LiftAction x cont) = LiftAction x $ f . cont
+  -- |Get the current state of Write Token
+  GetWTAction :: (SBool b -> a) -> CryptoActions pr ra l b b a
+
+  -- Optional Actions that can be turned on/off with flags
+  PrintAction :: String -> a -> CryptoActions True ra l b b a
+  RandAction :: (Bool -> a) -> CryptoActions pr True l b b a
+
+instance Functor (CryptoActions pr ra l bef aft) where
+  fmap f (YieldAction m x) = YieldAction m $ f x
   fmap f (RecvAction cont) = RecvAction $ f . cont
   fmap f (SendAction m x) = SendAction m $ f x
-  fmap f (YieldAction m x) = YieldAction m $ f x
   fmap f (GetWTAction cont) = GetWTAction $ f . cont
+  fmap f (PrintAction m x) = PrintAction m $ f x
+  fmap f (RandAction cont) = RandAction $ f . cont
 
 -- $monad
+
+-- |The monad for expressing cryptographic algorithms.
 --
 -- By instantiating @CryptoMonad@ with different parameters, you can finely
 -- control what side-effects you allow:
 --
--- - @CryptoMonad m [] True True a ≈ m a@ since it prohibits messages.
--- - @CryptoMonad Random l b b a@ allows only communicating with
---   @l@ and sampling random values.
--- - @CryptoMonad Identity l b b a@ is deterministic algorithm that can send
---   messages to @l@.
--- - You can enable logging to user's terminal if you pass an approriate monad
---   as @m@.
-
-newtype CryptoMonad (m :: Type -> Type) -- ^Inner monad
+-- - @pr@ enables debug printing,
+-- - @ra@ enables sampling random values,
+-- - @l@ is the list of channels that the algorithm can communicate over (empty
+--   @l@ means no communication),
+-- - @bef@ and @aft@ specify whether this action consumes and/or produces the Write Token.
+newtype CryptoMonad
+                 (pr :: Bool) -- ^Debug printing allowed?
+                 (ra :: Bool) -- ^Sampling random bits allowed?
                  (l :: [Type]) -- ^List of available communication channels
                  (bef :: Bool) -- ^State of Write Token before an action
                  (aft :: Bool) -- ^State of Write Token after an action
                  a -- ^Returned value
-    = CryptoMonad { fromCryptoMonad :: XFree (CryptoActions m l) bef aft a }
+    = CryptoMonad { fromCryptoMonad :: XFree (CryptoActions pr ra l) bef aft a }
 
-  deriving (Functor) via (XFree (CryptoActions m l) bef aft)
+  deriving (Functor) via (XFree (CryptoActions pr ra l) bef aft)
 
-  deriving (XApplicative, XMonad) via (XFree (CryptoActions m l))
+  deriving (XApplicative, XMonad) via (XFree (CryptoActions pr ra l))
 
-instance Applicative (CryptoMonad m l bef bef) where
+instance Applicative (CryptoMonad pr ra l bef bef) where
   f <*> m = CryptoMonad $ fromCryptoMonad f <*> fromCryptoMonad m
   pure = CryptoMonad . pure
 
-instance Monad (CryptoMonad m l bef bef) where
+instance Monad (CryptoMonad pr ra l bef bef) where
   m >>= f = CryptoMonad $ fromCryptoMonad m Monad.>>= (fromCryptoMonad . f)
 
-cryptoXFree :: CryptoActions m l bef aft a -> CryptoMonad m l bef aft a
+cryptoXFree :: CryptoActions pr ra l bef aft a -> CryptoMonad pr ra l bef aft a
 cryptoXFree = CryptoMonad . xfree
 
 -- $basic
 --
 -- The basic operations you can do in @CryptoMonad@.
 
--- |Run a computation from the inner monad
-lift :: Monad m => m a -> CryptoMonad m l x x a
-lift m = cryptoXFree $ LiftAction m id
-
 -- |Yield control to the machine behind the given channel
-yield :: InList (x, y) l -> CryptoMonad m l True False ()
+yield :: InList (x, y) l -> CryptoMonad pr ra l True False ()
 yield i = cryptoXFree $ YieldAction i ()
 
 -- |Singleton @Bool@ used to store the dependent value of Write Token
@@ -116,16 +123,32 @@ data SBool (a :: Bool) where
   SFalse :: SBool False
 
 -- |Get the current state of the write token.
-getWT :: CryptoMonad m l b b (SBool b)
+getWT :: CryptoMonad pr ra l b b (SBool b)
 getWT = cryptoXFree $ GetWTAction id
 
 -- |Receive from any channel
-recvAny :: CryptoMonad m l False True (SomeSndMessage l)
+recvAny :: CryptoMonad pr ra l False True (SomeSndMessage l)
 recvAny = cryptoXFree $ RecvAction id
+
+-- |Same as @send@, but arguments are packed into one
+sendMess :: SomeFstMessage l -> CryptoMonad pr ra l True False ()
+sendMess m = cryptoXFree $ SendAction m ()
+
+-- |Print debug message
+debugPrint :: String -> CryptoMonad True ra l b b ()
+debugPrint s = cryptoXFree $ PrintAction s ()
+
+-- |Sample a random bit
+rand :: CryptoMonad pr True l b b Bool
+rand = cryptoXFree $ RandAction id
+
+-- $derived
+--
+-- Some convenient shorthand operations built from basic ones.
 
 -- |Receive from a specific channel. If an unexpected message arrives from
 -- another channel, ignore it and yield back the control.
-recv :: InList (x, y) l -> CryptoMonad m l False True y
+recv :: InList (x, y) l -> CryptoMonad pr ra l False True y
 recv i = M.do
   SomeSndMessage j m <- recvAny
   case testEquality i j of
@@ -135,15 +158,11 @@ recv i = M.do
       recv i
 
 -- |Send a message to a given channel
-send :: InList (x, y) l -> x -> CryptoMonad m l True False ()
+send :: InList (x, y) l -> x -> CryptoMonad pr ra l True False ()
 send i m = sendMess $ SomeFstMessage i m
 
--- |Same as @send@, but arguments are packed into one
-sendMess :: SomeFstMessage l -> CryptoMonad m l True False ()
-sendMess m = cryptoXFree $ SendAction m ()
-
 -- |Send message to a given channel and wait for a response
-sendSync :: InList (x, y) l -> x -> CryptoMonad m l True True y
+sendSync :: InList (x, y) l -> x -> CryptoMonad pr ra l True True y
 sendSync i m = M.do
   send i m
   recv i
