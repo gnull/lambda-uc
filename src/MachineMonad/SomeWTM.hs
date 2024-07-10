@@ -1,4 +1,4 @@
-module MachineMonad.SomeWTM where
+module MachineMonad.SomeWTM () where
 
 import MachineMonad
 
