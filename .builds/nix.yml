@@ -1,0 +1,11 @@
+image: nixos/unstable
+tasks:
+- build: |
+    cd haskell-uc
+    nix-shell --run 'cabal build'
+- haddock: |
+    cd haskell-uc
+    nix-shell --run 'cabal haddock'
+- test: |
+    cd haskell-uc
+    nix-shell --run 'cabal test'
