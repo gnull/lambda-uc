@@ -6,6 +6,8 @@ import Test.Tasty.HUnit      (testCase, assertEqual)
 import Control.XMonad
 import qualified Control.XMonad.Do as M
 
+import Data.Type.Equality ((:~:)(Refl))
+
 import MachineMonad
 import MachineMonad.SomeWTM
 import Types
@@ -24,37 +26,33 @@ test s = M.do
     SomeSndMessage (There contra) _ -> case contra of
     SomeSndMessage Here m -> xreturn m
 
--- -- |Demonstrates the use of @SomeWTM@. To express a computation that
--- -- dynamically chooses what state to leave the monad in, do the following:
--- --
--- -- 1. Wrap the whole thing in @SomeWTM@.
--- --
--- -- 2. Inside @SomeWTM@, wrap each branch where your WT state is fixed in
--- -- @decided@.
--- maybeSends :: InList (Bool, Bool) l -> SomeWTM pr ra l True Bool
--- maybeSends chan = SomeWTM $ M.do
---   yield chan
---   b <- recv chan
---   -- yield chan
---   case b of
---     True -> decided $ M.do
---       yield chan
---       xreturn b
---     False -> decided $ xreturn b
+-- |Demonstrates the use of @SomeWTM@. To express a computation that
+-- dynamically chooses what state to leave the monad in, do the following:
+--
+-- 1. Wrap the whole thing in @SomeWTM@.
+--
+-- 2. Inside @SomeWTM@, wrap each branch where your WT state is fixed in
+-- @decided@.
+maybeSends :: InList (Bool, Bool) l -> SomeWT pr ra l False Bool
+maybeSends chan = ContFromAnyWT $ \cont -> M.do
+  (SomeSndMessage sender msg) <- recvAny
+  case testEquality chan sender of
+    Just Refl -> M.do
+      send chan False
+      cont msg
+    Nothing -> cont False
 
-
--- useMaybeSends :: InList (Bool, Bool) l -> CryptoMonad pr ra l True True Bool
--- useMaybeSends chan = M.do
---   -- Step #1: pass @maybeSends@ to dispatchSomeWTM
---   -- Step #2: pass it a continuation that starts from unknown WT state
---   res <- dispatchSomeWTM (maybeSends chan) $ \b -> M.do
---     -- _ -- in this context, the state of WT is unknown
---     -- Step #3: match on the current WT and provide actions for every branch
---     getWT >>=: \case
---       STrue -> xreturn b
---       SFalse -> M.do
---         c <- recv chan
---         xreturn c
---   -- _ -- in this context, the state of WT is fixed
---   xreturn $ not res
-
+useMaybeSends :: InList (Bool, Bool) l -> CryptoMonad pr ra l False True Bool
+useMaybeSends chan = M.do
+  -- Step #1: pass @maybeSends@ to dispatchSomeWT
+  -- Step #2: pass it a continuation that starts from unknown WT state
+  res <- dispatchSomeWT (maybeSends chan) $ \b -> M.do
+    -- _ -- in this context, the state of WT is unknown
+    -- Step #3: match on the current WT and provide actions for every branch
+    getWT >>=: \case
+      STrue -> xreturn b
+      SFalse -> M.do
+        _ <- recvAny
+        xreturn True
+  -- _ -- in this context, the state of WT is fixed
+  xreturn $ not res
