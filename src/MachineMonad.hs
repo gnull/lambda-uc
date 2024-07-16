@@ -48,6 +48,8 @@ data StaticPars = StaticPars
   -- ^Printing allowed?
   , stRand :: Bool
   -- ^Probabilistic choices allowed?
+  , stThrow :: [(Type, Bool)]
+  -- ^Type of exceptions we throw and contexts (use @[]@ to disable exceptions)
   , stChans :: [Type]
   -- ^Channels we can communicate with
   }
@@ -68,16 +70,17 @@ data StaticPars = StaticPars
 --   action.
 data CryptoActions (st :: StaticPars) (bef :: Bool) (aft :: Bool) (a :: Type) where
   -- IPC actions: recv, send and yield control to another thread
-  -- YieldAction :: InList (Maybe x, y) l -> a -> CryptoActions (StaticPars pr ra l) True False a
-  RecvAction :: (SomeSndMessage l -> a) -> CryptoActions ('StaticPars pr ra l) False True a
-  SendAction :: SomeFstMessage l -> a -> CryptoActions ('StaticPars pr ra l) True False a
+  -- YieldAction :: InList (Maybe x, y) l -> a -> CryptoActions (StaticPars pr ra e l) True False a
+  RecvAction :: (SomeSndMessage l -> a) -> CryptoActions ('StaticPars pr ra e l) False True a
+  SendAction :: SomeFstMessage l -> a -> CryptoActions ('StaticPars pr ra e l) True False a
 
   -- |Get the current state of Write Token
   GetWTAction :: (SBool b -> a) -> CryptoActions st b b a
 
   -- Optional Actions that can be turned on/off with flags
-  PrintAction :: String -> a -> CryptoActions ('StaticPars True ra l) b b a
-  RandAction :: (Bool -> a) -> CryptoActions ('StaticPars pr True l) b b a
+  PrintAction :: String -> a -> CryptoActions ('StaticPars True ra e l) b b a
+  RandAction :: (Bool -> a) -> CryptoActions ('StaticPars pr True e l) b b a
+  ThrowAction :: InList '(ex, b) e -> ex -> CryptoActions ('StaticPars pr ra e l) b b' a
 
 instance Functor (CryptoActions st bef aft) where
   -- fmap f (YieldAction m x) = YieldAction m $ f x
@@ -86,6 +89,7 @@ instance Functor (CryptoActions st bef aft) where
   fmap f (GetWTAction cont) = GetWTAction $ f . cont
   fmap f (PrintAction m x) = PrintAction m $ f x
   fmap f (RandAction cont) = RandAction $ f . cont
+  fmap _ (ThrowAction i ex) = ThrowAction i ex
 
 -- $monad
 
@@ -134,20 +138,42 @@ getWT :: CryptoMonad st b b (SBool b)
 getWT = cryptoXFree $ GetWTAction id
 
 -- |Receive from any channel
-recvAny :: CryptoMonad ('StaticPars pr ra l) False True (SomeSndMessage l)
+recvAny :: CryptoMonad ('StaticPars pr ra e l) False True (SomeSndMessage l)
 recvAny = cryptoXFree $ RecvAction id
 
 -- |Same as @send@, but arguments are packed into one
-sendMess :: SomeFstMessage l -> CryptoMonad ('StaticPars pr ra l) True False ()
+sendMess :: SomeFstMessage l -> CryptoMonad ('StaticPars pr ra e l) True False ()
 sendMess m = cryptoXFree $ SendAction m ()
 
 -- |Print debug message
-debugPrint :: String -> CryptoMonad ('StaticPars True ra l) b b ()
+debugPrint :: String -> CryptoMonad ('StaticPars True ra e l) b b ()
 debugPrint s = cryptoXFree $ PrintAction s ()
 
 -- |Sample a random bit
-rand :: CryptoMonad ('StaticPars pr True l) b b Bool
+rand :: CryptoMonad ('StaticPars pr True e l) b b Bool
 rand = cryptoXFree $ RandAction id
+
+-- |Throw an exception
+throw :: InList '(ex, b) e -> ex -> CryptoMonad ('StaticPars pr ra e l) b b' a
+throw i ex = cryptoXFree $ ThrowAction i ex
+
+-- catch :: CryptoMonad ('StaticPars pr ra e l) bef aft a
+--       -- ^The computation that may throw an exception
+--       -> (InList (ex, b) e -> ex -> CryptoMonad st b aft a)
+--       -- ^How to handle the exception
+--       -> CryptoMonad st bef aft a
+-- catch (CryptoMonad m) h = helper h m
+--   where
+--     helper h = \case
+--       Pure v -> xpure v
+--       Bind x f -> case x of
+--         RecvAction
+--         SendAction
+--         GetWTAction
+--         PrintAction
+--         RandAction
+--         ThrowAction
+
 
 -- $derived
 --
@@ -165,11 +191,11 @@ rand = cryptoXFree $ RandAction id
 --       recv i
 
 -- |Send a message to a given channel
-send :: InList (x, y) l -> x -> CryptoMonad ('StaticPars pr ra l) True False ()
+send :: InList (x, y) l -> x -> CryptoMonad ('StaticPars pr ra e l) True False ()
 send i m = sendMess $ SomeFstMessage i m
 
 -- |Send message to a given channel and wait for a response
-sendSync :: x -> InList (x, y) l -> CryptoMonad ('StaticPars pr ra l) True True y
+sendSync :: x -> InList (x, y) l -> CryptoMonad ('StaticPars pr ra e l) True True y
 sendSync m chan = M.do
   send chan m
   (SomeSndMessage i y) <- recvAny

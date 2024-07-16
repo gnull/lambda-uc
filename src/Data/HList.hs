@@ -13,6 +13,7 @@ import Data.Type.Equality ((:~:)(Refl))
 -- as well heterogenous lists @HList@ that occur during interpretation of our
 -- algorithms. And this type serves as a pointer into one of such channels in
 -- the list.
+type InList :: forall a. a -> [a] -> Type
 data InList x xs where
     Here :: InList x (x : xs)
     There :: InList x xs -> InList x (y : xs)
