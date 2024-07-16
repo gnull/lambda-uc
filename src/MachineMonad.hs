@@ -71,25 +71,16 @@ data StaticPars = StaticPars
 data CryptoActions (st :: StaticPars) (bef :: Bool) (aft :: Bool) (a :: Type) where
   -- IPC actions: recv, send and yield control to another thread
   -- YieldAction :: InList (Maybe x, y) l -> a -> CryptoActions (StaticPars pr ra e l) True False a
-  RecvAction :: (SomeSndMessage l -> a) -> CryptoActions ('StaticPars pr ra e l) False True a
-  SendAction :: SomeFstMessage l -> a -> CryptoActions ('StaticPars pr ra e l) True False a
+  RecvAction :: CryptoActions ('StaticPars pr ra e l) False True (SomeSndMessage l)
+  SendAction :: SomeFstMessage l -> CryptoActions ('StaticPars pr ra e l) True False ()
 
   -- |Get the current state of Write Token
-  GetWTAction :: (SBool b -> a) -> CryptoActions st b b a
+  GetWTAction :: CryptoActions st b b (SBool b)
 
   -- Optional Actions that can be turned on/off with flags
-  PrintAction :: String -> a -> CryptoActions ('StaticPars True ra e l) b b a
-  RandAction :: (Bool -> a) -> CryptoActions ('StaticPars pr True e l) b b a
+  PrintAction :: String -> CryptoActions ('StaticPars True ra e l) b b ()
+  RandAction :: CryptoActions ('StaticPars pr True e l) b b Bool
   ThrowAction :: InList '(ex, b) e -> ex -> CryptoActions ('StaticPars pr ra e l) b b' a
-
-instance Functor (CryptoActions st bef aft) where
-  -- fmap f (YieldAction m x) = YieldAction m $ f x
-  fmap f (RecvAction cont) = RecvAction $ f . cont
-  fmap f (SendAction m x) = SendAction m $ f x
-  fmap f (GetWTAction cont) = GetWTAction $ f . cont
-  fmap f (PrintAction m x) = PrintAction m $ f x
-  fmap f (RandAction cont) = RandAction $ f . cont
-  fmap _ (ThrowAction i ex) = ThrowAction i ex
 
 -- $monad
 
@@ -135,23 +126,23 @@ data SBool (a :: Bool) where
 
 -- |Get the current state of the write token.
 getWT :: CryptoMonad st b b (SBool b)
-getWT = cryptoXFree $ GetWTAction id
+getWT = cryptoXFree $ GetWTAction
 
 -- |Receive from any channel
 recvAny :: CryptoMonad ('StaticPars pr ra e l) False True (SomeSndMessage l)
-recvAny = cryptoXFree $ RecvAction id
+recvAny = cryptoXFree $ RecvAction
 
 -- |Same as @send@, but arguments are packed into one
 sendMess :: SomeFstMessage l -> CryptoMonad ('StaticPars pr ra e l) True False ()
-sendMess m = cryptoXFree $ SendAction m ()
+sendMess m = cryptoXFree $ SendAction m
 
 -- |Print debug message
 debugPrint :: String -> CryptoMonad ('StaticPars True ra e l) b b ()
-debugPrint s = cryptoXFree $ PrintAction s ()
+debugPrint s = cryptoXFree $ PrintAction s
 
 -- |Sample a random bit
 rand :: CryptoMonad ('StaticPars pr True e l) b b Bool
-rand = cryptoXFree $ RandAction id
+rand = cryptoXFree $ RandAction
 
 -- |Throw an exception
 throw :: InList '(ex, b) e -> ex -> CryptoMonad ('StaticPars pr ra e l) b b' a
