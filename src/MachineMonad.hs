@@ -15,9 +15,12 @@ module MachineMonad (
   , getWT
   , debugPrint
   , rand
+  , throw
+  , catch
   -- * Derived Operations
   -- $derived
   -- , recv
+  , recv
   , send
   , sendSync
   -- * Syntax
@@ -69,8 +72,7 @@ data StaticPars = StaticPars
 -- - @bef@ and @aft@ are the states of write token before and after the given
 --   action.
 data CryptoActions (st :: StaticPars) (bef :: Bool) (aft :: Bool) (a :: Type) where
-  -- IPC actions: recv, send and yield control to another thread
-  -- YieldAction :: InList (Maybe x, y) l -> a -> CryptoActions (StaticPars pr ra e l) True False a
+  -- IPC actions: recv, send
   RecvAction :: CryptoActions ('StaticPars pr ra e l) False True (SomeSndMessage l)
   SendAction :: SomeFstMessage l -> CryptoActions ('StaticPars pr ra e l) True False ()
 
@@ -115,10 +117,6 @@ cryptoXFree = CryptoMonad . xfree
 --
 -- The basic operations you can do in @CryptoMonad@.
 
--- |Yield control to the machine behind the given channel
--- yield :: InList (Maybe x, y) l -> CryptoMonad st True False ()
--- yield i = cryptoXFree $ YieldAction i ()
-
 -- |Singleton @Bool@ used to store the dependent value of Write Token
 data SBool (a :: Bool) where
   STrue :: SBool True
@@ -148,23 +146,25 @@ rand = cryptoXFree $ RandAction
 throw :: InList '(ex, b) e -> ex -> CryptoMonad ('StaticPars pr ra e l) b b' a
 throw i ex = cryptoXFree $ ThrowAction i ex
 
--- catch :: CryptoMonad ('StaticPars pr ra e l) bef aft a
---       -- ^The computation that may throw an exception
---       -> (InList (ex, b) e -> ex -> CryptoMonad st b aft a)
---       -- ^How to handle the exception
---       -> CryptoMonad st bef aft a
--- catch (CryptoMonad m) h = helper h m
---   where
---     helper h = \case
---       Pure v -> xpure v
---       Bind x f -> case x of
---         RecvAction
---         SendAction
---         GetWTAction
---         PrintAction
---         RandAction
---         ThrowAction
-
+-- |Catch an exception. The handler must be prepared for any of the exceptions declared in @e@
+catch :: CryptoMonad ('StaticPars pr ra e l) bef aft a
+      -- ^The computation that may throw an exception
+      -> (forall ex b. InList '(ex, b) e -> ex -> CryptoMonad ('StaticPars pr ra e' l) b aft a)
+      -- ^How to handle the exception
+      -> CryptoMonad ('StaticPars pr ra e' l) bef aft a
+catch (CryptoMonad m) handler = CryptoMonad $ helper (\i e -> fromCryptoMonad $ handler i e) m
+  where
+    helper :: (forall ex b. InList '(ex, b) e -> ex -> XFree (CryptoActions ('StaticPars pr ra e' l)) b aft a)
+           -> XFree (CryptoActions ('StaticPars pr ra e l)) bef aft a
+           -> XFree (CryptoActions ('StaticPars pr ra e' l)) bef aft a
+    helper h = \case
+      Pure v -> Pure v
+      Bind RecvAction f -> Bind RecvAction $ helper h . f
+      Bind (SendAction v) f -> Bind (SendAction v) $ helper h . f
+      Bind GetWTAction f -> Bind GetWTAction $ helper h . f
+      Bind (PrintAction s) f -> Bind (PrintAction s) $ helper h . f
+      Bind RandAction f -> Bind RandAction $ helper h . f
+      Bind (ThrowAction i e) _ -> h i e
 
 -- $derived
 --
@@ -172,24 +172,23 @@ throw i ex = cryptoXFree $ ThrowAction i ex
 
 -- |Receive from a specific channel. If an unexpected message arrives from
 -- another channel, ignore it and yield back the control.
--- recv :: InList (x, y) l -> CryptoMonad st False True y
--- recv i = M.do
---   SomeSndMessage j m <- recvAny
---   case testEquality i j of
---     Just Refl -> xpure m
---     Nothing -> M.do
---       yield j
---       recv i
+recv :: InList (x, y) l -> CryptoMonad ('StaticPars pr ra '[ '((), True) ] l) False True y
+recv i = M.do
+  SomeSndMessage j m <- recvAny
+  case testEquality i j of
+    Just Refl -> xpure m
+    Nothing -> M.do
+      throw Here ()
 
 -- |Send a message to a given channel
 send :: InList (x, y) l -> x -> CryptoMonad ('StaticPars pr ra e l) True False ()
 send i m = sendMess $ SomeFstMessage i m
 
 -- |Send message to a given channel and wait for a response
-sendSync :: x -> InList (x, y) l -> CryptoMonad ('StaticPars pr ra e l) True True y
+sendSync :: x -> InList (x, y) l -> CryptoMonad ('StaticPars pr ra '[ '((), True) ] l) True True y
 sendSync m chan = M.do
   send chan m
   (SomeSndMessage i y) <- recvAny
   case testEquality i chan of
     Just Refl -> xpure y
-    Nothing -> undefined -- TODO: use a cleaner error-handling mechanism
+    Nothing -> throw Here ()
