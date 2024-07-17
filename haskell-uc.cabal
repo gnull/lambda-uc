@@ -49,8 +49,8 @@ library
   exposed-modules:
       Types
       Data.HList
-      MachineMonad
-      MachineMonad.SomeWTM
+      Control.Monad.UCHS.Async
+      Control.Monad.UCHS.Async.SomeWTM
       Ideas.Monad
   other-modules:
   hs-source-dirs:
@@ -82,4 +82,4 @@ test-suite machine-monad
   import: deft-test
   type:                exitcode-stdio-1.0
   main-is:             Main.hs
-  hs-source-dirs:      test/MachineMonad/
+  hs-source-dirs:      test/Async/

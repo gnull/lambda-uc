@@ -6,7 +6,7 @@ import Test.Tasty            (TestTree, defaultMain)
 import Test.Tasty.HUnit      (testCase, assertEqual)
 import Test.ShouldNotTypecheck (shouldNotTypecheck)
 
-import MachineMonad
+import Control.Monad.UCHS.Async
 import Types
 
 main :: IO ()
@@ -16,5 +16,5 @@ tests :: TestTree
 tests = testCase "split" $ do
     shouldNotTypecheck $ sendWithoutWt
   where
-    sendWithoutWt :: Chan String String l -> CryptoMonad ('StaticPars pr ra e l) False False ()
+    sendWithoutWt :: Chan String String l -> AsyncAlgo ('AsyncPars pr ra e l) False False ()
     sendWithoutWt ch = send ch "hey"

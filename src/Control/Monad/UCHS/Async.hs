@@ -1,10 +1,10 @@
 {-# LANGUAGE DerivingVia #-}
 
-module MachineMonad (
+module Control.Monad.UCHS.Async (
   -- * Interactive Algorithm Monad
   -- $monad
-    CryptoMonad(..)
-  , StaticPars(..)
+    AsyncAlgo(..)
+  , AsyncPars(..)
 
   -- * Basic Operations
   -- $basic
@@ -25,7 +25,7 @@ module MachineMonad (
   , sendSync
   -- * Syntax
   -- $actions
-  , CryptoActions(..)
+  , AsyncActions(..)
   -- * Helper functions
   , cryptoXFree
 ) where
@@ -45,15 +45,15 @@ import Types
 
 import Data.Kind (Type)
 
--- |The parameters of @CryptoMonad@ that do not change throughout the execution
-data StaticPars = StaticPars
-  { stPrint :: Bool
+-- |The parameters of @AsyncAlgo@ that do not change throughout the execution
+data AsyncPars = AsyncPars
+  { stPr :: Bool
   -- ^Printing allowed?
-  , stRand :: Bool
+  , stRa :: Bool
   -- ^Probabilistic choices allowed?
-  , stThrow :: [(Type, Bool)]
+  , stEx :: [(Type, Bool)]
   -- ^Type of exceptions we throw and contexts (use @[]@ to disable exceptions)
-  , stChans :: [(Type, Type)]
+  , stCh :: [(Type, Type)]
   -- ^Channels we can communicate with
   }
 
@@ -71,51 +71,51 @@ data StaticPars = StaticPars
 --
 -- - @bef@ and @aft@ are the states of write token before and after the given
 --   action.
-data CryptoActions (st :: StaticPars) (bef :: Bool) (aft :: Bool) (a :: Type) where
+data AsyncActions (st :: AsyncPars) (bef :: Bool) (aft :: Bool) (a :: Type) where
   -- IPC actions: recv, send
-  RecvAction :: CryptoActions ('StaticPars pr ra e l) False True (SomeSndMessage l)
-  SendAction :: SomeFstMessage l -> CryptoActions ('StaticPars pr ra e l) True False ()
+  RecvAction :: AsyncActions ('AsyncPars pr ra ex ch) False True (SomeSndMessage ch)
+  SendAction :: SomeFstMessage ch -> AsyncActions ('AsyncPars pr ra ex ch) True False ()
 
   -- |Get the current state of Write Token
-  GetWTAction :: CryptoActions st b b (SBool b)
+  GetWTAction :: AsyncActions st b b (SBool b)
 
   -- Optional Actions that can be turned on/off with flags
-  PrintAction :: String -> CryptoActions ('StaticPars True ra e l) b b ()
-  RandAction :: CryptoActions ('StaticPars pr True e l) b b Bool
-  ThrowAction :: InList '(ex, b) e -> ex -> CryptoActions ('StaticPars pr ra e l) b b' a
+  PrintAction :: String -> AsyncActions ('AsyncPars True ra ex ch) b b ()
+  RandAction :: AsyncActions ('AsyncPars pr True ex ch) b b Bool
+  ThrowAction :: InList '(e, b) ex -> e -> AsyncActions ('AsyncPars pr ra ex ch) b b' a
 
 -- $monad
 
 -- |The monad for expressing cryptographic algorithms.
 --
--- By instantiating @CryptoMonad@ with different parameters, you can finely
+-- By instantiating @AsyncAlgo@ with different parameters, you can finely
 -- control what side-effects you allow:
 --
 -- - @bef@ and @aft@ specify whether this action consumes and/or produces the Write Token.
-newtype CryptoMonad
-                 (st :: StaticPars)
+newtype AsyncAlgo
+                 (st :: AsyncPars)
                  (bef :: Bool) -- ^State of Write Token before an action
                  (aft :: Bool) -- ^State of Write Token after an action
                  a -- ^Returned value
-    = CryptoMonad { fromCryptoMonad :: XFree (CryptoActions st) bef aft a }
+    = AsyncAlgo { fromCryptoMonad :: XFree (AsyncActions st) bef aft a }
 
-  deriving (Functor) via (XFree (CryptoActions st) bef aft)
+  deriving (Functor) via (XFree (AsyncActions st) bef aft)
 
-  deriving (XApplicative, XMonad) via (XFree (CryptoActions st))
+  deriving (XApplicative, XMonad) via (XFree (AsyncActions st))
 
-instance Applicative (CryptoMonad st bef bef) where
-  f <*> m = CryptoMonad $ fromCryptoMonad f <*> fromCryptoMonad m
-  pure = CryptoMonad . pure
+instance Applicative (AsyncAlgo st bef bef) where
+  f <*> m = AsyncAlgo $ fromCryptoMonad f <*> fromCryptoMonad m
+  pure = AsyncAlgo . pure
 
-instance Monad (CryptoMonad st bef bef) where
-  m >>= f = CryptoMonad $ fromCryptoMonad m Monad.>>= (fromCryptoMonad . f)
+instance Monad (AsyncAlgo st bef bef) where
+  m >>= f = AsyncAlgo $ fromCryptoMonad m Monad.>>= (fromCryptoMonad . f)
 
-cryptoXFree :: CryptoActions st bef aft a -> CryptoMonad st bef aft a
-cryptoXFree = CryptoMonad . xfree
+cryptoXFree :: AsyncActions st bef aft a -> AsyncAlgo st bef aft a
+cryptoXFree = AsyncAlgo . xfree
 
 -- $basic
 --
--- The basic operations you can do in @CryptoMonad@.
+-- The basic operations you can do in @AsyncAlgo@.
 
 -- |Singleton @Bool@ used to store the dependent value of Write Token
 data SBool (a :: Bool) where
@@ -123,40 +123,40 @@ data SBool (a :: Bool) where
   SFalse :: SBool False
 
 -- |Get the current state of the write token.
-getWT :: CryptoMonad st b b (SBool b)
+getWT :: AsyncAlgo st b b (SBool b)
 getWT = cryptoXFree $ GetWTAction
 
 -- |Receive from any channel
-recvAny :: CryptoMonad ('StaticPars pr ra e l) False True (SomeSndMessage l)
+recvAny :: AsyncAlgo ('AsyncPars pr ra e l) False True (SomeSndMessage l)
 recvAny = cryptoXFree $ RecvAction
 
 -- |Same as @send@, but arguments are packed into one
-sendMess :: SomeFstMessage l -> CryptoMonad ('StaticPars pr ra e l) True False ()
+sendMess :: SomeFstMessage l -> AsyncAlgo ('AsyncPars pr ra e l) True False ()
 sendMess m = cryptoXFree $ SendAction m
 
 -- |Print debug message
-debugPrint :: String -> CryptoMonad ('StaticPars True ra e l) b b ()
+debugPrint :: String -> AsyncAlgo ('AsyncPars True ra e l) b b ()
 debugPrint s = cryptoXFree $ PrintAction s
 
 -- |Sample a random bit
-rand :: CryptoMonad ('StaticPars pr True e l) b b Bool
+rand :: AsyncAlgo ('AsyncPars pr True e l) b b Bool
 rand = cryptoXFree $ RandAction
 
 -- |Throw an exception
-throw :: InList '(ex, b) e -> ex -> CryptoMonad ('StaticPars pr ra e l) b b' a
+throw :: InList '(ex, b) e -> ex -> AsyncAlgo ('AsyncPars pr ra e l) b b' a
 throw i ex = cryptoXFree $ ThrowAction i ex
 
 -- |Catch an exception. The handler must be prepared for any of the exceptions declared in @e@
-catch :: CryptoMonad ('StaticPars pr ra e l) bef aft a
+catch :: AsyncAlgo ('AsyncPars pr ra e l) bef aft a
       -- ^The computation that may throw an exception
-      -> (forall ex b. InList '(ex, b) e -> ex -> CryptoMonad ('StaticPars pr ra e' l) b aft a)
+      -> (forall ex b. InList '(ex, b) e -> ex -> AsyncAlgo ('AsyncPars pr ra e' l) b aft a)
       -- ^How to handle the exception
-      -> CryptoMonad ('StaticPars pr ra e' l) bef aft a
-catch (CryptoMonad m) handler = CryptoMonad $ helper (\i e -> fromCryptoMonad $ handler i e) m
+      -> AsyncAlgo ('AsyncPars pr ra e' l) bef aft a
+catch (AsyncAlgo m) handler = AsyncAlgo $ helper (\i e -> fromCryptoMonad $ handler i e) m
   where
-    helper :: (forall ex b. InList '(ex, b) e -> ex -> XFree (CryptoActions ('StaticPars pr ra e' l)) b aft a)
-           -> XFree (CryptoActions ('StaticPars pr ra e l)) bef aft a
-           -> XFree (CryptoActions ('StaticPars pr ra e' l)) bef aft a
+    helper :: (forall ex b. InList '(ex, b) e -> ex -> XFree (AsyncActions ('AsyncPars pr ra e' l)) b aft a)
+           -> XFree (AsyncActions ('AsyncPars pr ra e l)) bef aft a
+           -> XFree (AsyncActions ('AsyncPars pr ra e' l)) bef aft a
     helper h = \case
       Pure v -> Pure v
       Bind RecvAction f -> Bind RecvAction $ helper h . f
@@ -172,7 +172,7 @@ catch (CryptoMonad m) handler = CryptoMonad $ helper (\i e -> fromCryptoMonad $ 
 
 -- |Receive from a specific channel. If an unexpected message arrives from
 -- another channel, ignore it and yield back the control.
-recv :: Chan x y l -> CryptoMonad ('StaticPars pr ra '[ '((), True) ] l) False True y
+recv :: Chan x y l -> AsyncAlgo ('AsyncPars pr ra '[ '((), True) ] l) False True y
 recv i = M.do
   SomeSndMessage j m <- recvAny
   case testEquality i j of
@@ -181,11 +181,11 @@ recv i = M.do
       throw Here ()
 
 -- |Send a message to a given channel
-send :: Chan x y l -> x -> CryptoMonad ('StaticPars pr ra e l) True False ()
+send :: Chan x y l -> x -> AsyncAlgo ('AsyncPars pr ra e l) True False ()
 send i m = sendMess $ SomeFstMessage i m
 
 -- |Send message to a given channel and wait for a response
-sendSync :: x -> Chan x y l -> CryptoMonad ('StaticPars pr ra '[ '((), True) ] l) True True y
+sendSync :: x -> Chan x y l -> AsyncAlgo ('AsyncPars pr ra '[ '((), True) ] l) True True y
 sendSync m chan = M.do
   send chan m
   (SomeSndMessage i y) <- recvAny
