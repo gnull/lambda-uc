@@ -19,7 +19,7 @@ tests :: TestTree
 tests = testCase "none" $ pure ()
 
 -- |Sends String s to the given channel, waits for the other side to repond with
-test :: String -> CryptoMonad ('StaticPars pr ra e '[(String, Int)]) True True Int
+test :: String -> CryptoMonad ('StaticPars pr ra e '[ '(String, Int)]) True True Int
 test s = M.do
   send Here s
   recvAny >>=: \case
@@ -33,7 +33,7 @@ test s = M.do
 --
 -- 2. Inside @SomeWTM@, wrap each branch where your WT state is fixed in
 -- @decided@.
-maybeSends :: InList (Bool, Bool) l -> SomeWT ('StaticPars pr ra e l) False Bool
+maybeSends :: Chan Bool Bool l -> SomeWT ('StaticPars pr ra e l) False Bool
 maybeSends chan = ContFromAnyWT $ \cont -> M.do
   (SomeSndMessage sender msg) <- recvAny
   case testEquality chan sender of
@@ -42,7 +42,7 @@ maybeSends chan = ContFromAnyWT $ \cont -> M.do
       cont msg
     Nothing -> cont False
 
-useMaybeSends :: InList (Bool, Bool) l -> CryptoMonad ('StaticPars pr ra '[ '((), True) ] l) False True Bool
+useMaybeSends :: Chan Bool Bool l -> CryptoMonad ('StaticPars pr ra '[ '((), True) ] l) False True Bool
 useMaybeSends chan = M.do
   -- Step #1: pass @maybeSends@ to dispatchSomeWT
   -- Step #2: pass it a continuation that starts from unknown WT state

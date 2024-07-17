@@ -36,7 +36,7 @@ liftF f = Free $ pure <$> f
 
 -- domain-specific definitions
 
-data CryptoActions (l :: [Type]) a where
+data CryptoActions (l :: [(Type, Type)]) a where
     RecvAction :: (SomeSndMessage l -> a) -> CryptoActions l a
     SendAction :: SomeFstMessage l -> a -> CryptoActions l a
 
@@ -53,7 +53,7 @@ recvAny = liftF (RecvAction id)
 
 -- |Waits for message from this specific party. Until it arrives, collect all
 -- the messages from all other parties.
-recvCollecting :: InList (a, b) l -> CryptoMonad l ([SomeSndMessage l], b)
+recvCollecting :: Chan a b l -> CryptoMonad l ([SomeSndMessage l], b)
 recvCollecting i = do
   m@(SomeSndMessage j x) <- recvAny
   case testEquality i j of
@@ -63,7 +63,7 @@ recvCollecting i = do
     Just Refl -> pure ([], x)
 
 -- |Same as @recvCollecting@, but drops the messages from other parties.
-recvDropping :: InList (a, b) l -> CryptoMonad l b
+recvDropping :: Chan a b l -> CryptoMonad l b
 recvDropping i = snd <$> recvCollecting i
 
 data HeteroListP2 f a (types :: [Type]) where
@@ -89,14 +89,14 @@ repackMessage (HConsP2 i is) m@(SomeValue j x) = case testEquality i j of
 sendSomeMess :: SomeFstMessage l -> CryptoMonad l ()
 sendSomeMess m = liftF (SendAction m ())
 
-send :: InList (b, a) l -> b -> CryptoMonad l ()
+send :: Chan b a l -> b -> CryptoMonad l ()
 send i b = sendSomeMess $ SomeFstMessage i b
 
 -- usage
 
-data BobAlgo = BobAlgo (CryptoMonad [(Int, Bool), (Void, Void), (BobAlgo, String)] Bool)
+data BobAlgo = BobAlgo (CryptoMonad ['(Int, Bool), '(Void, Void), '(BobAlgo, String)] Bool)
 
-alg1 :: CryptoMonad [(Int, Bool), (Void, Void), (BobAlgo, String)] Bool
+alg1 :: CryptoMonad ['(Int, Bool), '(Void, Void), '(BobAlgo, String)] Bool
 alg1 = do str <- recvDropping charlie
           send alice $ length str
           send charlie $ BobAlgo alg1
@@ -123,7 +123,7 @@ type family MapSnd xs where
     MapSnd (p : xs) = Snd p : MapSnd xs
 
 type family Swap p where
-    Swap ((,) x y) = (,) y x
+    Swap '(x, y) = '(y, x)
 
 -- type CryptoMonad' people = CryptoMonad (MapFst people) (MapSnd people)
 
@@ -148,7 +148,7 @@ inListSnd :: InList ((,) a b) l -> InList b (MapSnd l)
 inListSnd Here = Here
 inListSnd (There x) = There $ inListSnd x
 
-alg1' :: CryptoMonad [(Int, Bool), (Void, Void), (BobAlgo, String)] Bool
+alg1' :: CryptoMonad ['(Int, Bool), '(Void, Void), '(BobAlgo, String)] Bool
 alg1' = alg1
 
 -- |Returns @Left (x, f)@ if the underlying monad has received message x
@@ -160,7 +160,7 @@ alg1' = alg1
 -- arrived messages were ok) with result @a@.
 hidingParty
   :: CryptoMonad l a
-  -> CryptoMonad ((x, y):l) (Either (y, CryptoMonad l a) a)
+  -> CryptoMonad ('(x, y):l) (Either (y, CryptoMonad l a) a)
 hidingParty (Pure x) = Pure $ Right x
 hidingParty y@(Free (RecvAction f))
   = Free
@@ -175,12 +175,14 @@ hidingParty (Free (SendAction (SomeFstMessage i m) a))
 
 -- Interpretation of the CryptoMonad
 
+-- type TwoChans ::
 data TwoChans t where
-  TwoChans :: STM.TChan a -> STM.TChan b -> TwoChans (a, b)
+  TwoChans :: STM.TChan a -> STM.TChan b -> TwoChans '(a, b)
 
-runSTM :: HList TwoChans l
-    -> CryptoMonad l a
-    -> IO a
+runSTM :: forall (l :: [(Type, Type)]) (a :: Type).
+          HList TwoChans l
+       -> CryptoMonad l a
+       -> IO a
 runSTM l = \case
   Pure x -> pure x
   Free (RecvAction f) -> do
@@ -193,8 +195,8 @@ runSTM l = \case
       STM.writeTChan s m
     runSTM l a
 
-type VoidInterface = (Void, Void)
-type AliceBobInterface = (String, Int)
+type VoidInterface = '(Void, Void)
+type AliceBobInterface = '(String, Int)
 
 -- aliceName = Here
 
@@ -253,8 +255,8 @@ stackMachine (v:vs) f s = stackMachine (vs' ++ vs) f s'
   where
     (s', vs') = f s v
 
-runCoop2PC :: CryptoMonad [(Void, Void), (a, b)] c
-           -> CryptoMonad [(b, a), (Void, Void)] d
+runCoop2PC :: CryptoMonad ['(Void, Void), '(a, b)] c
+           -> CryptoMonad ['(b, a), '(Void, Void)] d
            -> (Maybe c, Maybe d)
 runCoop2PC p1 p2 = (returned *** returned)
                  $ stackMachine (map Left m1 ++ map Right m2) f (t1, t2)
@@ -266,8 +268,8 @@ runCoop2PC p1 p2 = (returned *** returned)
     returned (ThDone a) = Just a
     returned (ThRunning _) = Nothing
 
-    f :: TransFunc (Thread [(Void, Void), (a, b)] c, Thread [(b, a), (Void, Void)] d)
-                   (Either (SomeFstMessage [(Void, Void), (a, b)]) (SomeFstMessage [(b, a), (Void, Void)]))
+    f :: TransFunc (Thread ['(Void, Void), '(a, b)] c, Thread ['(b, a), '(Void, Void)] d)
+                   (Either (SomeFstMessage ['(Void, Void), '(a, b)]) (SomeFstMessage ['(b, a), '(Void, Void)]))
     f (th1, th2) = \case
       Left (SomeFstMessage i m) -> case i of
         There Here -> let

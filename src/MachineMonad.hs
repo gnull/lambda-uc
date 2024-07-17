@@ -53,7 +53,7 @@ data StaticPars = StaticPars
   -- ^Probabilistic choices allowed?
   , stThrow :: [(Type, Bool)]
   -- ^Type of exceptions we throw and contexts (use @[]@ to disable exceptions)
-  , stChans :: [Type]
+  , stChans :: [(Type, Type)]
   -- ^Channels we can communicate with
   }
 
@@ -172,7 +172,7 @@ catch (CryptoMonad m) handler = CryptoMonad $ helper (\i e -> fromCryptoMonad $ 
 
 -- |Receive from a specific channel. If an unexpected message arrives from
 -- another channel, ignore it and yield back the control.
-recv :: InList (x, y) l -> CryptoMonad ('StaticPars pr ra '[ '((), True) ] l) False True y
+recv :: Chan x y l -> CryptoMonad ('StaticPars pr ra '[ '((), True) ] l) False True y
 recv i = M.do
   SomeSndMessage j m <- recvAny
   case testEquality i j of
@@ -181,11 +181,11 @@ recv i = M.do
       throw Here ()
 
 -- |Send a message to a given channel
-send :: InList (x, y) l -> x -> CryptoMonad ('StaticPars pr ra e l) True False ()
+send :: Chan x y l -> x -> CryptoMonad ('StaticPars pr ra e l) True False ()
 send i m = sendMess $ SomeFstMessage i m
 
 -- |Send message to a given channel and wait for a response
-sendSync :: x -> InList (x, y) l -> CryptoMonad ('StaticPars pr ra '[ '((), True) ] l) True True y
+sendSync :: x -> Chan x y l -> CryptoMonad ('StaticPars pr ra '[ '((), True) ] l) True True y
 sendSync m chan = M.do
   send chan m
   (SomeSndMessage i y) <- recvAny

@@ -40,7 +40,8 @@ padMessageIndex (SomeValue i' x') = SomeValue (There i') x'
 --
 -- The @Chan x y xs@ is a bi-directional channel where you can send values of
 -- type $x$ and receive type $y$.
-type Chan x y xs = InList (x, y) xs
+type Chan :: forall a b. a -> b -> [(a, b)] -> Type
+type Chan x y xs = InList '(x, y) xs
 
 data SomeSndMessage xs where
   SomeSndMessage :: Chan x y xs -> y -> SomeSndMessage xs
@@ -54,7 +55,8 @@ data SomeFstMessage xs where
 -- as prescribed by the list type's index.
 
 -- |Heterogenous List
-data HList f (types :: [Type]) where
+type HList :: forall a. (a -> Type) -> [a] -> Type
+data HList f (types :: [a]) where
     HNil :: HList f '[]
     HCons :: f t -> HList f ts -> HList f (t : ts)
 

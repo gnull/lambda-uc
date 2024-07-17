@@ -16,5 +16,5 @@ tests :: TestTree
 tests = testCase "split" $ do
     shouldNotTypecheck $ sendWithoutWt
   where
-    sendWithoutWt :: InList (String, String) l -> CryptoMonad ('StaticPars pr ra e l) False False ()
+    sendWithoutWt :: Chan String String l -> CryptoMonad ('StaticPars pr ra e l) False False ()
     sendWithoutWt ch = send ch "hey"
