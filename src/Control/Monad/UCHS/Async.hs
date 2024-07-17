@@ -97,18 +97,18 @@ newtype AsyncAlgo
                  (bef :: Bool) -- ^State of Write Token before an action
                  (aft :: Bool) -- ^State of Write Token after an action
                  a -- ^Returned value
-    = AsyncAlgo { fromCryptoMonad :: XFree (AsyncActions st) bef aft a }
+    = AsyncAlgo { fromAsyncAlgo :: XFree (AsyncActions st) bef aft a }
 
   deriving (Functor) via (XFree (AsyncActions st) bef aft)
 
   deriving (XApplicative, XMonad) via (XFree (AsyncActions st))
 
 instance Applicative (AsyncAlgo st bef bef) where
-  f <*> m = AsyncAlgo $ fromCryptoMonad f <*> fromCryptoMonad m
+  f <*> m = AsyncAlgo $ fromAsyncAlgo f <*> fromAsyncAlgo m
   pure = AsyncAlgo . pure
 
 instance Monad (AsyncAlgo st bef bef) where
-  m >>= f = AsyncAlgo $ fromCryptoMonad m Monad.>>= (fromCryptoMonad . f)
+  m >>= f = AsyncAlgo $ fromAsyncAlgo m Monad.>>= (fromAsyncAlgo . f)
 
 cryptoXFree :: AsyncActions st bef aft a -> AsyncAlgo st bef aft a
 cryptoXFree = AsyncAlgo . xfree
@@ -152,7 +152,7 @@ catch :: AsyncAlgo ('AsyncPars pr ra e l) bef aft a
       -> (forall ex b. InList '(ex, b) e -> ex -> AsyncAlgo ('AsyncPars pr ra e' l) b aft a)
       -- ^How to handle the exception
       -> AsyncAlgo ('AsyncPars pr ra e' l) bef aft a
-catch (AsyncAlgo m) handler = AsyncAlgo $ helper (\i e -> fromCryptoMonad $ handler i e) m
+catch (AsyncAlgo m) handler = AsyncAlgo $ helper (\i e -> fromAsyncAlgo $ handler i e) m
   where
     helper :: (forall ex b. InList '(ex, b) e -> ex -> XFree (AsyncActions ('AsyncPars pr ra e' l)) b aft a)
            -> XFree (AsyncActions ('AsyncPars pr ra e l)) bef aft a

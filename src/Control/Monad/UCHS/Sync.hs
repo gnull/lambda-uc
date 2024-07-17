@@ -55,13 +55,7 @@ data SyncPars = SyncPars
 
 -- |Defines actions for:
 --
--- - sending/receiving messages through channels defined in @st@
--- - reading current state of write token
--- - sampling random bits
--- - debug printing
---
--- - @bef@ and @aft@ are the states of write token before and after the given
---   action.
+-- - @bef@ and @aft@ are the states before and after the given action.
 data SyncActions (st :: SyncPars) (bef :: Maybe Type) (aft :: Maybe Type) a where
   -- |Accept an oracle call from parent
   AcceptAction :: SyncActions ('SyncPars pr ra ex '(x, y) down) Nothing (Just x) y
@@ -88,30 +82,32 @@ newtype SyncAlgo
                  (bef :: Maybe Type) -- ^State before an action
                  (aft :: Maybe Type) -- ^State after an action
                  a -- ^Returned value
-    = SyncAlgo { fromCryptoMonad :: XFree (SyncActions st) bef aft a }
+    = SyncAlgo { fromSyncAlgo :: XFree (SyncActions st) bef aft a }
 
   deriving (Functor) via (XFree (SyncActions st) bef aft)
 
   deriving (XApplicative, XMonad) via (XFree (SyncActions st))
 
 instance Applicative (SyncAlgo st bef bef) where
-  f <*> m = SyncAlgo $ fromCryptoMonad f <*> fromCryptoMonad m
+  f <*> m = SyncAlgo $ fromSyncAlgo f <*> fromSyncAlgo m
   pure = SyncAlgo . pure
 
 instance Monad (SyncAlgo st bef bef) where
-  m >>= f = SyncAlgo $ fromCryptoMonad m Monad.>>= (fromCryptoMonad . f)
+  m >>= f = SyncAlgo $ fromSyncAlgo m Monad.>>= (fromSyncAlgo . f)
 
 -- $basic
 --
 -- The basic operations you can do in @SyncAlgo@.
 
--- |Receive from any channel
+-- |Accept an oracle call from parent
 accept :: SyncAlgo ('SyncPars pr ra ex '(x, y) down) Nothing (Just x) y
 accept = SyncAlgo $ xfree $ AcceptAction
 
+-- |Yield the response to parent oracle call
 yield :: x -> SyncAlgo ('SyncPars pr ra ex '(x, y) down) (Just x) Nothing ()
 yield x = SyncAlgo $ xfree $ YieldAction x
 
+-- |Call a child oracle, immediately getting the result
 call :: Chan x y down -> x -> SyncAlgo ('SyncPars pr ra ex up down) b b y
 call i x = SyncAlgo $ xfree $ CallAction i x
 
@@ -133,7 +129,7 @@ throw i ex = SyncAlgo $ xfree $ ThrowAction i ex
 --       -> (forall ex b. InList '(ex, b) e -> ex -> SyncAlgo ('SyncPars pr ra e' l) b aft a)
 --       -- ^How to handle the exception
 --       -> SyncAlgo ('SyncPars pr ra e' l) bef aft a
--- catch (SyncAlgo m) handler = SyncAlgo $ helper (\i e -> fromCryptoMonad $ handler i e) m
+-- catch (SyncAlgo m) handler = SyncAlgo $ helper (\i e -> fromSyncAlgo $ handler i e) m
 --   where
 --     helper :: (forall ex b. InList '(ex, b) e -> ex -> XFree (SyncActions ('SyncPars pr ra e' l)) b aft a)
 --            -> XFree (SyncActions ('SyncPars pr ra e l)) bef aft a
