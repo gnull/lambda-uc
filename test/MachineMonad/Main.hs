@@ -42,7 +42,7 @@ maybeSends chan = ContFromAnyWT $ \cont -> M.do
       cont msg
     Nothing -> cont False
 
-useMaybeSends :: InList (Bool, Bool) l -> CryptoMonad ('StaticPars pr ra e l) False True Bool
+useMaybeSends :: InList (Bool, Bool) l -> CryptoMonad ('StaticPars pr ra '[ '((), True) ] l) False True Bool
 useMaybeSends chan = M.do
   -- Step #1: pass @maybeSends@ to dispatchSomeWT
   -- Step #2: pass it a continuation that starts from unknown WT state
@@ -52,7 +52,7 @@ useMaybeSends chan = M.do
     getWT >>=: \case
       STrue -> xreturn b
       SFalse -> M.do
-        _ <- recvAny
-        xreturn True
+        m <- recv chan
+        xreturn m
   -- _ -- in this context, the state of WT is fixed
   xreturn $ not res
