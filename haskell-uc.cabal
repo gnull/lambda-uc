@@ -49,6 +49,7 @@ library
   exposed-modules:
       Types
       Data.HList
+      Control.Monad.UCHS.Sync
       Control.Monad.UCHS.Async
       Control.Monad.UCHS.Async.SomeWTM
       Ideas.Monad
