@@ -40,7 +40,7 @@ data SyncPars = SyncPars
   -- ^Printing allowed?
   , stRa :: Bool
   -- ^Probabilistic choices allowed?
-  , stEx :: [(Type, Maybe Type)]
+  , stEx :: [(Type, Bool)]
   -- ^Type of exceptions we throw and contexts (use @[]@ to disable exceptions)
   , stUp :: (Type, Type)
   -- ^The upstream interface to our parent
@@ -56,11 +56,11 @@ data SyncPars = SyncPars
 -- |Defines actions for:
 --
 -- - @bef@ and @aft@ are the states before and after the given action.
-data SyncActions (st :: SyncPars) (bef :: Maybe Type) (aft :: Maybe Type) a where
+data SyncActions (st :: SyncPars) (bef :: Bool) (aft :: Bool) a where
   -- |Accept an oracle call from parent
-  AcceptAction :: SyncActions ('SyncPars pr ra ex '(x, y) down) Nothing (Just x) y
+  AcceptAction :: SyncActions ('SyncPars pr ra ex '(x, y) down) False True y
   -- |Yield the result of an oracle call from the parent
-  YieldAction :: x -> SyncActions ('SyncPars pr ra ex '(x, y) down) (Just x) Nothing ()
+  YieldAction :: x -> SyncActions ('SyncPars pr ra ex '(x, y) down) True False ()
   -- |Perform a call to a child, immediately getting the result
   CallAction :: Chan x y down -> x -> SyncActions ('SyncPars pr ra ex up down) b b y
 
@@ -79,8 +79,8 @@ data SyncActions (st :: SyncPars) (bef :: Maybe Type) (aft :: Maybe Type) a wher
 -- - @bef@ and @aft@ specify whether this action consumes and/or produces the Write Token.
 newtype SyncAlgo
                  (st :: SyncPars)
-                 (bef :: Maybe Type) -- ^State before an action
-                 (aft :: Maybe Type) -- ^State after an action
+                 (bef :: Bool) -- ^State before an action
+                 (aft :: Bool) -- ^State after an action
                  a -- ^Returned value
     = SyncAlgo { fromSyncAlgo :: XFree (SyncActions st) bef aft a }
 
@@ -100,11 +100,11 @@ instance Monad (SyncAlgo st bef bef) where
 -- The basic operations you can do in @SyncAlgo@.
 
 -- |Accept an oracle call from parent
-accept :: SyncAlgo ('SyncPars pr ra ex '(x, y) down) Nothing (Just x) y
+accept :: SyncAlgo ('SyncPars pr ra ex '(x, y) down) False True y
 accept = SyncAlgo $ xfree $ AcceptAction
 
 -- |Yield the response to parent oracle call
-yield :: x -> SyncAlgo ('SyncPars pr ra ex '(x, y) down) (Just x) Nothing ()
+yield :: x -> SyncAlgo ('SyncPars pr ra ex '(x, y) down) True False ()
 yield x = SyncAlgo $ xfree $ YieldAction x
 
 -- |Call a child oracle, immediately getting the result
