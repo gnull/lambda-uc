@@ -53,6 +53,7 @@ library
       Control.Monad.UCHS.Sync
       Control.Monad.UCHS.Async
       Control.Monad.UCHS.Async.SomeWTM
+      Control.XFreer.Join
       Ideas.Monad
   other-modules:
   hs-source-dirs:

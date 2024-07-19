@@ -32,7 +32,7 @@ module Control.Monad.UCHS.Async (
 
 import Prelude hiding ((>>=), return)
 import qualified Control.Monad as Monad
-import Control.XFreer
+import Control.XFreer.Join
 import Control.XApplicative
 import Control.XMonad
 import qualified Control.XMonad.Do as M
@@ -73,16 +73,24 @@ data AsyncPars = AsyncPars
 --   action.
 data AsyncActions (st :: AsyncPars) (bef :: Bool) (aft :: Bool) (a :: Type) where
   -- IPC actions: recv, send
-  RecvAction :: AsyncActions ('AsyncPars pr ra ex ch) False True (SomeSndMessage ch)
-  SendAction :: SomeFstMessage ch -> AsyncActions ('AsyncPars pr ra ex ch) True False ()
+  RecvAction :: (SomeSndMessage ch -> a) -> AsyncActions ('AsyncPars pr ra ex ch) False True a
+  SendAction :: SomeFstMessage ch -> a -> AsyncActions ('AsyncPars pr ra ex ch) True False a
 
   -- |Get the current state of Write Token
-  GetWTAction :: AsyncActions st b b (SBool b)
+  GetWTAction :: (SBool b -> a) -> AsyncActions st b b a
 
   -- Optional Actions that can be turned on/off with flags
-  PrintAction :: String -> AsyncActions ('AsyncPars True ra ex ch) b b ()
-  RandAction :: AsyncActions ('AsyncPars pr True ex ch) b b Bool
+  PrintAction :: String -> a -> AsyncActions ('AsyncPars True ra ex ch) b b a
+  RandAction :: (Bool -> a) -> AsyncActions ('AsyncPars pr True ex ch) b b a
   ThrowAction :: InList '(e, b) ex -> e -> AsyncActions ('AsyncPars pr ra ex ch) b b' a
+
+instance Functor (AsyncActions st bef aft) where
+  fmap f (RecvAction cont) = RecvAction $ f . cont
+  fmap f (SendAction m r) = SendAction m $ f r
+  fmap f (GetWTAction cont) = GetWTAction $ f . cont
+  fmap f (PrintAction m r) = PrintAction m $ f r
+  fmap f (RandAction cont) = RandAction $ f . cont
+  fmap _ (ThrowAction i e) = ThrowAction i e
 
 -- $monad
 
@@ -124,23 +132,23 @@ data SBool (a :: Bool) where
 
 -- |Get the current state of the write token.
 getWT :: AsyncAlgo st b b (SBool b)
-getWT = cryptoXFree $ GetWTAction
+getWT = cryptoXFree $ GetWTAction id
 
 -- |Receive from any channel
 recvAny :: AsyncAlgo ('AsyncPars pr ra e l) False True (SomeSndMessage l)
-recvAny = cryptoXFree $ RecvAction
+recvAny = cryptoXFree $ RecvAction id
 
 -- |Same as @send@, but arguments are packed into one
 sendMess :: SomeFstMessage l -> AsyncAlgo ('AsyncPars pr ra e l) True False ()
-sendMess m = cryptoXFree $ SendAction m
+sendMess m = cryptoXFree $ SendAction m ()
 
 -- |Print debug message
 debugPrint :: String -> AsyncAlgo ('AsyncPars True ra e l) b b ()
-debugPrint s = cryptoXFree $ PrintAction s
+debugPrint s = cryptoXFree $ PrintAction s ()
 
 -- |Sample a random bit
 rand :: AsyncAlgo ('AsyncPars pr True e l) b b Bool
-rand = cryptoXFree $ RandAction
+rand = cryptoXFree $ RandAction id
 
 -- |Throw an exception
 throw :: InList '(ex, b) e -> ex -> AsyncAlgo ('AsyncPars pr ra e l) b b' a
@@ -159,12 +167,12 @@ catch (AsyncAlgo m) handler = AsyncAlgo $ helper (\i e -> fromAsyncAlgo $ handle
            -> XFree (AsyncActions ('AsyncPars pr ra e' l)) bef aft a
     helper h = \case
       Pure v -> Pure v
-      Bind RecvAction f -> Bind RecvAction $ helper h . f
-      Bind (SendAction v) f -> Bind (SendAction v) $ helper h . f
-      Bind GetWTAction f -> Bind GetWTAction $ helper h . f
-      Bind (PrintAction s) f -> Bind (PrintAction s) $ helper h . f
-      Bind RandAction f -> Bind RandAction $ helper h . f
-      Bind (ThrowAction i e) _ -> h i e
+      Join (RecvAction cont) -> Join $ RecvAction $ helper h . cont
+      Join (SendAction v r) -> Join $ SendAction v $ helper h r
+      Join (GetWTAction cont) -> Join $ GetWTAction $ helper h . cont
+      Join (PrintAction v r) -> Join $ PrintAction v $ helper h r
+      Join (RandAction cont) -> Join $ RandAction $ helper h . cont
+      Join (ThrowAction i e) -> h i e
 
 -- $derived
 --

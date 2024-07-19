@@ -8,7 +8,7 @@ import Data.Void
 
 import Data.HList
 
-import Control.XFreer
+import Control.XFreer.Join
 import Control.XApplicative
 import Control.XMonad
 
@@ -30,16 +30,12 @@ newtype Algo (pr :: Bool) (ra :: Bool) (ex :: Type) (a :: Type) =
 liftToSync :: InList '(ex, b) exs
            -> Algo pr ra ex a
            -> SyncAlgo ('SyncPars pr ra exs p l) b b a
-liftToSync _ (Algo (SyncAlgo (Pure v))) = pure v
-liftToSync i (Algo (SyncAlgo (Bind v f))) =
+liftToSync _ (Algo (SyncAlgo (Pure v))) = xpure v
+liftToSync i (Algo (SyncAlgo (Join v))) =
   case v of
-    YieldAction contra -> case contra of {}
-    CallAction contra _ -> case contra of {}
-    PrintAction s -> liftToSync i . Algo . SyncAlgo . f =<<:
-      debugPrint s
-    RandAction -> liftToSync i . Algo . SyncAlgo . f =<<:
-      rand
-    -- TODO: get rid of the undefined here
-    ThrowAction Here e -> liftToSync i . Algo . SyncAlgo . undefined =<<:
-      throw i e
+    YieldAction contra _ -> case contra of {}
+    CallAction contra _ _ -> case contra of {}
+    PrintAction s r -> debugPrint s >>: (liftToSync i $ Algo $ SyncAlgo r)
+    RandAction cont -> rand >>=: (\b -> liftToSync i $ Algo $ SyncAlgo $ cont b)
+    ThrowAction Here e -> throw i e
     ThrowAction (There contra) _ -> case contra of {}

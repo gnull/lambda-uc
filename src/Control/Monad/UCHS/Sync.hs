@@ -23,7 +23,7 @@ module Control.Monad.UCHS.Sync (
 
 import Prelude hiding ((>>=), return)
 import qualified Control.Monad as Monad
-import Control.XFreer
+import Control.XFreer.Join
 import Control.XApplicative
 import Control.XMonad
 -- import qualified Control.XMonad.Do as M
@@ -58,16 +58,24 @@ data SyncPars = SyncPars
 -- - @bef@ and @aft@ are the states before and after the given action.
 data SyncActions (st :: SyncPars) (bef :: Bool) (aft :: Bool) a where
   -- |Accept an oracle call from parent
-  AcceptAction :: SyncActions ('SyncPars pr ra ex '(x, y) down) False True y
+  AcceptAction :: (y -> a) -> SyncActions ('SyncPars pr ra ex '(x, y) down) False True a
   -- |Yield the result of an oracle call from the parent
-  YieldAction :: x -> SyncActions ('SyncPars pr ra ex '(x, y) down) True False ()
+  YieldAction :: x -> a -> SyncActions ('SyncPars pr ra ex '(x, y) down) True False a
   -- |Perform a call to a child, immediately getting the result
-  CallAction :: Chan x y down -> x -> SyncActions ('SyncPars pr ra ex up down) b b y
+  CallAction :: Chan x y down -> x -> (y -> a) -> SyncActions ('SyncPars pr ra ex up down) b b a
 
   -- Optional Actions that can be turned on/off with flags
-  PrintAction :: String -> SyncActions ('SyncPars True ra ex up down) b b ()
-  RandAction :: SyncActions ('SyncPars pr True ex up down) b b Bool
+  PrintAction :: String -> a -> SyncActions ('SyncPars True ra ex up down) b b a
+  RandAction :: (Bool -> a) -> SyncActions ('SyncPars pr True ex up down) b b a
   ThrowAction :: InList '(e, b) ex -> e -> SyncActions ('SyncPars pr ra ex up down) b b' a
+
+instance Functor (SyncActions st bef aft) where
+  fmap f (AcceptAction cont) = AcceptAction $ f . cont
+  fmap f (YieldAction m r) = YieldAction m $ f r
+  fmap f (CallAction i m cont) = CallAction i m $ f . cont
+  fmap f (PrintAction m r) = PrintAction m $ f r
+  fmap f (RandAction cont) = RandAction $ f . cont
+  fmap _ (ThrowAction i e) = ThrowAction i e
 
 -- $monad
 
@@ -101,23 +109,23 @@ instance Monad (SyncAlgo st bef bef) where
 
 -- |Accept an oracle call from parent
 accept :: SyncAlgo ('SyncPars pr ra ex '(x, y) down) False True y
-accept = SyncAlgo $ xfree $ AcceptAction
+accept = SyncAlgo $ xfree $ AcceptAction id
 
 -- |Yield the response to parent oracle call
 yield :: x -> SyncAlgo ('SyncPars pr ra ex '(x, y) down) True False ()
-yield x = SyncAlgo $ xfree $ YieldAction x
+yield x = SyncAlgo $ xfree $ YieldAction x ()
 
 -- |Call a child oracle, immediately getting the result
 call :: Chan x y down -> x -> SyncAlgo ('SyncPars pr ra ex up down) b b y
-call i x = SyncAlgo $ xfree $ CallAction i x
+call i x = SyncAlgo $ xfree $ CallAction i x id
 
 -- |Print debug message
 debugPrint :: String -> SyncAlgo ('SyncPars True ra ex up down) b b ()
-debugPrint s = SyncAlgo $ xfree $ PrintAction s
+debugPrint s = SyncAlgo $ xfree $ PrintAction s ()
 
 -- |Sample a random bit
 rand :: SyncAlgo ('SyncPars pr True ex up down) b b Bool
-rand = SyncAlgo $ xfree $ RandAction
+rand = SyncAlgo $ xfree $ RandAction id
 
 -- |Throw an exception
 throw :: InList '(e, b) ex -> e -> SyncAlgo ('SyncPars pr ra ex up down) b b' a
