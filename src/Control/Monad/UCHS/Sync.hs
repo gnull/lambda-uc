@@ -33,7 +33,7 @@ data SyncPars = SyncPars
   -- ^Probabilistic choices allowed?
   , stEx :: [(Type, Bool)]
   -- ^Type of exceptions we throw and contexts (use @[]@ to disable exceptions)
-  , stUp :: (Type, Type)
+  , stUp :: Maybe (Type, Type)
   -- ^The upstream interface to our parent
   , stDown :: [(Type, Type)]
   -- ^Downstream interfaces to our children
@@ -49,11 +49,13 @@ data SyncPars = SyncPars
 -- - @bef@ and @aft@ are the states before and after the given action.
 data SyncActions (st :: SyncPars) (bef :: Bool) (aft :: Bool) a where
   -- |Accept an oracle call from parent
-  AcceptAction :: (y -> a) -> SyncActions ('SyncPars pr ra ex '(x, y) down) False True a
+  AcceptAction :: (y -> a) -> SyncActions ('SyncPars pr ra ex (Just '(x, y)) down) False True a
   -- |Yield the result of an oracle call from the parent
-  YieldAction :: x -> a -> SyncActions ('SyncPars pr ra ex '(x, y) down) True False a
+  YieldAction :: x -> a -> SyncActions ('SyncPars pr ra ex (Just '(x, y)) down) True False a
   -- |Perform a call to a child, immediately getting the result
   CallAction :: Chan x y down -> x -> (y -> a) -> SyncActions ('SyncPars pr ra ex up down) b b a
+  -- |Get the current state of write token
+  GetWTAction :: (SBool b -> a) -> SyncActions ('SyncPars pr ra ex (Just up) down) b b a
 
   -- Optional Actions that can be turned on/off with flags
   PrintAction :: String -> a -> SyncActions ('SyncPars True ra ex up down) b b a
@@ -64,6 +66,7 @@ instance Functor (SyncActions st bef aft) where
   fmap f (AcceptAction cont) = AcceptAction $ f . cont
   fmap f (YieldAction m r) = YieldAction m $ f r
   fmap f (CallAction i m cont) = CallAction i m $ f . cont
+  fmap f (GetWTAction cont) = GetWTAction $ f . cont
   fmap f (PrintAction m r) = PrintAction m $ f r
   fmap f (RandAction cont) = RandAction $ f . cont
   fmap _ (ThrowAction i e) = ThrowAction i e

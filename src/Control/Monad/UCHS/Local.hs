@@ -20,9 +20,9 @@ import Control.Monad.UCHS.Sync
 --   ZipConst (h:rest) s = ('(h, s) : ZipConst rest s)
 
 newtype Algo (pr :: Bool) (ra :: Bool) (ex :: Type) (a :: Type) =
-  Algo { runAlgo :: SyncAlgo ('SyncPars pr ra '[ '(ex, True)] '(Void, Void) '[]) True True a }
+  Algo { runAlgo :: SyncAlgo ('SyncPars pr ra '[ '(ex, True)] Nothing '[]) True True a }
 
   deriving (Functor) via
-    (SyncAlgo ('SyncPars pr ra '[ '(ex, True)] '(Void, Void) '[]) True True)
+    (SyncAlgo ('SyncPars pr ra '[ '(ex, True)] Nothing '[]) True True)
   deriving (Applicative, Monad) via
-    (SyncAlgo ('SyncPars pr ra '[ '(ex, True)] '(Void, Void) '[]) True True)
+    (SyncAlgo ('SyncPars pr ra '[ '(ex, True)] Nothing '[]) True True)

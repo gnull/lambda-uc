@@ -28,17 +28,19 @@ class Monad m => Throw (m :: Type -> Type) (e :: Type) | m -> e where
 class XMonad m => XThrow (m :: Bool -> Bool -> Type -> Type) (ex :: [(Type, Bool)]) | m -> ex where
   xthrow :: InList '(e, b) ex -> e -> m b b' a
 
-class XMonad m => SyncUp (m :: Bool -> Bool -> Type -> Type) (up :: (Type, Type)) | m -> up where
+class XMonad m => GetWT m where
+  getWT :: m b b (SBool b)
+
+class GetWT m => SyncUp (m :: Bool -> Bool -> Type -> Type) (up :: (Type, Type)) | m -> up where
   accept :: m False True (Snd up)
   yield :: (Fst up) -> m True False ()
 
-class XMonad m => SyncDown (m :: Bool -> Bool -> Type -> Type) (down :: [(Type, Type)]) | m -> down where
+class GetWT m => SyncDown (m :: Bool -> Bool -> Type -> Type) (down :: [(Type, Type)]) | m -> down where
   call :: Chan x y down -> x -> m b b y
 
-class XMonad m => Async (m :: Bool -> Bool -> Type -> Type) (chans :: [(Type, Type)]) | m -> chans where
+class GetWT m => Async (m :: Bool -> Bool -> Type -> Type) (chans :: [(Type, Type)]) | m -> chans where
   sendMess :: SomeFstMessage chans -> m True False ()
   recvAny :: m False True (SomeSndMessage chans)
-  getWT :: m b b (SBool b)
 
   send :: Chan x y chans -> x -> m True False ()
   send i m = sendMess $ SomeFstMessage i m
@@ -63,7 +65,6 @@ liftAlgo :: ( IfThenElse pr Print Empty m
 liftAlgo (L.Algo (S.SyncAlgo (Pure v))) = pure v
 liftAlgo (L.Algo (S.SyncAlgo (Join v))) =
   case v of
-    S.YieldAction contra _ -> case contra of {}
     S.CallAction contra _ _ -> case contra of {}
     S.PrintAction s r -> debugPrint s >> (liftAlgo $ L.Algo $ S.SyncAlgo r)
     S.RandAction cont -> rand >>= (\b -> liftAlgo $ L.Algo $ S.SyncAlgo $ cont b)
@@ -84,11 +85,14 @@ instance Throw (S.SyncAlgo ('S.SyncPars pr ra '[ '(ex, b)] up down) b b) ex wher
 instance XThrow (S.SyncAlgo ('S.SyncPars pr ra ex up down)) ex where
   xthrow i ex = S.xfreeSync $ S.ThrowAction i ex
 
-instance SyncUp (S.SyncAlgo ('S.SyncPars pr ra ex '(x, y) down)) '(x, y) where
+instance GetWT (S.SyncAlgo ('S.SyncPars pr ra ex (Just up) down)) where
+  getWT = S.xfreeSync $ S.GetWTAction id
+
+instance SyncUp (S.SyncAlgo ('S.SyncPars pr ra ex (Just '(x, y)) down)) '(x, y) where
   accept = S.xfreeSync $ S.AcceptAction id
   yield x = S.xfreeSync $ S.YieldAction x ()
 
-instance SyncDown (S.SyncAlgo ('S.SyncPars pr ra ex up down)) down where
+instance SyncDown (S.SyncAlgo ('S.SyncPars pr ra ex (Just up) down)) down where
   call i x = S.xfreeSync $ S.CallAction i x id
 
 liftSyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b))
@@ -97,7 +101,7 @@ liftSyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b 
                 , SyncUp m up
                 , SyncDown m down
                 )
-               => S.SyncAlgo ('S.SyncPars pr ra ex up down) bef aft a
+               => S.SyncAlgo ('S.SyncPars pr ra ex (Just up) down) bef aft a
                -> m bef aft a
 liftSyncAlgo (S.SyncAlgo (Pure v)) = xreturn v
 liftSyncAlgo (S.SyncAlgo (Join v)) =
@@ -105,6 +109,7 @@ liftSyncAlgo (S.SyncAlgo (Join v)) =
     S.YieldAction m r -> yield m >>: liftSyncAlgo (S.SyncAlgo r)
     S.AcceptAction cont -> accept >>=: liftSyncAlgo . S.SyncAlgo . cont
     S.CallAction i m cont -> call i m >>=: liftSyncAlgo . S.SyncAlgo . cont
+    S.GetWTAction cont -> getWT >>=: liftSyncAlgo . S.SyncAlgo . cont
     S.PrintAction s r -> debugPrint s >>: liftSyncAlgo (S.SyncAlgo r)
     S.RandAction cont -> rand >>=: liftSyncAlgo . S.SyncAlgo . cont
     S.ThrowAction i e -> xthrow i e
@@ -123,10 +128,12 @@ instance Throw (A.AsyncAlgo ('A.AsyncPars pr ra '[ '(ex, b)] chans) b b) ex wher
 instance XThrow (A.AsyncAlgo ('A.AsyncPars pr ra ex chans)) ex where
   xthrow i ex = A.xfreeAsync $ A.ThrowAction i ex
 
+instance GetWT (A.AsyncAlgo ('A.AsyncPars pr ra ex chans)) where
+  getWT = A.xfreeAsync $ A.GetWTAction id
+
 instance Async (A.AsyncAlgo ('A.AsyncPars pr ra ex chans)) chans where
   sendMess m = A.xfreeAsync $ A.SendAction m ()
   recvAny = A.xfreeAsync $ A.RecvAction id
-  getWT = A.xfreeAsync $ A.GetWTAction id
 
 liftAsyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b))
                 , IfThenElse ra (forall b. Rand (m b b)) (forall b. Empty (m b b))
