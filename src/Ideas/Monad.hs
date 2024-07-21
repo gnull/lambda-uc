@@ -108,12 +108,6 @@ alg1 = do str <- recvDropping charlie
 
 -- zipped version for when there's exactly one interface per person
 
-type family Fst p where
-    Fst (a, b) = a
-
-type family Snd p where
-    Snd (a, b) = b
-
 type family MapFst xs where
     MapFst '[] = '[]
     MapFst (p : xs) = Fst p : MapFst xs
@@ -140,11 +134,11 @@ type family Swap p where
 -- recvDropping' :: InList (a, b) l -> CryptoMonad l b
 -- recvDropping' i = recvDropping $ inListSnd i
 
-inListFst :: InList ((,) a b) l -> InList a (MapFst l)
+inListFst :: InList '(a, b) l -> InList a (MapFst l)
 inListFst Here = Here
 inListFst (There x) = There $ inListFst x
 
-inListSnd :: InList ((,) a b) l -> InList b (MapSnd l)
+inListSnd :: InList '(a, b) l -> InList b (MapSnd l)
 inListSnd Here = Here
 inListSnd (There x) = There $ inListSnd x
 

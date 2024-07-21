@@ -28,14 +28,6 @@ class Monad m => Throw (m :: Type -> Type) (e :: Type) | m -> e where
 class XMonad m => XThrow (m :: Bool -> Bool -> Type -> Type) (ex :: [(Type, Bool)]) | m -> ex where
   xthrow :: InList '(e, b) ex -> e -> m b b' a
 
-type Fst :: (Type, Type) -> Type
-type family Fst p where
-  Fst '(x, _) = x
-
-type Snd :: (Type, Type) -> Type
-type family Snd p where
-  Snd '(_, y) = y
-
 class XMonad m => SyncUp (m :: Bool -> Bool -> Type -> Type) (up :: (Type, Type)) | m -> up where
   accept :: m False True (Snd up)
   yield :: (Fst up) -> m True False ()
@@ -61,16 +53,6 @@ instance Rand (L.Algo pr True ex) where
 
 instance Throw (L.Algo pr ra e) e where
   throw = L.Algo . throw
-
--- |Type-level if-then-else, we use it to choose constraints conditionally
-type IfThenElse :: forall a. Bool -> a -> a -> a
-type family IfThenElse c t f where
-  IfThenElse True t _ = t
-  IfThenElse False _ f = f
-
--- |Empty constraint
-class Empty x
-instance Empty x
 
 liftAlgo :: ( IfThenElse pr Print Empty m
             , IfThenElse ra Rand Empty m
