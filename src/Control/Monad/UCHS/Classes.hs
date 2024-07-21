@@ -23,6 +23,21 @@ class Monad m => Throw (m :: Type -> Type) (e :: Type) | m -> e where
 class XMonad m => XThrow (m :: Bool -> Bool -> Type -> Type) (ex :: [(Type, Bool)]) | m -> ex where
   xthrow :: InList '(e, b) ex -> e -> m b b' a
 
+type Fst :: (Type, Type) -> Type
+type family Fst p where
+  Fst '(x, _) = x
+
+type Snd :: (Type, Type) -> Type
+type family Snd p where
+  Snd '(_, y) = y
+
+class XMonad m => SyncUp (m :: Bool -> Bool -> Type -> Type) (up :: (Type, Type)) | m -> up where
+  accept :: m False True (Snd up)
+  yield :: (Fst up) -> m True False ()
+
+class XMonad m => SyncDown (m :: Bool -> Bool -> Type -> Type) (down :: [(Type, Type)]) | m -> down where
+  call :: Chan x y down -> x -> m b b y
+
 -- $local
 
 instance Print (L.Algo True ra ex) where
@@ -48,16 +63,15 @@ liftAlgo :: ( IfThenElse pr Print Empty m
             , IfThenElse ra Rand Empty m
             , Throw m ex
             )
-           => InList '(ex, b) exs
-           -> L.Algo pr ra ex a
+           => L.Algo pr ra ex a
            -> m a
-liftAlgo _ (L.Algo (S.SyncAlgo (Pure v))) = pure v
-liftAlgo i (L.Algo (S.SyncAlgo (Join v))) =
+liftAlgo (L.Algo (S.SyncAlgo (Pure v))) = pure v
+liftAlgo (L.Algo (S.SyncAlgo (Join v))) =
   case v of
     S.YieldAction contra _ -> case contra of {}
     S.CallAction contra _ _ -> case contra of {}
-    S.PrintAction s r -> debugPrint s >> (liftAlgo i $ L.Algo $ S.SyncAlgo r)
-    S.RandAction cont -> rand >>= (\b -> liftAlgo i $ L.Algo $ S.SyncAlgo $ cont b)
+    S.PrintAction s r -> debugPrint s >> (liftAlgo $ L.Algo $ S.SyncAlgo r)
+    S.RandAction cont -> rand >>= (\b -> liftAlgo $ L.Algo $ S.SyncAlgo $ cont b)
     S.ThrowAction Here e -> throw e
     S.ThrowAction (There contra) _ -> case contra of {}
 
@@ -74,6 +88,31 @@ instance Throw (S.SyncAlgo ('S.SyncPars pr ra '[ '(ex, b)] up down) b b) ex wher
 
 instance XThrow (S.SyncAlgo ('S.SyncPars pr ra ex up down)) ex where
   xthrow = S.throw
+
+instance SyncUp (S.SyncAlgo ('S.SyncPars pr ra ex '(x, y) down)) '(x, y) where
+  accept = S.accept
+  yield = S.yield
+
+instance SyncDown (S.SyncAlgo ('S.SyncPars pr ra ex up down)) down where
+  call = S.call
+
+liftSyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b))
+                , IfThenElse ra (forall b. Rand (m b b)) (forall b. Empty (m b b))
+                , XThrow m ex
+                , SyncUp m up
+                , SyncDown m down
+                )
+               => S.SyncAlgo ('S.SyncPars pr ra ex up down) bef aft a
+               -> m bef aft a
+liftSyncAlgo (S.SyncAlgo (Pure v)) = xreturn v
+liftSyncAlgo (S.SyncAlgo (Join v)) =
+  case v of
+    S.YieldAction m r -> yield m >>: liftSyncAlgo (S.SyncAlgo r)
+    S.AcceptAction cont -> accept >>=: liftSyncAlgo . S.SyncAlgo . cont
+    S.CallAction i m cont -> call i m >>=: liftSyncAlgo . S.SyncAlgo . cont
+    S.PrintAction s r -> debugPrint s >>: liftSyncAlgo (S.SyncAlgo r)
+    S.RandAction cont -> rand >>=: liftSyncAlgo . S.SyncAlgo . cont
+    S.ThrowAction i e -> xthrow i e
 
 -- $async
 
