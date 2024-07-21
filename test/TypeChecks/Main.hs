@@ -6,6 +6,7 @@ import Test.Tasty            (TestTree, defaultMain)
 import Test.Tasty.HUnit      (testCase, assertEqual)
 import Test.ShouldNotTypecheck (shouldNotTypecheck)
 
+import Control.Monad.UCHS.Classes
 import Control.Monad.UCHS.Async
 import Types
 

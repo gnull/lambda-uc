@@ -7,6 +7,10 @@ import Data.HList
 
 import Control.XMonad
 import Control.XFreer.Join
+import qualified Control.XMonad.Do as M
+import Data.Type.Equality ((:~:)(Refl))
+
+import Types
 
 import qualified Control.Monad.UCHS.Local as L
 import qualified Control.Monad.UCHS.Sync as S
@@ -42,18 +46,21 @@ class XMonad m => SyncDown (m :: Bool -> Bool -> Type -> Type) (down :: [(Type, 
 class XMonad m => Async (m :: Bool -> Bool -> Type -> Type) (chans :: [(Type, Type)]) | m -> chans where
   sendMess :: SomeFstMessage chans -> m True False ()
   recvAny :: m False True (SomeSndMessage chans)
-  getWT :: m b b (A.SBool b)
+  getWT :: m b b (SBool b)
+
+  send :: Chan x y chans -> x -> m True False ()
+  send i m = sendMess $ SomeFstMessage i m
 
 -- $local
 
 instance Print (L.Algo True ra ex) where
-  debugPrint = L.Algo . S.debugPrint
+  debugPrint = L.Algo . debugPrint
 
 instance Rand (L.Algo pr True ex) where
-  rand = L.Algo S.rand
+  rand = L.Algo rand
 
 instance Throw (L.Algo pr ra e) e where
-  throw = L.Algo . S.throw Here
+  throw = L.Algo . throw
 
 -- |Type-level if-then-else, we use it to choose constraints conditionally
 type IfThenElse :: forall a. Bool -> a -> a -> a
@@ -84,23 +91,23 @@ liftAlgo (L.Algo (S.SyncAlgo (Join v))) =
 -- $sync
 
 instance Print (S.SyncAlgo ('S.SyncPars True ra ex up down) b b) where
-  debugPrint = S.debugPrint
+  debugPrint s = S.xfreeSync $ S.PrintAction s ()
 
 instance Rand (S.SyncAlgo ('S.SyncPars pr True ex up down) b b) where
-  rand = S.rand
+  rand = S.xfreeSync $ S.RandAction id
 
 instance Throw (S.SyncAlgo ('S.SyncPars pr ra '[ '(ex, b)] up down) b b) ex where
-  throw = S.throw Here
+  throw = xthrow Here
 
 instance XThrow (S.SyncAlgo ('S.SyncPars pr ra ex up down)) ex where
-  xthrow = S.throw
+  xthrow i ex = S.xfreeSync $ S.ThrowAction i ex
 
 instance SyncUp (S.SyncAlgo ('S.SyncPars pr ra ex '(x, y) down)) '(x, y) where
-  accept = S.accept
-  yield = S.yield
+  accept = S.xfreeSync $ S.AcceptAction id
+  yield x = S.xfreeSync $ S.YieldAction x ()
 
 instance SyncDown (S.SyncAlgo ('S.SyncPars pr ra ex up down)) down where
-  call = S.call
+  call i x = S.xfreeSync $ S.CallAction i x id
 
 liftSyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b))
                 , IfThenElse ra (forall b. Rand (m b b)) (forall b. Empty (m b b))
@@ -123,21 +130,21 @@ liftSyncAlgo (S.SyncAlgo (Join v)) =
 -- $async
 
 instance Print (A.AsyncAlgo ('A.AsyncPars True ra ex chans) b b) where
-  debugPrint = A.debugPrint
+  debugPrint s = A.xfreeAsync $ A.PrintAction s ()
 
 instance Rand (A.AsyncAlgo ('A.AsyncPars pr True ex chans) b b) where
-  rand = A.rand
+  rand = A.xfreeAsync $ A.RandAction id
 
 instance Throw (A.AsyncAlgo ('A.AsyncPars pr ra '[ '(ex, b)] chans) b b) ex where
-  throw = A.throw Here
+  throw = xthrow Here
 
 instance XThrow (A.AsyncAlgo ('A.AsyncPars pr ra ex chans)) ex where
-  xthrow = A.throw
+  xthrow i ex = A.xfreeAsync $ A.ThrowAction i ex
 
 instance Async (A.AsyncAlgo ('A.AsyncPars pr ra ex chans)) chans where
-  sendMess = A.sendMess
-  recvAny = A.recvAny
-  getWT = A.getWT
+  sendMess m = A.xfreeAsync $ A.SendAction m ()
+  recvAny = A.xfreeAsync $ A.RecvAction id
+  getWT = A.xfreeAsync $ A.GetWTAction id
 
 liftAsyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b))
                 , IfThenElse ra (forall b. Rand (m b b)) (forall b. Empty (m b b))
@@ -155,3 +162,30 @@ liftAsyncAlgo (A.AsyncAlgo (Join v)) =
     A.PrintAction s r -> debugPrint s >>: liftAsyncAlgo (A.AsyncAlgo r)
     A.RandAction cont -> rand >>=: liftAsyncAlgo . A.AsyncAlgo . cont
     A.ThrowAction i e -> xthrow i e
+
+
+-- $derived
+--
+-- Some convenient shorthand operations built from basic ones.
+
+-- |Receive from a specific channel. If an unexpected message arrives from
+-- another channel, ignore it and yield back the control.
+recv :: (XThrow m '[ '((), True)], Async m l)
+     => Chan x y l
+     -> m False True y
+recv i = M.do
+  SomeSndMessage j m <- recvAny
+  case testEquality i j of
+    Just Refl -> xreturn m
+    Nothing -> M.do
+      xthrow Here ()
+
+-- |Send message to a given channel and wait for a response
+sendSync :: (XThrow m '[ '((), True)], Async m l)
+         => x -> Chan x y l -> m True True y
+sendSync m chan = M.do
+  send chan m
+  (SomeSndMessage i y) <- recvAny
+  case testEquality i chan of
+    Just Refl -> xreturn y
+    Nothing -> xthrow Here ()

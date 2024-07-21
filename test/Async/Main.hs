@@ -9,6 +9,7 @@ import qualified Control.XMonad.Do as M
 import Data.Type.Equality ((:~:)(Refl))
 
 import Control.Monad.UCHS.Async
+import Control.Monad.UCHS.Classes
 import Control.Monad.UCHS.Async.SomeWTM
 import Types
 

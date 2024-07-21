@@ -9,25 +9,12 @@ module Control.Monad.UCHS.Async (
   -- * Basic Operations
   -- $basic
   -- , yield
-  , recvAny
-  , sendMess
-  , SBool(..)
-  , getWT
-  , debugPrint
-  , rand
-  , throw
   , catch
-  -- * Derived Operations
-  -- $derived
-  -- , recv
-  , recv
-  , send
-  , sendSync
   -- * Syntax
   -- $actions
   , AsyncActions(..)
   -- * Helper functions
-  , cryptoXFree
+  , xfreeAsync
 ) where
 
 import Prelude hiding ((>>=), return)
@@ -35,11 +22,9 @@ import qualified Control.Monad as Monad
 import Control.XFreer.Join
 import Control.XApplicative
 import Control.XMonad
-import qualified Control.XMonad.Do as M
 
 -- import Control.Monad.Trans.Class (MonadTrans(lift))
 
-import Data.Type.Equality ((:~:)(Refl))
 
 import Types
 
@@ -118,41 +103,12 @@ instance Applicative (AsyncAlgo st bef bef) where
 instance Monad (AsyncAlgo st bef bef) where
   m >>= f = AsyncAlgo $ fromAsyncAlgo m Monad.>>= (fromAsyncAlgo . f)
 
-cryptoXFree :: AsyncActions st bef aft a -> AsyncAlgo st bef aft a
-cryptoXFree = AsyncAlgo . xfree
+xfreeAsync :: AsyncActions st bef aft a -> AsyncAlgo st bef aft a
+xfreeAsync = AsyncAlgo . xfree
 
 -- $basic
 --
 -- The basic operations you can do in @AsyncAlgo@.
-
--- |Singleton @Bool@ used to store the dependent value of Write Token
-data SBool (a :: Bool) where
-  STrue :: SBool True
-  SFalse :: SBool False
-
--- |Get the current state of the write token.
-getWT :: AsyncAlgo st b b (SBool b)
-getWT = cryptoXFree $ GetWTAction id
-
--- |Receive from any channel
-recvAny :: AsyncAlgo ('AsyncPars pr ra e l) False True (SomeSndMessage l)
-recvAny = cryptoXFree $ RecvAction id
-
--- |Same as @send@, but arguments are packed into one
-sendMess :: SomeFstMessage l -> AsyncAlgo ('AsyncPars pr ra e l) True False ()
-sendMess m = cryptoXFree $ SendAction m ()
-
--- |Print debug message
-debugPrint :: String -> AsyncAlgo ('AsyncPars True ra e l) b b ()
-debugPrint s = cryptoXFree $ PrintAction s ()
-
--- |Sample a random bit
-rand :: AsyncAlgo ('AsyncPars pr True e l) b b Bool
-rand = cryptoXFree $ RandAction id
-
--- |Throw an exception
-throw :: InList '(ex, b) e -> ex -> AsyncAlgo ('AsyncPars pr ra e l) b b' a
-throw i ex = cryptoXFree $ ThrowAction i ex
 
 -- |Catch an exception. The handler must be prepared for any of the exceptions declared in @e@
 catch :: AsyncAlgo ('AsyncPars pr ra e l) bef aft a
@@ -173,30 +129,3 @@ catch (AsyncAlgo m) handler = AsyncAlgo $ helper (\i e -> fromAsyncAlgo $ handle
       Join (PrintAction v r) -> Join $ PrintAction v $ helper h r
       Join (RandAction cont) -> Join $ RandAction $ helper h . cont
       Join (ThrowAction i e) -> h i e
-
--- $derived
---
--- Some convenient shorthand operations built from basic ones.
-
--- |Receive from a specific channel. If an unexpected message arrives from
--- another channel, ignore it and yield back the control.
-recv :: Chan x y l -> AsyncAlgo ('AsyncPars pr ra '[ '((), True) ] l) False True y
-recv i = M.do
-  SomeSndMessage j m <- recvAny
-  case testEquality i j of
-    Just Refl -> xpure m
-    Nothing -> M.do
-      throw Here ()
-
--- |Send a message to a given channel
-send :: Chan x y l -> x -> AsyncAlgo ('AsyncPars pr ra e l) True False ()
-send i m = sendMess $ SomeFstMessage i m
-
--- |Send message to a given channel and wait for a response
-sendSync :: x -> Chan x y l -> AsyncAlgo ('AsyncPars pr ra '[ '((), True) ] l) True True y
-sendSync m chan = M.do
-  send chan m
-  (SomeSndMessage i y) <- recvAny
-  case testEquality i chan of
-    Just Refl -> xpure y
-    Nothing -> throw Here ()

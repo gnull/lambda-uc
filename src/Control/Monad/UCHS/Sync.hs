@@ -5,16 +5,7 @@ module Control.Monad.UCHS.Sync (
   -- $monad
     SyncAlgo(..)
   , SyncPars(..)
-
-  -- * Basic Operations
-  -- $basic
-  -- , yield
-  , accept
-  , yield
-  , call
-  , debugPrint
-  , rand
-  , throw
+  , xfreeSync
   -- , catch
   -- * Syntax
   -- $actions
@@ -103,33 +94,8 @@ instance Applicative (SyncAlgo st bef bef) where
 instance Monad (SyncAlgo st bef bef) where
   m >>= f = SyncAlgo $ fromSyncAlgo m Monad.>>= (fromSyncAlgo . f)
 
--- $basic
---
--- The basic operations you can do in @SyncAlgo@.
-
--- |Accept an oracle call from parent
-accept :: SyncAlgo ('SyncPars pr ra ex '(x, y) down) False True y
-accept = SyncAlgo $ xfree $ AcceptAction id
-
--- |Yield the response to parent oracle call
-yield :: x -> SyncAlgo ('SyncPars pr ra ex '(x, y) down) True False ()
-yield x = SyncAlgo $ xfree $ YieldAction x ()
-
--- |Call a child oracle, immediately getting the result
-call :: Chan x y down -> x -> SyncAlgo ('SyncPars pr ra ex up down) b b y
-call i x = SyncAlgo $ xfree $ CallAction i x id
-
--- |Print debug message
-debugPrint :: String -> SyncAlgo ('SyncPars True ra ex up down) b b ()
-debugPrint s = SyncAlgo $ xfree $ PrintAction s ()
-
--- |Sample a random bit
-rand :: SyncAlgo ('SyncPars pr True ex up down) b b Bool
-rand = SyncAlgo $ xfree $ RandAction id
-
--- |Throw an exception
-throw :: InList '(e, b) ex -> e -> SyncAlgo ('SyncPars pr ra ex up down) b b' a
-throw i ex = SyncAlgo $ xfree $ ThrowAction i ex
+xfreeSync :: SyncActions st bef aft a -> SyncAlgo st bef aft a
+xfreeSync = SyncAlgo . xfree
 
 -- -- |Catch an exception. The handler must be prepared for any of the exceptions declared in @e@
 -- catch :: SyncAlgo ('SyncPars pr ra e l) bef aft a
