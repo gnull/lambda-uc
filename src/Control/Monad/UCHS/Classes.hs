@@ -65,7 +65,6 @@ liftAlgo :: ( IfThenElse pr Print Empty m
 liftAlgo (L.Algo (S.SyncAlgo (Pure v))) = pure v
 liftAlgo (L.Algo (S.SyncAlgo (Join v))) =
   case v of
-    S.CallAction contra _ _ -> case contra of {}
     S.PrintAction s r -> debugPrint s >> (liftAlgo $ L.Algo $ S.SyncAlgo r)
     S.RandAction cont -> rand >>= (\b -> liftAlgo $ L.Algo $ S.SyncAlgo $ cont b)
     S.ThrowAction Here e -> throw e
@@ -73,26 +72,26 @@ liftAlgo (L.Algo (S.SyncAlgo (Join v))) =
 
 -- $sync
 
-instance Print (S.SyncAlgo ('S.SyncPars True ra ex up down) b b) where
+instance Print (S.SyncAlgo ('S.SyncPars True ra ex chans) b b) where
   debugPrint s = S.xfreeSync $ S.PrintAction s ()
 
-instance Rand (S.SyncAlgo ('S.SyncPars pr True ex up down) b b) where
+instance Rand (S.SyncAlgo ('S.SyncPars pr True ex chans) b b) where
   rand = S.xfreeSync $ S.RandAction id
 
-instance Throw (S.SyncAlgo ('S.SyncPars pr ra '[ '(ex, b)] up down) b b) ex where
+instance Throw (S.SyncAlgo ('S.SyncPars pr ra '[ '(ex, b)] chans) b b) ex where
   throw = xthrow Here
 
-instance XThrow (S.SyncAlgo ('S.SyncPars pr ra ex up down)) ex where
+instance XThrow (S.SyncAlgo ('S.SyncPars pr ra ex chans)) ex where
   xthrow i ex = S.xfreeSync $ S.ThrowAction i ex
 
-instance GetWT (S.SyncAlgo ('S.SyncPars pr ra ex (Just up) down)) where
+instance GetWT (S.SyncAlgo ('S.SyncPars pr ra ex (Just '(up, down)))) where
   getWT = S.xfreeSync $ S.GetWTAction id
 
-instance SyncUp (S.SyncAlgo ('S.SyncPars pr ra ex (Just '(x, y)) down)) '(x, y) where
+instance SyncUp (S.SyncAlgo ('S.SyncPars pr ra ex (Just '( '(x, y), down)))) '(x, y) where
   accept = S.xfreeSync $ S.AcceptAction id
   yield x = S.xfreeSync $ S.YieldAction x ()
 
-instance SyncDown (S.SyncAlgo ('S.SyncPars pr ra ex (Just up) down)) down where
+instance SyncDown (S.SyncAlgo ('S.SyncPars pr ra ex (Just '(up, down)))) down where
   call i x = S.xfreeSync $ S.CallAction i x id
 
 liftSyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b))
@@ -101,7 +100,7 @@ liftSyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b 
                 , SyncUp m up
                 , SyncDown m down
                 )
-               => S.SyncAlgo ('S.SyncPars pr ra ex (Just up) down) bef aft a
+               => S.SyncAlgo ('S.SyncPars pr ra ex (Just '(up, down))) bef aft a
                -> m bef aft a
 liftSyncAlgo (S.SyncAlgo (Pure v)) = xreturn v
 liftSyncAlgo (S.SyncAlgo (Join v)) =
