@@ -10,6 +10,7 @@ import Control.XFreer.Join
 
 import qualified Control.Monad.UCHS.Local as L
 import qualified Control.Monad.UCHS.Sync as S
+import qualified Control.Monad.UCHS.Async as A
 
 class Monad m => Print (m :: Type -> Type) where
   debugPrint :: String -> m ()
@@ -37,6 +38,11 @@ class XMonad m => SyncUp (m :: Bool -> Bool -> Type -> Type) (up :: (Type, Type)
 
 class XMonad m => SyncDown (m :: Bool -> Bool -> Type -> Type) (down :: [(Type, Type)]) | m -> down where
   call :: Chan x y down -> x -> m b b y
+
+class XMonad m => Async (m :: Bool -> Bool -> Type -> Type) (chans :: [(Type, Type)]) | m -> chans where
+  sendMess :: SomeFstMessage chans -> m True False ()
+  recvAny :: m False True (SomeSndMessage chans)
+  getWT :: m b b (A.SBool b)
 
 -- $local
 
@@ -116,3 +122,36 @@ liftSyncAlgo (S.SyncAlgo (Join v)) =
 
 -- $async
 
+instance Print (A.AsyncAlgo ('A.AsyncPars True ra ex chans) b b) where
+  debugPrint = A.debugPrint
+
+instance Rand (A.AsyncAlgo ('A.AsyncPars pr True ex chans) b b) where
+  rand = A.rand
+
+instance Throw (A.AsyncAlgo ('A.AsyncPars pr ra '[ '(ex, b)] chans) b b) ex where
+  throw = A.throw Here
+
+instance XThrow (A.AsyncAlgo ('A.AsyncPars pr ra ex chans)) ex where
+  xthrow = A.throw
+
+instance Async (A.AsyncAlgo ('A.AsyncPars pr ra ex chans)) chans where
+  sendMess = A.sendMess
+  recvAny = A.recvAny
+  getWT = A.getWT
+
+liftAsyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b))
+                , IfThenElse ra (forall b. Rand (m b b)) (forall b. Empty (m b b))
+                , XThrow m ex
+                , Async m chans
+                )
+               => A.AsyncAlgo ('A.AsyncPars pr ra ex chans) bef aft a
+               -> m bef aft a
+liftAsyncAlgo (A.AsyncAlgo (Pure v)) = xreturn v
+liftAsyncAlgo (A.AsyncAlgo (Join v)) =
+  case v of
+    A.RecvAction cont -> recvAny >>=: liftAsyncAlgo . A.AsyncAlgo . cont
+    A.SendAction m r -> sendMess m >>: liftAsyncAlgo (A.AsyncAlgo r)
+    A.GetWTAction cont -> getWT >>=: liftAsyncAlgo . A.AsyncAlgo . cont
+    A.PrintAction s r -> debugPrint s >>: liftAsyncAlgo (A.AsyncAlgo r)
+    A.RandAction cont -> rand >>=: liftAsyncAlgo . A.AsyncAlgo . cont
+    A.ThrowAction i e -> xthrow i e
