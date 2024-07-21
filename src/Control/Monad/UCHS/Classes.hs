@@ -1,6 +1,28 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module Control.Monad.UCHS.Classes where
+module Control.Monad.UCHS.Classes
+  (
+  -- * Local Operations
+  -- $local
+    Print(..)
+  , Rand(..)
+  , Throw(..)
+  , liftAlgo
+  -- * Interactive Operations
+  -- $interactive
+  , GetWT(..)
+  -- ** Sync Operations
+  -- $sync
+  , SyncUp(..)
+  , SyncDown(..)
+  , liftSyncAlgo
+  -- ** Async Operations
+  -- $async
+  , Async(..)
+  , liftAsyncAlgo
+  , recv
+  , sendSync
+  ) where
 
 import Data.Kind
 import Data.HList
