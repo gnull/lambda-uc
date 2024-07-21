@@ -6,6 +6,7 @@ import Data.Kind
 import Data.HList
 
 import Control.XMonad
+import Control.XFreer.Join
 
 import qualified Control.Monad.UCHS.Local as L
 import qualified Control.Monad.UCHS.Sync as S
@@ -32,6 +33,33 @@ instance Rand (L.Algo pr True ex) where
 
 instance Throw (L.Algo pr ra e) e where
   throw = L.Algo . S.throw Here
+
+-- |Type-level if-then-else, we use it to choose constraints conditionally
+type IfThenElse :: forall a. Bool -> a -> a -> a
+type family IfThenElse c t f where
+  IfThenElse True t _ = t
+  IfThenElse False _ f = f
+
+-- |Empty constraint
+class Empty x
+instance Empty x
+
+liftAlgo :: ( IfThenElse pr Print Empty m
+            , IfThenElse ra Rand Empty m
+            , Throw m ex
+            )
+           => InList '(ex, b) exs
+           -> L.Algo pr ra ex a
+           -> m a
+liftAlgo _ (L.Algo (S.SyncAlgo (Pure v))) = pure v
+liftAlgo i (L.Algo (S.SyncAlgo (Join v))) =
+  case v of
+    S.YieldAction contra _ -> case contra of {}
+    S.CallAction contra _ _ -> case contra of {}
+    S.PrintAction s r -> debugPrint s >> (liftAlgo i $ L.Algo $ S.SyncAlgo r)
+    S.RandAction cont -> rand >>= (\b -> liftAlgo i $ L.Algo $ S.SyncAlgo $ cont b)
+    S.ThrowAction Here e -> throw e
+    S.ThrowAction (There contra) _ -> case contra of {}
 
 -- $sync
 
