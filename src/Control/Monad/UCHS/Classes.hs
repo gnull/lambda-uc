@@ -19,6 +19,7 @@ module Control.Monad.UCHS.Classes
   -- $async
   , Async(..)
   -- $derived
+  , ExBadSender(..)
   , recv
   , sendSync
   -- * Abstracting monad type
@@ -245,9 +246,12 @@ liftAsyncAlgo (A.AsyncAlgo (Join v)) =
 --
 -- Some convenient shorthand operations built from basic ones.
 
+-- |An exception thrown if a message does not arrive from the expected sender.
+data ExBadSender = ExBadSender
+
 -- |Receive from a specific channel. If an unexpected message arrives from
 -- another channel, throw the `()` exception.
-recv :: (XThrow m '[ '((), True)], Async m l)
+recv :: (XThrow m '[ '(ExBadSender, True)], Async m l)
      => Chan x y l
      -> m False True y
 recv i = M.do
@@ -255,15 +259,15 @@ recv i = M.do
   case testEquality i j of
     Just Refl -> xreturn m
     Nothing -> M.do
-      xthrow Here ()
+      xthrow Here ExBadSender
 
 -- |Send message to a given channel and wait for a response. If some other
 -- message arrives before the expected response, throw the `()` exception.
-sendSync :: (XThrow m '[ '((), True)], Async m l)
+sendSync :: (XThrow m '[ '(ExBadSender, True)], Async m l)
          => x -> Chan x y l -> m True True y
 sendSync m chan = M.do
   send chan m
   (SomeSndMessage i y) <- recvAny
   case testEquality i chan of
     Just Refl -> xreturn y
-    Nothing -> xthrow Here ()
+    Nothing -> xthrow Here ExBadSender

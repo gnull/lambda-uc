@@ -43,7 +43,8 @@ maybeSends chan = ContFromAnyWT $ \cont -> M.do
       cont msg
     Nothing -> cont False
 
-useMaybeSends :: Chan Bool Bool l -> AsyncAlgo ('AsyncPars pr ra '[ '((), True) ] l) False True Bool
+useMaybeSends :: Chan Bool Bool l
+              -> AsyncAlgo ('AsyncPars pr ra '[ '(ExBadSender, True) ] l) False True Bool
 useMaybeSends chan = M.do
   -- Step #1: pass @maybeSends@ to dispatchSomeWT
   -- Step #2: pass it a continuation that starts from unknown WT state
