@@ -2,26 +2,30 @@
 
 module Control.Monad.UCHS.Classes
   (
-  -- * Local Operations
+  -- * Local Computations
   -- $local
     Print(..)
   , Rand(..)
   , Throw(..)
-  , liftAlgo
-  -- * Interactive Operations
+  -- * Interactive Computations
   -- $interactive
   , GetWT(..)
-  -- ** Sync Operations
+  , XThrow(..)
+  -- ** Synchronous Interaction
   -- $sync
   , SyncUp(..)
   , SyncDown(..)
-  , liftSyncAlgo
-  -- ** Async Operations
+  -- ** Asynchronous Interaction
   -- $async
   , Async(..)
-  , liftAsyncAlgo
+  -- $derived
   , recv
   , sendSync
+  -- * Abstracting monad type
+  -- $lifting
+  , liftAlgo
+  , liftSyncAlgo
+  , liftAsyncAlgo
   ) where
 
 import Data.Kind
@@ -38,36 +42,99 @@ import qualified Control.Monad.UCHS.Local as L
 import qualified Control.Monad.UCHS.Sync as S
 import qualified Control.Monad.UCHS.Async as A
 
+-- $local
+--
+-- A local (non-interactive) algorithm may perform the following side-effects:
+-- throwing exceptions, sampling random bits, printing debug messages.
+--
+-- These side effects are also compatible with interactive algorithms.
+
 class Monad m => Print (m :: Type -> Type) where
+  -- |Print debug info.
+  --
+  -- This has no effect on the algorithm definition, i.e. all `debugPrint`
+  -- calls are ignored when your protocol is converted into a real-world
+  -- implementation. But you may use print statements to illustrate your
+  -- algorithms in toy executions.
   debugPrint :: String -> m ()
 
 class Monad m => Rand (m :: Type -> Type) where
+  -- |Sample one random bit.
   rand :: m Bool
 
 class Monad m => Throw (m :: Type -> Type) (e :: Type) | m -> e where
+  -- |Throw an exception.
   throw :: e -> m a
 
-class XMonad m => XThrow (m :: Bool -> Bool -> Type -> Type) (ex :: [(Type, Bool)]) | m -> ex where
-  xthrow :: InList '(e, b) ex -> e -> m b b' a
+-- $interactive
+--
+-- Side-effects available to both syncronous and asynchronous interactive
+-- algorithms: reading the current state of the write token, throwing
+-- write-token-aware exceptions.
 
 class XMonad m => GetWT m where
   getWT :: m b b (SBool b)
 
+class XMonad m => XThrow (m :: Bool -> Bool -> Type -> Type) (ex :: [(Type, Bool)]) | m -> ex where
+  xthrow :: InList '(e, b) ex -> e -> m b b' a
+
+-- $sync
+--
+-- Side-effects of a syncronous interactive algorithm. Such an algorithm can:
+--
+-- 1. handle oracle calls from its parent (`SyncUp`),
+-- 2. issue oracle calls to its children (`SyncDown`).
+--
+-- Oracle calls are synchronous: calling algorithm is put to sleep until its
+-- child responds to the call. An algorithm may implement one of `SyncUp` and
+-- `SyncDown` or both depending on whether it is supposed to provide and/or
+-- call oracle interfaces.
+
 class GetWT m => SyncUp (m :: Bool -> Bool -> Type -> Type) (up :: (Type, Type)) | m -> up where
+  -- |Accept an oracle call from parent.
   accept :: m False True (Snd up)
+  -- |Yield the response to the previosly accepted oracle call from parent.
   yield :: (Fst up) -> m True False ()
 
 class GetWT m => SyncDown (m :: Bool -> Bool -> Type -> Type) (down :: [(Type, Type)]) | m -> down where
+  -- |Perform an oracle call to a child. The call waits for the child to
+  -- respond (putting caller to sleep until then).
   call :: Chan x y down -> x -> m b b y
 
-class GetWT m => Async (m :: Bool -> Bool -> Type -> Type) (chans :: [(Type, Type)]) | m -> chans where
-  sendMess :: SomeFstMessage chans -> m True False ()
-  recvAny :: m False True (SomeSndMessage chans)
+-- $async
+--
+-- Side-effects of an asynchronous interactive algorithm. Such an algorithm can:
+--
+-- 1. send a message to a chosen recepient,
+-- 2. receive message from a receiver.
+--
+-- Note that sending a message does not require the recepient to respond (now
+-- or later). When receiving a message, we must be ready that it can arrive
+-- from anyone — as the exact order of messages can not be predicted at compile
+-- time.
 
+class GetWT m => Async (m :: Bool -> Bool -> Type -> Type) (chans :: [(Type, Type)]) | m -> chans where
+  -- |Send message to the channel it is marked with.
+  sendMess :: SomeFstMessage chans -> m True False ()
+
+  -- |Curried version of `sendMess`.
   send :: Chan x y chans -> x -> m True False ()
   send i m = sendMess $ SomeFstMessage i m
 
--- $local
+  -- |Receive the next message which can arrive from any of `chan` channels.
+  recvAny :: m False True (SomeSndMessage chans)
+
+-- $lifting
+--
+-- The following functions convert a concrete (local or interactive) monad
+-- syntax into any monad that implements the same operations. The main use of
+-- these is to demonstrate what combination of typeclasses each of `L.Algo`,
+-- `S.SyncAlgo` and `A.AsyncAlgo` is equivalent to.
+--
+-- Conversion in the other direction (from polymorphic monad to concrete
+-- syntax) is done automatically.
+
+-- Local
 
 instance Print (L.Algo True ra ex) where
   debugPrint = L.Algo . debugPrint
@@ -92,7 +159,7 @@ liftAlgo (L.Algo (S.SyncAlgo (Join v))) =
     S.ThrowAction Here e -> throw e
     S.ThrowAction (There contra) _ -> case contra of {}
 
--- $sync
+-- Sync
 
 instance Print (S.SyncAlgo ('S.SyncPars True ra ex chans) b b) where
   debugPrint s = S.xfreeSync $ S.PrintAction s ()
@@ -135,7 +202,7 @@ liftSyncAlgo (S.SyncAlgo (Join v)) =
     S.RandAction cont -> rand >>=: liftSyncAlgo . S.SyncAlgo . cont
     S.ThrowAction i e -> xthrow i e
 
--- $async
+-- Async
 
 instance Print (A.AsyncAlgo ('A.AsyncPars True ra ex chans) b b) where
   debugPrint s = A.xfreeAsync $ A.PrintAction s ()
@@ -179,7 +246,7 @@ liftAsyncAlgo (A.AsyncAlgo (Join v)) =
 -- Some convenient shorthand operations built from basic ones.
 
 -- |Receive from a specific channel. If an unexpected message arrives from
--- another channel, ignore it and yield back the control.
+-- another channel, throw the `()` exception.
 recv :: (XThrow m '[ '((), True)], Async m l)
      => Chan x y l
      -> m False True y
@@ -190,7 +257,8 @@ recv i = M.do
     Nothing -> M.do
       xthrow Here ()
 
--- |Send message to a given channel and wait for a response
+-- |Send message to a given channel and wait for a response. If some other
+-- message arrives before the expected response, throw the `()` exception.
 sendSync :: (XThrow m '[ '((), True)], Async m l)
          => x -> Chan x y l -> m True True y
 sendSync m chan = M.do
