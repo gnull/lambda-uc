@@ -11,6 +11,7 @@ module Control.Monad.UCHS.Classes
   -- $interactive
   , GetWT(..)
   , XThrow(..)
+  , XCatch(..)
   -- ** Synchronous Interaction
   -- $sync
   , SyncUp(..)
@@ -77,7 +78,20 @@ class XMonad m => GetWT m where
   getWT :: m b b (SBool b)
 
 class XMonad m => XThrow (m :: Bool -> Bool -> Type -> Type) (ex :: [(Type, Bool)]) | m -> ex where
+  -- |Throw a context-aware exception. The list of possible exceptions `ex`
+  -- contains types annotated with the write-token state from which they can be
+  -- thrown.
   xthrow :: InList '(e, b) ex -> e -> m b b' a
+
+class (XThrow m ex, XMonad m') => XCatch m ex m' where
+  -- |Can an exception (like one ones thrown by `xthrow`). The handler
+  -- must bring write token to the `aft` state, the same as the one where
+  -- computation would end up if no exception occurred.
+  xcatch :: m bef aft a
+        -- ^The computation that may throw an exception
+        -> (forall e b. InList '(e, b) ex -> e -> m' b aft a)
+        -- ^How to handle the exception
+        -> m' bef aft a
 
 -- $sync
 --
@@ -174,6 +188,26 @@ instance Throw (S.SyncAlgo ('S.SyncPars pr ra '[ '(ex, b)] chans) b b) ex where
 instance XThrow (S.SyncAlgo ('S.SyncPars pr ra ex chans)) ex where
   xthrow i ex = S.xfreeSync $ S.ThrowAction i ex
 
+instance XCatch
+    (S.SyncAlgo ('S.SyncPars pr ra ex chans))
+    ex
+    (S.SyncAlgo ('S.SyncPars pr ra ex' chans))
+  where
+    xcatch (S.SyncAlgo a) h = S.SyncAlgo $ xcatch' a $ \i e -> S.fromSyncAlgo (h i e)
+      where
+        xcatch' :: XFree (S.SyncActions ('S.SyncPars pr ra ex chans)) bef aft a
+                -> (forall e b. InList '(e, b) ex -> e -> XFree (S.SyncActions ('S.SyncPars pr ra ex' chans)) b aft a)
+                -> XFree (S.SyncActions ('S.SyncPars pr ra ex' chans)) bef aft a
+        xcatch' (Pure x) _ = xreturn x
+        xcatch' (Join a) h' = case a of
+            S.AcceptAction cont -> Join $ S.AcceptAction $ (`xcatch'` h') . cont
+            S.YieldAction x r -> Join $ S.YieldAction x $ r `xcatch'` h'
+            S.CallAction i m cont -> Join $ S.CallAction i m $ (`xcatch'` h') . cont
+            S.GetWTAction cont -> Join $ S.GetWTAction $ (`xcatch'` h') . cont
+            S.PrintAction v r -> Join $ S.PrintAction v $ r `xcatch'` h'
+            S.RandAction cont -> Join $ S.RandAction $ (`xcatch'` h') . cont
+            S.ThrowAction i e -> h' i e
+
 instance GetWT (S.SyncAlgo ('S.SyncPars pr ra ex (Just '(up, down)))) where
   getWT = S.xfreeSync $ S.GetWTAction id
 
@@ -217,6 +251,26 @@ instance Throw (A.AsyncAlgo ('A.AsyncPars pr ra '[ '(ex, b)] chans) b b) ex wher
 instance XThrow (A.AsyncAlgo ('A.AsyncPars pr ra ex chans)) ex where
   xthrow i ex = A.xfreeAsync $ A.ThrowAction i ex
 
+instance XCatch
+    (A.AsyncAlgo ('A.AsyncPars pr ra ex chans))
+    ex
+    (A.AsyncAlgo ('A.AsyncPars pr ra ex' chans))
+  where
+    xcatch (A.AsyncAlgo a) h = A.AsyncAlgo $ xcatch' a $ \i e -> A.fromAsyncAlgo (h i e)
+      where
+        xcatch' :: XFree (A.AsyncActions ('A.AsyncPars pr ra ex chans)) bef aft a
+                -> (forall e b. InList '(e, b) ex -> e -> XFree (A.AsyncActions ('A.AsyncPars pr ra ex' chans)) b aft a)
+                -> XFree (A.AsyncActions ('A.AsyncPars pr ra ex' chans)) bef aft a
+        xcatch' (Pure x) _ = xreturn x
+        xcatch' (Join a) h' = case a of
+            A.RecvAction cont -> Join $ A.RecvAction $ (`xcatch'` h') . cont
+            A.SendAction x r -> Join $ A.SendAction x $ r `xcatch'` h'
+            A.GetWTAction cont -> Join $ A.GetWTAction $ (`xcatch'` h') . cont
+            A.PrintAction v r -> Join $ A.PrintAction v $ r `xcatch'` h'
+            A.RandAction cont -> Join $ A.RandAction $ (`xcatch'` h') . cont
+            A.ThrowAction i e -> h' i e
+
+
 instance GetWT (A.AsyncAlgo ('A.AsyncPars pr ra ex chans)) where
   getWT = A.xfreeAsync $ A.GetWTAction id
 
@@ -250,7 +304,7 @@ liftAsyncAlgo (A.AsyncAlgo (Join v)) =
 data ExBadSender = ExBadSender
 
 -- |Receive from a specific channel. If an unexpected message arrives from
--- another channel, throw the `()` exception.
+-- another channel, throw the `ExBadSender` exception.
 recv :: (XThrow m '[ '(ExBadSender, True)], Async m l)
      => Chan x y l
      -> m False True y
@@ -262,7 +316,8 @@ recv i = M.do
       xthrow Here ExBadSender
 
 -- |Send message to a given channel and wait for a response. If some other
--- message arrives before the expected response, throw the `()` exception.
+-- message arrives before the expected response, throw the `ExBadSender`
+-- exception.
 sendSync :: (XThrow m '[ '(ExBadSender, True)], Async m l)
          => x -> Chan x y l -> m True True y
 sendSync m chan = M.do
