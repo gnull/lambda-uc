@@ -1,6 +1,6 @@
 {-# LANGUAGE DerivingVia #-}
 
-module Control.Monad.UCHS.Sync (
+module UCHS.Monad.SyncAlgo (
   -- * Interactive Algorithm Monad
   -- $monad
     SyncAlgo(..)
@@ -21,7 +21,8 @@ import Control.XMonad
 
 -- import Data.Type.Equality ((:~:)(Refl))
 
-import Types
+import UCHS.Types
+import UCHS.Monad.Class
 
 import Data.Kind (Type)
 
@@ -99,22 +100,46 @@ instance Monad (SyncAlgo st bef bef) where
 xfreeSync :: SyncActions st bef aft a -> SyncAlgo st bef aft a
 xfreeSync = SyncAlgo . xfree
 
--- -- |Catch an exception. The handler must be prepared for any of the exceptions declared in @e@
--- catch :: SyncAlgo ('SyncPars pr ra e l) bef aft a
---       -- ^The computation that may throw an exception
---       -> (forall ex b. InList '(ex, b) e -> ex -> SyncAlgo ('SyncPars pr ra e' l) b aft a)
---       -- ^How to handle the exception
---       -> SyncAlgo ('SyncPars pr ra e' l) bef aft a
--- catch (SyncAlgo m) handler = SyncAlgo $ helper (\i e -> fromSyncAlgo $ handler i e) m
---   where
---     helper :: (forall ex b. InList '(ex, b) e -> ex -> XFree (SyncActions ('SyncPars pr ra e' l)) b aft a)
---            -> XFree (SyncActions ('SyncPars pr ra e l)) bef aft a
---            -> XFree (SyncActions ('SyncPars pr ra e' l)) bef aft a
---     helper h = \case
---       Pure v -> Pure v
---       Bind RecvAction f -> Bind RecvAction $ helper h . f
---       Bind (SendAction v) f -> Bind (SendAction v) $ helper h . f
---       Bind GetWTAction f -> Bind GetWTAction $ helper h . f
---       Bind (PrintAction s) f -> Bind (PrintAction s) $ helper h . f
---       Bind RandAction f -> Bind RandAction $ helper h . f
---       Bind (ThrowAction i e) _ -> h i e
+-- Sync
+
+instance Print (SyncAlgo ('SyncPars True ra ex chans) b b) where
+  debugPrint s = xfreeSync $ PrintAction s ()
+
+instance Rand (SyncAlgo ('SyncPars pr True ex chans) b b) where
+  rand = xfreeSync $ RandAction id
+
+instance Throw (SyncAlgo ('SyncPars pr ra '[ '(ex, b)] chans) b b) ex where
+  throw = xthrow Here
+
+instance XThrow (SyncAlgo ('SyncPars pr ra ex chans)) ex where
+  xthrow i ex = xfreeSync $ ThrowAction i ex
+
+instance XCatch
+    (SyncAlgo ('SyncPars pr ra ex chans))
+    ex
+    (SyncAlgo ('SyncPars pr ra ex' chans))
+  where
+    xcatch (SyncAlgo a) h = SyncAlgo $ xcatch' a $ \i e -> fromSyncAlgo (h i e)
+      where
+        xcatch' :: XFree (SyncActions ('SyncPars pr ra ex chans)) bef aft a
+                -> (forall e b. InList '(e, b) ex -> e -> XFree (SyncActions ('SyncPars pr ra ex' chans)) b aft a)
+                -> XFree (SyncActions ('SyncPars pr ra ex' chans)) bef aft a
+        xcatch' (Pure x) _ = xreturn x
+        xcatch' (Join a) h' = case a of
+            AcceptAction cont -> Join $ AcceptAction $ (`xcatch'` h') . cont
+            YieldAction x r -> Join $ YieldAction x $ r `xcatch'` h'
+            CallAction i m cont -> Join $ CallAction i m $ (`xcatch'` h') . cont
+            GetWTAction cont -> Join $ GetWTAction $ (`xcatch'` h') . cont
+            PrintAction v r -> Join $ PrintAction v $ r `xcatch'` h'
+            RandAction cont -> Join $ RandAction $ (`xcatch'` h') . cont
+            ThrowAction i e -> h' i e
+
+instance GetWT (SyncAlgo ('SyncPars pr ra ex (Just '(up, down)))) where
+  getWT = xfreeSync $ GetWTAction id
+
+instance SyncUp (SyncAlgo ('SyncPars pr ra ex (Just '( '(x, y), down)))) '(x, y) where
+  accept = xfreeSync $ AcceptAction id
+  yield x = xfreeSync $ YieldAction x ()
+
+instance SyncDown (SyncAlgo ('SyncPars pr ra ex (Just '(up, down)))) down where
+  call i x = xfreeSync $ CallAction i x id

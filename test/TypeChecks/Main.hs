@@ -6,9 +6,9 @@ import Test.Tasty            (TestTree, defaultMain)
 import Test.Tasty.HUnit      (testCase, assertEqual)
 import Test.ShouldNotTypecheck (shouldNotTypecheck)
 
-import Control.Monad.UCHS.Classes
-import Control.Monad.UCHS.Async
-import Types
+import UCHS.Monad.Class
+import UCHS.Monad.AsyncAlgo
+import UCHS.Types
 
 main :: IO ()
 main = defaultMain tests

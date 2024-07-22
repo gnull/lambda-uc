@@ -8,10 +8,10 @@ import qualified Control.XMonad.Do as M
 
 import Data.Type.Equality ((:~:)(Refl))
 
-import Control.Monad.UCHS.Async
-import Control.Monad.UCHS.Classes
-import Control.Monad.UCHS.Async.SomeWTM
-import Types
+import UCHS.Monad.AsyncAlgo
+import UCHS.Monad.Class
+import UCHS.Monad.AsyncAlgo.SomeWTM
+import UCHS.Types
 
 main :: IO ()
 main = defaultMain tests

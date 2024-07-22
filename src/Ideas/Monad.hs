@@ -12,7 +12,7 @@ import qualified Control.Monad.STM as STM --also supplies instance MonadPlus STM
 
 import Data.Type.Equality ((:~:)(Refl))
 
-import Types
+import UCHS.Types
 
 -- free monads
 
@@ -185,7 +185,7 @@ runSTM l = \case
     runSTM l $ f m
   Free (SendAction (SomeFstMessage i m) a) -> do
     STM.atomically $ do
-      let (TwoChans s _) = l Types.!! i
+      let (TwoChans s _) = l UCHS.Types.!! i
       STM.writeTChan s m
     runSTM l a
 

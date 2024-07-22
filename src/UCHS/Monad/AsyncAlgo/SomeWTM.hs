@@ -1,9 +1,9 @@
-module Control.Monad.UCHS.Async.SomeWTM where
+module UCHS.Monad.AsyncAlgo.SomeWTM where
 
-import Control.Monad.UCHS.Async
+import UCHS.Monad.AsyncAlgo
 
-import Control.XMonad
-import qualified Control.XMonad.Do as M
+-- import Control.XMonad
+-- import qualified Control.XMonad.Do as M
 
 -- data ContFromAnyWT st bef aft a b
 --   = ContFromAnyWT ((a -> forall i. AsyncAlgo pr ra l i aft b) -> AsyncAlgo pr ra l bef aft b)

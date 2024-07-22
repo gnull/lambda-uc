@@ -1,4 +1,4 @@
-module Types
+module UCHS.Types
   ( module Data.HList
   , SBool(..)
   , Fst
