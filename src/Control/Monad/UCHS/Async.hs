@@ -66,7 +66,7 @@ data AsyncActions (st :: AsyncPars) (bef :: Bool) (aft :: Bool) (a :: Type) wher
 
   -- Optional Actions that can be turned on/off with flags
   PrintAction :: String -> a -> AsyncActions ('AsyncPars True ra ex ch) b b a
-  RandAction :: (Bool -> a) -> AsyncActions ('AsyncPars pr True ex ch) b b a
+  RandAction :: (Bounded v, Enum v) => (v -> a) -> AsyncActions ('AsyncPars pr True ex ch) b b a
   ThrowAction :: InList '(e, b) ex -> e -> AsyncActions ('AsyncPars pr ra ex ch) b b' a
 
 instance Functor (AsyncActions st bef aft) where

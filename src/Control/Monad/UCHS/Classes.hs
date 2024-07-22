@@ -60,8 +60,8 @@ class Monad m => Print (m :: Type -> Type) where
   debugPrint :: String -> m ()
 
 class Monad m => Rand (m :: Type -> Type) where
-  -- |Sample one random bit.
-  rand :: m Bool
+  -- |Sample a random value.
+  rand :: (Bounded a, Enum a) => m a
 
 class Monad m => Throw (m :: Type -> Type) (e :: Type) | m -> e where
   -- |Throw an exception.

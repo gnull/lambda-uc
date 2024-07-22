@@ -58,7 +58,7 @@ data SyncActions (st :: SyncPars) (bef :: Bool) (aft :: Bool) a where
 
   -- Optional Actions that can be turned on/off with flags
   PrintAction :: String -> a -> SyncActions ('SyncPars True ra ex chans) b b a
-  RandAction :: (Bool -> a) -> SyncActions ('SyncPars pr True ex chans) b b a
+  RandAction :: (Bounded v, Enum v) => (v -> a) -> SyncActions ('SyncPars pr True ex chans) b b a
   ThrowAction :: InList '(e, b) ex -> e -> SyncActions ('SyncPars pr ra ex chans) b b' a
 
 instance Functor (SyncActions st bef aft) where
