@@ -57,6 +57,7 @@ library
       UCHS.Monad.AsyncAlgo
       UCHS.Monad.AsyncAlgo.SomeWTM
       -- UCHS.Monad.Extra
+      UCHS.Games.SignatureScheme
       Ideas.Monad
   other-modules:
   hs-source-dirs:
