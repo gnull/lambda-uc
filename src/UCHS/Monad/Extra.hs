@@ -6,7 +6,7 @@ module UCHS.Monad.Extra
   --
   -- $intro
     liftAlgo
-  -- , liftSyncAlgo
+  , liftSyncAlgo
   -- , liftAsyncAlgo
   )
   where
@@ -21,6 +21,8 @@ import UCHS.Monad.Class
 import qualified UCHS.Monad.Algo as L
 import qualified UCHS.Monad.SyncAlgo as S
 import qualified UCHS.Monad.AsyncAlgo as A
+
+import qualified Control.XMonad.Do as M
 
 -- $intro
 --
@@ -53,26 +55,35 @@ liftAlgo (L.Algo (F.Free v)) =
     L.PrintAction s r -> debugPrint s >> (liftAlgo $ L.Algo r)
     L.RandAction cont -> rand >>= (\b -> liftAlgo $ L.Algo $ cont b)
 
--- liftSyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b))
---                 , IfThenElse ra (forall b. Rand (m b b)) (forall b. Empty (m b b))
---                 , (forall b. Monad (m b b))
---                 , XThrow m ex
---                 , SyncUp m up
---                 , SyncDown m down
---                 )
---                => S.SyncAlgo ('S.SyncPars (L.Algo pr ra) ex (Just '(up, down))) bef aft a
---                -> m bef aft a
--- liftSyncAlgo (S.SyncAlgo (Pure v)) = xreturn v
--- liftSyncAlgo (S.SyncAlgo (Join v)) =
---   case v of
---     S.YieldAction m r -> yield m >>: liftSyncAlgo (S.SyncAlgo r)
---     S.AcceptAction cont -> accept >>=: liftSyncAlgo . S.SyncAlgo . cont
---     S.CallAction i m cont -> call i m >>=: liftSyncAlgo . S.SyncAlgo . cont
---     S.GetWTAction cont -> getWT >>=: liftSyncAlgo . S.SyncAlgo . cont
---     S.ThrowAction i e -> xthrow i e
---     S.SyncLiftAction m cont -> liftAlgo m >>=: liftSyncAlgo . S.SyncAlgo . cont
-
---     -- S.lift m >>=: liftSyncAlgo . S.SyncAlgo . cont
+liftSyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b))
+                , IfThenElse ra (forall b. Rand (m b b)) (forall b. Empty (m b b))
+                , (forall b. Monad (m b b))
+                , XThrow m ex
+                , SyncUp m up
+                , SyncDown m down
+                )
+               => (SBool pr, SBool ra)
+               -- ^An argument that helps GHC evaluate constraints
+               -> S.SyncAlgo ('S.SyncPars (L.Algo pr ra) ex up down) bef aft a
+               -> m bef aft a
+liftSyncAlgo _ (S.SyncAlgo (Pure v)) = xreturn v
+liftSyncAlgo h (S.SyncAlgo (Join v)) =
+    case v of
+      S.YieldAction m r -> yield m >>: liftSyncAlgo h (S.SyncAlgo r)
+      S.AcceptAction cont -> accept >>=: liftSyncAlgo h . S.SyncAlgo . cont
+      S.CallAction i m cont -> call i m >>=: liftSyncAlgo h . S.SyncAlgo . cont
+      S.GetWTAction cont -> getWT >>=: liftSyncAlgo h . S.SyncAlgo . cont
+      S.ThrowAction i e -> xthrow i e
+      S.SyncLiftAction (L.Algo m) cont -> case m of
+        F.Pure r -> liftSyncAlgo h $ S.SyncAlgo $ cont r
+        F.Free (L.PrintAction s r) -> M.do
+          debugPrint s
+          r' <- liftSyncAlgo h $ S.lift $ L.Algo r
+          liftSyncAlgo h $ S.SyncAlgo $ cont r'
+        F.Free (L.RandAction contInner) -> M.do
+          x <- rand
+          r' <- liftSyncAlgo h $ S.lift $ L.Algo $ contInner x
+          liftSyncAlgo h $ S.SyncAlgo $ cont r'
 
 -- liftAsyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b))
 --                 , IfThenElse ra (forall b. Rand (m b b)) (forall b. Empty (m b b))
