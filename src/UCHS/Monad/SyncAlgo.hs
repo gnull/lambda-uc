@@ -19,7 +19,8 @@ module UCHS.Monad.SyncAlgo (
   , DeliverRes(..)
   , runWithOracle
   , OracleCallerWrapper
-  , OracleWrapper(..)
+  , OracleWrapper
+  , OracleReq(..)
 ) where
 
 -- import Prelude hiding ((>>=), return)
