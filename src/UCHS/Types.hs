@@ -1,6 +1,9 @@
 module UCHS.Types
   ( module Data.HList
+  , module Data.Void
+  , module Data.Kind
   , SBool(..)
+  , Or
   , Fst
   , Snd
   , Empty
@@ -8,13 +11,21 @@ module UCHS.Types
   )
 where
 
-import Data.Kind
+import Data.Void (Void)
+
+import Data.Kind (Type)
 import Data.HList
 
 -- |Singleton @Bool@ used to store the dependent value of Write Token
 data SBool (a :: Bool) where
   STrue :: SBool True
   SFalse :: SBool False
+
+type Or :: Bool -> Bool -> Bool
+type family Or x y where
+  Or True _ = True
+  Or _ True = True
+  Or _ _ = False
 
 type Fst :: (Type, Type) -> Type
 type family Fst p where

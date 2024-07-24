@@ -23,6 +23,7 @@ common deft
     , async
     , stm
     , freer-indexed
+    , free
   ghc-options:
     -Wall
     -Wcompat
@@ -55,7 +56,7 @@ library
       UCHS.Monad.SyncAlgo
       UCHS.Monad.AsyncAlgo
       UCHS.Monad.AsyncAlgo.SomeWTM
-      UCHS.Monad.Extra
+      -- UCHS.Monad.Extra
       Ideas.Monad
   other-modules:
   hs-source-dirs:

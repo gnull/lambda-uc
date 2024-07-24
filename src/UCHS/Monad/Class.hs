@@ -7,6 +7,7 @@ module UCHS.Monad.Class
     Print(..)
   , Rand(..)
   , Throw(..)
+  , Catch(..)
   -- * Interactive Computations
   -- $interactive
   , GetWT(..)
@@ -53,11 +54,15 @@ class Monad m => Print (m :: Type -> Type) where
 
 class Monad m => Rand (m :: Type -> Type) where
   -- |Sample a random value.
-  rand :: (Bounded a, Enum a) => m a
+  rand :: m Bool
 
 class Monad m => Throw (m :: Type -> Type) (e :: Type) | m -> e where
   -- |Throw an exception.
   throw :: e -> m a
+
+class (Throw m e, Monad m') => Catch m e m' | m -> e where
+  -- |Catch an exception.
+  catch :: m a -> (e -> m' a) -> m' a
 
 -- $interactive
 --

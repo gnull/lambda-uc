@@ -30,10 +30,8 @@ import Data.Kind (Type)
 
 -- |The parameters of @AsyncAlgo@ that do not change throughout the execution
 data AsyncPars = AsyncPars
-  { stPr :: Bool
-  -- ^Printing allowed?
-  , stRa :: Bool
-  -- ^Probabilistic choices allowed?
+  { stInner :: Type -> Type
+  -- ^Inner monad that runs local computations
   , stEx :: [(Type, Bool)]
   -- ^Type of exceptions we throw and contexts (use @[]@ to disable exceptions)
   , stCh :: [(Type, Type)]
@@ -56,24 +54,20 @@ data AsyncPars = AsyncPars
 --   action.
 data AsyncActions (st :: AsyncPars) (bef :: Bool) (aft :: Bool) (a :: Type) where
   -- IPC actions: recv, send
-  RecvAction :: (SomeSndMessage ch -> a) -> AsyncActions ('AsyncPars pr ra ex ch) False True a
-  SendAction :: SomeFstMessage ch -> a -> AsyncActions ('AsyncPars pr ra ex ch) True False a
-
+  RecvAction :: (SomeSndMessage ch -> a) -> AsyncActions ('AsyncPars m ex ch) False True a
+  SendAction :: SomeFstMessage ch -> a -> AsyncActions ('AsyncPars m ex ch) True False a
   -- |Get the current state of Write Token
   GetWTAction :: (SBool b -> a) -> AsyncActions st b b a
-
-  -- Optional Actions that can be turned on/off with flags
-  PrintAction :: String -> a -> AsyncActions ('AsyncPars True ra ex ch) b b a
-  RandAction :: (Bounded v, Enum v) => (v -> a) -> AsyncActions ('AsyncPars pr True ex ch) b b a
-  ThrowAction :: InList '(e, b) ex -> e -> AsyncActions ('AsyncPars pr ra ex ch) b b' a
+  ThrowAction :: InList '(e, b) ex -> e -> AsyncActions ('AsyncPars m ex ch) b b' a
+  -- |Run a local action in the inner monad.
+  AsyncLiftAction :: m x -> (x -> a) -> AsyncActions ('AsyncPars m ex chans) b b a
 
 instance Functor (AsyncActions st bef aft) where
   fmap f (RecvAction cont) = RecvAction $ f . cont
   fmap f (SendAction m r) = SendAction m $ f r
   fmap f (GetWTAction cont) = GetWTAction $ f . cont
-  fmap f (PrintAction m r) = PrintAction m $ f r
-  fmap f (RandAction cont) = RandAction $ f . cont
   fmap _ (ThrowAction i e) = ThrowAction i e
+  fmap f (AsyncLiftAction m cont) = AsyncLiftAction m $ f . cont
 
 -- $monad
 
@@ -106,41 +100,52 @@ xfreeAsync = AsyncAlgo . xfree
 
 -- Async
 
-instance Print (AsyncAlgo ('AsyncPars True ra ex chans) b b) where
-  debugPrint s = xfreeAsync $ PrintAction s ()
+lift :: m a -> AsyncAlgo ('AsyncPars m ex chans) b b a
+lift m = xfreeAsync $ AsyncLiftAction m id
 
-instance Rand (AsyncAlgo ('AsyncPars pr True ex chans) b b) where
-  rand = xfreeAsync $ RandAction id
+instance Print m => Print (AsyncAlgo ('AsyncPars m ex chans) b b) where
+  debugPrint = lift . debugPrint
 
-instance Throw (AsyncAlgo ('AsyncPars pr ra '[ '(ex, b)] chans) b b) ex where
+instance Rand m => Rand (AsyncAlgo ('AsyncPars m ex chans) b b) where
+  rand = lift $ rand
+
+instance Throw (AsyncAlgo ('AsyncPars m '[ '(ex, b)] chans) b b) ex where
   throw = xthrow Here
 
-instance XThrow (AsyncAlgo ('AsyncPars pr ra ex chans)) ex where
+instance XThrow (AsyncAlgo ('AsyncPars m ex chans)) ex where
   xthrow i ex = xfreeAsync $ ThrowAction i ex
 
-instance XCatch
-    (AsyncAlgo ('AsyncPars pr ra ex chans))
+instance Catch
+    (AsyncAlgo ('AsyncPars m '[ '(ex, b)] chans) b b)
     ex
-    (AsyncAlgo ('AsyncPars pr ra ex' chans))
+    (AsyncAlgo ('AsyncPars m '[ '(ex', b)] chans) b b)
+  where
+    catch x h = xcatch x $ \case
+      Here -> h
+      There contra -> case contra of {}
+
+instance XCatch
+    (AsyncAlgo ('AsyncPars m ex chans))
+    ex
+    (AsyncAlgo ('AsyncPars m ex' chans))
   where
     xcatch (AsyncAlgo a) h = AsyncAlgo $ xcatch' a $ \i e -> fromAsyncAlgo (h i e)
       where
-        xcatch' :: XFree (AsyncActions ('AsyncPars pr ra ex chans)) bef aft a
-                -> (forall e b. InList '(e, b) ex -> e -> XFree (AsyncActions ('AsyncPars pr ra ex' chans)) b aft a)
-                -> XFree (AsyncActions ('AsyncPars pr ra ex' chans)) bef aft a
+        xcatch' :: XFree (AsyncActions ('AsyncPars m ex chans)) bef aft a
+                -> (forall e b. InList '(e, b) ex -> e -> XFree (AsyncActions ('AsyncPars m ex' chans)) b aft a)
+                -> XFree (AsyncActions ('AsyncPars m ex' chans)) bef aft a
         xcatch' (Pure x) _ = xreturn x
         xcatch' (Join a) h' = case a of
             RecvAction cont -> Join $ RecvAction $ (`xcatch'` h') . cont
             SendAction x r -> Join $ SendAction x $ r `xcatch'` h'
             GetWTAction cont -> Join $ GetWTAction $ (`xcatch'` h') . cont
-            PrintAction v r -> Join $ PrintAction v $ r `xcatch'` h'
-            RandAction cont -> Join $ RandAction $ (`xcatch'` h') . cont
             ThrowAction i e -> h' i e
+            AsyncLiftAction m cont -> Join $ AsyncLiftAction m $ (`xcatch'` h') . cont
 
 
-instance GetWT (AsyncAlgo ('AsyncPars pr ra ex chans)) where
+instance GetWT (AsyncAlgo ('AsyncPars m ex chans)) where
   getWT = xfreeAsync $ GetWTAction id
 
-instance Async (AsyncAlgo ('AsyncPars pr ra ex chans)) chans where
+instance Async (AsyncAlgo ('AsyncPars m ex chans)) chans where
   sendMess m = xfreeAsync $ SendAction m ()
   recvAny = xfreeAsync $ RecvAction id

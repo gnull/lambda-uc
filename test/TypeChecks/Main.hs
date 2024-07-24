@@ -8,6 +8,7 @@ import Test.ShouldNotTypecheck (shouldNotTypecheck)
 
 import UCHS.Monad.Class
 import UCHS.Monad.AsyncAlgo
+import UCHS.Monad.Algo
 import UCHS.Types
 
 main :: IO ()
@@ -17,5 +18,5 @@ tests :: TestTree
 tests = testCase "split" $ do
     shouldNotTypecheck $ sendWithoutWt
   where
-    sendWithoutWt :: Chan String String l -> AsyncAlgo ('AsyncPars pr ra e l) False False ()
+    sendWithoutWt :: Chan String String l -> AsyncAlgo ('AsyncPars (Algo pr ra) e l) False False ()
     sendWithoutWt ch = send ch "hey"

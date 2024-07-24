@@ -8,33 +8,46 @@ import Data.Void
 
 import Data.HList
 
-import Control.XFreer.Join
-import Control.XApplicative
-import Control.XMonad
+import Control.Monad.Free
 
-import UCHS.Monad.SyncAlgo
+-- import Control.XFreer.Join
+-- import Control.XApplicative
+-- import Control.XMonad
+
+-- import UCHS.Monad.SyncAlgo
 import UCHS.Monad.Class
 
--- type ZipConst :: forall f s. [f] -> s -> [(f, s)]
--- type family ZipConst fs s where
---   ZipConst '[] _ = '[]
---   ZipConst (h:rest) s = ('(h, s) : ZipConst rest s)
-
-newtype Algo (pr :: Bool) (ra :: Bool) (ex :: Type) (a :: Type) =
-  Algo { runAlgo :: SyncAlgo ('SyncPars pr ra '[ '(ex, True)] Nothing) True True a }
-
+-- |Non-interactive algorithm. May use the following side-effects:
+--
+-- - Print debug messages if `pr == True`,
+-- - Sample random values if `ra == True`,
+--
+-- Use `Control.Monad.Except.ExceptT` if you want algorithms with exceptions.
+newtype Algo (pr :: Bool) (ra :: Bool) (a :: Type) =
+    Algo { fromAlgo :: Free (AlgoActions pr ra) a }
   deriving (Functor) via
-    (SyncAlgo ('SyncPars pr ra '[ '(ex, True)] Nothing) True True)
+    (Free (AlgoActions pr ra))
   deriving (Applicative, Monad) via
-    (SyncAlgo ('SyncPars pr ra '[ '(ex, True)] Nothing) True True)
+    (Free (AlgoActions pr ra))
+
+data AlgoActions (pr :: Bool) (ra :: Bool) (a :: Type) where
+  PrintAction :: String -> a -> AlgoActions True ra a
+  RandAction :: (Bool -> a) -> AlgoActions pr True a
+
+instance Functor (AlgoActions pr ra) where
+  fmap f (PrintAction x r) = PrintAction x $ f r
+  fmap f (RandAction cont) = RandAction $ f . cont
 
 -- Local
 
-instance Print (Algo True ra ex) where
-  debugPrint = Algo . debugPrint
+instance Print (Algo True ra) where
+  debugPrint s = Algo $ liftF $ PrintAction s ()
 
-instance Rand (Algo pr True ex) where
-  rand = Algo rand
+instance Rand (Algo pr True) where
+  rand = Algo $ liftF $ RandAction id
 
-instance Throw (Algo pr ra e) e where
-  throw = Algo . throw
+-- instance Throw (Algo pr ra e) e where
+--   throw = Algo . throw
+
+-- instance Catch (Algo pr ra e) e (Algo pr ra e') where
+--   catch x h = Algo $ catch (runAlgo x) (runAlgo . h)

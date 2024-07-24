@@ -43,6 +43,10 @@ padMessageIndex (SomeValue i' x') = SomeValue (There i') x'
 type Chan :: forall a b. a -> b -> [(a, b)] -> Type
 type Chan x y xs = InList '(x, y) xs
 
+type ChanSwap :: (Type, Type) -> (Type, Type)
+type family ChanSwap p where
+  ChanSwap '(x, y) = '(x, y)
+
 data SomeSndMessage xs where
   SomeSndMessage :: Chan x y xs -> y -> SomeSndMessage xs
 
