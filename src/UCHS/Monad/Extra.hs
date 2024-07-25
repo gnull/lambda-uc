@@ -29,13 +29,19 @@ import qualified Control.XMonad.Do as M
 -- The following functions convert a concrete (local or interactive) monad
 -- syntax into any monad that implements the same operations. The main use
 -- of these is casting any monad to a more powerful (less restricting)
--- context.
+-- context. Below are a few ways you may want to specialize this function.
 --
--- Say, if you want to run probabilistic computation
--- `x :: Algo False True Data.Void.Void a` in a context
--- `L.Algo True True Data.Void.Void a` that additionally permits printing or
--- interactive probabilistic context `S.SyncAlgo ('S.SyncPars False True ex chans) b b a`,
--- you can use `liftAlgo`.
+-- @
+-- -- Moving to less restricting version of `L.Algo`
+-- `liftAlgo` :: `L.Algo` True False a -> `L.Algo` True True a
+--
+-- -- Moving to an interactive monad
+-- `liftAlgo` :: `L.Algo` pr ra a -> `S.SyncAlgo` ('S.SyncPars (`L.Algo` pr ra) ex up down) b b a
+--
+-- -- Moving to IO to actually interpret an `L.Algo`
+-- `liftAlgo` :: `L.Algo` pr ra a -> `IO` a
+-- @
+--
 --
 -- These functions additionally demonstrate what combination of typeclasses
 -- each of `L.Algo`, `S.SyncAlgo` and `A.AsyncAlgo` is equivalent to.
