@@ -28,14 +28,14 @@ alwaysYesSch _ = SignatureScheme
   , sigVer = \_ _ _ -> pure True
   }
 
-advGuess :: AdvAlgo () Int Int
-advGuess () = M.do
+advGuess :: SpAdvAlgo () Int Int
+advGuess _ () = M.do
   _ <- call Here 1
   _ <- call Here 2
   pure (3, 3)
 
-advRepeats :: AdvAlgo () Int Int
-advRepeats () = M.do
+advRepeats :: SpAdvAlgo () Int Int
+advRepeats _ () = M.do
   _ <- call Here 1
   _ <- call Here 2
   pure (2, 2)

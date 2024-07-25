@@ -44,6 +44,7 @@ oracleMapM f = M.do
       xreturn $ (x, y) : rest
 
 type AdvAlgo pk mes sig = pk -> OracleCallerWrapper (SigAlgo True) '[ '(mes, sig) ] (mes, sig)
+type SpAdvAlgo pk mes sig = Integer -> AdvAlgo pk mes sig
 
 -- |Existential Unforgeability under Chosen Message Attack, EU-CMA
 gameEuCma :: Eq mes
@@ -51,14 +52,14 @@ gameEuCma :: Eq mes
           -- ^Security parameter
           -> SpSignatureScheme sk pk mes sig
           -- ^Signature scheme
-          -> AdvAlgo pk mes sig
+          -> SpAdvAlgo pk mes sig
           -- ^Adversary
           -> SigAlgo True Bool
 gameEuCma sec sch adv = do
   let sch' = sch sec
   (sk, pk) <- sigKey sch'
   fmap isJust $ runMaybeT $ do
-    ((m, sig), q) <- runWithOracle (adv pk) (oracleMapM $ sigSign sch' sk)
+    ((m, sig), q) <- runWithOracle (adv sec pk) (oracleMapM $ sigSign sch' sk)
     -- check that the guess is correct
     True <- Trans.lift $ liftAlgo $ sigVer sch' pk m sig
     -- check that it was never queried
