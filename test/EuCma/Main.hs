@@ -14,15 +14,15 @@ import UCHS.Types
 
 import UCHS.Games.SignatureScheme
 
-alwaysNoSch :: SignatureScheme () () Int Int
-alwaysNoSch = SignatureScheme
+alwaysNoSch :: SpSignatureScheme () () Int Int
+alwaysNoSch _ = SignatureScheme
   { sigKey = pure ((), ())
   , sigSign = \_ m -> pure m
   , sigVer = \_ _ _ -> pure False
   }
 
-alwaysYesSch :: SignatureScheme () () Int Int
-alwaysYesSch = SignatureScheme
+alwaysYesSch :: SpSignatureScheme () () Int Int
+alwaysYesSch _ = SignatureScheme
   { sigKey = pure ((), ())
   , sigSign = \_ m -> pure m
   , sigVer = \_ _ _ -> pure True
@@ -46,11 +46,11 @@ main = defaultMain tests
 tests :: TestTree
 tests = testGroup "dummy adversaries"
   [ testCase "adversary guessing: yes" $
-      liftAlgo (gameEuCma alwaysYesSch advGuess) >>= (@?= True)
+      liftAlgo (gameEuCma 0 alwaysYesSch advGuess) >>= (@?= True)
   , testCase "adversary guessing: no" $
-      liftAlgo (gameEuCma alwaysNoSch advGuess) >>= (@?= False)
+      liftAlgo (gameEuCma 0 alwaysNoSch advGuess) >>= (@?= False)
   , testCase "repeating adversary: no" $
-      liftAlgo (gameEuCma alwaysYesSch advRepeats) >>= (@?= False)
+      liftAlgo (gameEuCma 0 alwaysYesSch advRepeats) >>= (@?= False)
   , testCase "repeating adversary: no" $
-      liftAlgo (gameEuCma alwaysNoSch advRepeats) >>= (@?= False)
+      liftAlgo (gameEuCma 0 alwaysNoSch advRepeats) >>= (@?= False)
   ]
