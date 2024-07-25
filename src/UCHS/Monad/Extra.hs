@@ -78,7 +78,6 @@ liftSyncAlgo h (S.SyncAlgo (Join v)) =
       S.YieldAction m r -> yield m >>: liftSyncAlgo h (S.SyncAlgo r)
       S.AcceptAction cont -> accept >>=: liftSyncAlgo h . S.SyncAlgo . cont
       S.CallAction i m cont -> call i m >>=: liftSyncAlgo h . S.SyncAlgo . cont
-      S.GetWTAction cont -> getWT >>=: liftSyncAlgo h . S.SyncAlgo . cont
       S.ThrowAction i e -> xthrow i e
       S.SyncLiftAction (L.Algo m) cont -> case m of
         F.Pure r -> liftSyncAlgo h $ S.SyncAlgo $ cont r

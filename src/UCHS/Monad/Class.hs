@@ -79,7 +79,7 @@ class (Throw m e, Monad m') => Catch m e m' | m -> e where
 -- write-token-aware exceptions.
 
 class XMonad m => GetWT m where
-  getWT :: m b b (SBool b)
+  getWT :: KnownBool b => m b b (SBool b)
 
 class XMonad m => XThrow (m :: Bool -> Bool -> Type -> Type) (ex :: [(Type, Bool)]) | m -> ex where
   -- |Throw a context-aware exception. The list of possible exceptions `ex`

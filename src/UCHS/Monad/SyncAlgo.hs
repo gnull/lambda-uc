@@ -66,8 +66,6 @@ data SyncActions (st :: SyncPars) (bef :: Bool) (aft :: Bool) a where
   YieldAction :: x -> a -> SyncActions ('SyncPars m ex '(x, y) down) True False a
   -- |Perform a call to a child, immediately getting the result
   CallAction :: Chan x y down -> x -> (y -> a) -> SyncActions ('SyncPars m ex up down) b b a
-  -- |Get the current state of write token
-  GetWTAction :: (SBool b -> a) -> SyncActions ('SyncPars m ex up down) b b a
   -- |Throw an exception.
   ThrowAction :: InList '(e, b) ex -> e -> SyncActions ('SyncPars m ex up down) b b' a
 
@@ -78,7 +76,6 @@ instance Functor (SyncActions st bef aft) where
   fmap f (AcceptAction cont) = AcceptAction $ f . cont
   fmap f (YieldAction m r) = YieldAction m $ f r
   fmap f (CallAction i m cont) = CallAction i m $ f . cont
-  fmap f (GetWTAction cont) = GetWTAction $ f . cont
   fmap _ (ThrowAction i e) = ThrowAction i e
   fmap f (SyncLiftAction m cont) = SyncLiftAction m $ f . cont
 
@@ -139,12 +136,11 @@ instance XCatch
             AcceptAction cont -> Join $ AcceptAction $ (`xcatch'` h') . cont
             YieldAction x r -> Join $ YieldAction x $ r `xcatch'` h'
             CallAction i m cont -> Join $ CallAction i m $ (`xcatch'` h') . cont
-            GetWTAction cont -> Join $ GetWTAction $ (`xcatch'` h') . cont
             ThrowAction i e -> h' i e
             SyncLiftAction m cont -> Join $ SyncLiftAction m $ (`xcatch'` h') . cont
 
 instance GetWT (SyncAlgo ('SyncPars m ex up down)) where
-  getWT = xfreeSync $ GetWTAction id
+  getWT = pure $ getSBool
 
 instance SyncUp (SyncAlgo ('SyncPars m ex '(x, y) down)) '(x, y) where
   accept = xfreeSync $ AcceptAction id
@@ -178,7 +174,6 @@ runTillYield (SyncAlgo (Pure v)) = pure $ YRHalt v
 runTillYield (SyncAlgo (Join v)) = case v of
   YieldAction x r -> pure $ YRYield x $ SyncAlgo r
   CallAction i x cont -> pure $ YRCall i x $ SyncAlgo . cont
-  GetWTAction cont -> runTillYield $ SyncAlgo $ cont STrue
   ThrowAction contra _ -> case contra of {}
   SyncLiftAction m cont -> m >>= runTillYield . SyncAlgo . cont
 
@@ -207,7 +202,6 @@ deliver _ (SyncAlgo (Pure v)) = pure $ DRHalt v
 deliver m (SyncAlgo (Join v)) = case v of
   AcceptAction cont ->pure $ DRAccept $ SyncAlgo $ cont m
   CallAction i x cont -> pure $ DRCall i x $ SyncAlgo . cont
-  GetWTAction cont -> deliver m $ SyncAlgo $ cont SFalse
   ThrowAction contra _ -> case contra of {}
   SyncLiftAction a cont -> a >>= deliver m . SyncAlgo . cont
 

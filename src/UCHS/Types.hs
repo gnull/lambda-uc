@@ -8,6 +8,7 @@ module UCHS.Types
   , Snd
   , Empty
   , IfThenElse
+  , KnownBool(..)
   )
 where
 
@@ -44,3 +45,12 @@ type family IfThenElse c t f where
 -- |Empty constraint
 class Empty x
 instance Empty x
+
+class KnownBool (b :: Bool) where
+  getSBool :: SBool b
+
+instance KnownBool False where
+  getSBool = SFalse
+
+instance KnownBool True where
+  getSBool = STrue

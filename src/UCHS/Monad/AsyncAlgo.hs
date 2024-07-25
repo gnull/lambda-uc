@@ -56,8 +56,6 @@ data AsyncActions (st :: AsyncPars) (bef :: Bool) (aft :: Bool) (a :: Type) wher
   -- IPC actions: recv, send
   RecvAction :: (SomeSndMessage ch -> a) -> AsyncActions ('AsyncPars m ex ch) False True a
   SendAction :: SomeFstMessage ch -> a -> AsyncActions ('AsyncPars m ex ch) True False a
-  -- |Get the current state of Write Token
-  GetWTAction :: (SBool b -> a) -> AsyncActions st b b a
   ThrowAction :: InList '(e, b) ex -> e -> AsyncActions ('AsyncPars m ex ch) b b' a
   -- |Run a local action in the inner monad.
   AsyncLiftAction :: m x -> (x -> a) -> AsyncActions ('AsyncPars m ex chans) b b a
@@ -65,7 +63,6 @@ data AsyncActions (st :: AsyncPars) (bef :: Bool) (aft :: Bool) (a :: Type) wher
 instance Functor (AsyncActions st bef aft) where
   fmap f (RecvAction cont) = RecvAction $ f . cont
   fmap f (SendAction m r) = SendAction m $ f r
-  fmap f (GetWTAction cont) = GetWTAction $ f . cont
   fmap _ (ThrowAction i e) = ThrowAction i e
   fmap f (AsyncLiftAction m cont) = AsyncLiftAction m $ f . cont
 
@@ -138,13 +135,12 @@ instance XCatch
         xcatch' (Join a) h' = case a of
             RecvAction cont -> Join $ RecvAction $ (`xcatch'` h') . cont
             SendAction x r -> Join $ SendAction x $ r `xcatch'` h'
-            GetWTAction cont -> Join $ GetWTAction $ (`xcatch'` h') . cont
             ThrowAction i e -> h' i e
             AsyncLiftAction m cont -> Join $ AsyncLiftAction m $ (`xcatch'` h') . cont
 
 
 instance GetWT (AsyncAlgo ('AsyncPars m ex chans)) where
-  getWT = xfreeAsync $ GetWTAction id
+  getWT = pure $ getSBool
 
 instance Async (AsyncAlgo ('AsyncPars m ex chans)) chans where
   sendMess m = xfreeAsync $ SendAction m ()
