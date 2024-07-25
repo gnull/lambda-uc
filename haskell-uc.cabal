@@ -24,6 +24,7 @@ common deft
     , stm
     , freer-indexed
     , free
+    , random
   ghc-options:
     -Wall
     -Wcompat
@@ -90,3 +91,9 @@ test-suite machine-monad
   type:                exitcode-stdio-1.0
   main-is:             Main.hs
   hs-source-dirs:      test/Async/
+
+test-suite eu-cma
+  import: deft-test
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test/EuCma/

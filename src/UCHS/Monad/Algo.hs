@@ -51,3 +51,5 @@ instance Rand (Algo pr True) where
 
 -- instance Catch (Algo pr ra e) e (Algo pr ra e') where
 --   catch x h = Algo $ catch (runAlgo x) (runAlgo . h)
+
+-- $eval

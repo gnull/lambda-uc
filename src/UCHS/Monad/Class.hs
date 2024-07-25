@@ -36,6 +36,8 @@ import Control.XMonad
 import Data.Type.Equality ((:~:)(Refl))
 import UCHS.Types
 
+import qualified System.Random as Random
+
 -- $local
 --
 -- A local (non-interactive) algorithm may perform the following side-effects:
@@ -52,9 +54,15 @@ class Monad m => Print (m :: Type -> Type) where
   -- algorithms in toy executions.
   debugPrint :: String -> m ()
 
+instance Print IO where
+  debugPrint = putStrLn
+
 class Monad m => Rand (m :: Type -> Type) where
   -- |Sample a random value.
   rand :: m Bool
+
+instance Rand IO where
+  rand = Random.randomIO
 
 class Monad m => Throw (m :: Type -> Type) (e :: Type) | m -> e where
   -- |Throw an exception.

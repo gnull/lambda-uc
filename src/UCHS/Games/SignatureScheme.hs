@@ -41,11 +41,13 @@ oracleMapM f = M.do
       rest <- oracleMapM f
       xreturn $ (x, y) : rest
 
+type AdvAlgo pk mes sig = pk -> OracleCallerWrapper (SigAlgo True) '[ '(mes, sig) ] (mes, sig)
+
 -- |Existential Unforgeability under Chosen Message Attack, EU-CMA
 gameEuCma :: Eq mes
           => SignatureScheme sk pk mes sig
           -- ^Signature scheme
-          -> (pk -> OracleCallerWrapper (SigAlgo True) '[ '(mes, sig) ] (mes, sig))
+          -> AdvAlgo pk mes sig
           -- ^Adversary
           -> SigAlgo True Bool
 gameEuCma sch adv = do
