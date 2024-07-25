@@ -18,12 +18,12 @@ import Control.Monad (MonadPlus(..))
 import qualified Control.Monad.Trans.Class as Trans
 
 type SigAlgo :: Bool -> Type -> Type
-type SigAlgo pr = Algo pr False
+type SigAlgo ra = Algo False ra
 
 data SignatureScheme sk pk mes sig = SignatureScheme
-  { sigKey :: SigAlgo True (sk, pk)
-  , sigSign :: sk -> mes -> SigAlgo True sig
-  , sigVer :: pk -> mes -> sig -> SigAlgo False Bool
+  { sigKey :: forall m. Rand m => m (sk, pk)
+  , sigSign :: forall m. Rand m => sk -> mes -> m sig
+  , sigVer :: pk -> mes -> sig -> Bool
   }
 
 type SpSignatureScheme sk pk mes sig = Integer -> SignatureScheme sk pk mes sig
@@ -61,7 +61,7 @@ gameEuCma sec sch adv = do
   fmap isJust $ runMaybeT $ do
     ((m, sig), q) <- runWithOracle (adv sec pk) (oracleMapM $ sigSign sch' sk)
     -- check that the guess is correct
-    True <- Trans.lift $ liftAlgo $ sigVer sch' pk m sig
+    True <- pure $ sigVer sch' pk m sig
     -- check that it was never queried
     assert $ not $ any (\(m', _) -> m' == m) q
     return ()

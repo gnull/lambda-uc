@@ -37,6 +37,7 @@ import Data.Type.Equality ((:~:)(Refl))
 import UCHS.Types
 
 import qualified System.Random as Random
+import qualified Control.Monad.Trans.Class as Trans
 
 -- $local
 --
@@ -57,9 +58,15 @@ class Monad m => Print (m :: Type -> Type) where
 instance Print IO where
   debugPrint = putStrLn
 
+instance (Trans.MonadTrans t, Print m) => Print (t m) where
+  debugPrint = Trans.lift . debugPrint
+
 class Monad m => Rand (m :: Type -> Type) where
   -- |Sample a random value.
   rand :: m Bool
+
+instance (Trans.MonadTrans t, Rand m) => Rand (t m) where
+  rand = Trans.lift $ rand
 
 instance Rand IO where
   rand = Random.randomIO

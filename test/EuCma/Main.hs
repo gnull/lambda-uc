@@ -18,14 +18,14 @@ alwaysNoSch :: SpSignatureScheme () () Int Int
 alwaysNoSch _ = SignatureScheme
   { sigKey = pure ((), ())
   , sigSign = \_ m -> pure m
-  , sigVer = \_ _ _ -> pure False
+  , sigVer = \_ _ _ -> False
   }
 
 alwaysYesSch :: SpSignatureScheme () () Int Int
 alwaysYesSch _ = SignatureScheme
   { sigKey = pure ((), ())
   , sigSign = \_ m -> pure m
-  , sigVer = \_ _ _ -> pure True
+  , sigVer = \_ _ _ -> True
   }
 
 advGuess :: SpAdvAlgo () Int Int
