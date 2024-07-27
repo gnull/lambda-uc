@@ -20,7 +20,6 @@ import UCHS.Monad.Class
 
 import qualified UCHS.Monad.Algo as L
 import qualified UCHS.Monad.SyncAlgo as S
-import qualified UCHS.Monad.AsyncAlgo as A
 
 import qualified Control.XMonad.Do as M
 
@@ -65,8 +64,8 @@ liftSyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b 
                 , IfThenElse ra (forall b. Rand (m b b)) (forall b. Empty (m b b))
                 , (forall b. Monad (m b b))
                 , XThrow m ex
-                , SyncUp m up
-                , SyncDown m down
+                , Async m up
+                , Sync m down
                 )
                => (SBool pr, SBool ra)
                -- ^An argument that helps GHC evaluate constraints
@@ -75,8 +74,8 @@ liftSyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b 
 liftSyncAlgo _ (S.SyncAlgo (Pure v)) = xreturn v
 liftSyncAlgo h (S.SyncAlgo (Join v)) =
     case v of
-      S.YieldAction m r -> yield m >>: liftSyncAlgo h (S.SyncAlgo r)
-      S.AcceptAction cont -> accept >>=: liftSyncAlgo h . S.SyncAlgo . cont
+      S.SendAction m r -> sendMess m >>: liftSyncAlgo h (S.SyncAlgo r)
+      S.RecvAction cont -> recvAny >>=: liftSyncAlgo h . S.SyncAlgo . cont
       S.CallAction i m cont -> call i m >>=: liftSyncAlgo h . S.SyncAlgo . cont
       S.ThrowAction i e -> xthrow i e
       S.SyncLiftAction (L.Algo m) cont -> case m of
@@ -89,18 +88,3 @@ liftSyncAlgo h (S.SyncAlgo (Join v)) =
           x <- rand
           r' <- liftSyncAlgo h $ S.lift $ L.Algo $ contInner x
           liftSyncAlgo h $ S.SyncAlgo $ cont r'
-
--- liftAsyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b))
---                 , IfThenElse ra (forall b. Rand (m b b)) (forall b. Empty (m b b))
---                 , XThrow m ex
---                 , Async m chans
---                 )
---                => A.AsyncAlgo ('A.AsyncPars (L.Algo pr ra) ex chans) bef aft a
---                -> m bef aft a
--- liftAsyncAlgo (A.AsyncAlgo (Pure v)) = xreturn v
--- liftAsyncAlgo (A.AsyncAlgo (Join v)) =
---   case v of
---     A.RecvAction cont -> recvAny >>=: liftAsyncAlgo . A.AsyncAlgo . cont
---     A.SendAction m r -> sendMess m >>: liftAsyncAlgo (A.AsyncAlgo r)
---     A.GetWTAction cont -> getWT >>=: liftAsyncAlgo . A.AsyncAlgo . cont
---     A.ThrowAction i e -> xthrow i e

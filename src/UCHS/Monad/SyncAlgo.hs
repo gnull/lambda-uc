@@ -28,7 +28,7 @@ import qualified Control.Monad as Monad
 import Control.XFreer.Join
 import Control.XApplicative
 import Control.XMonad
--- import qualified Control.XMonad.Do as M
+import qualified Control.XMonad.Do as M
 
 -- import Data.Type.Equality ((:~:)(Refl))
 
@@ -45,10 +45,10 @@ data SyncPars = SyncPars
   -- ^The inner monad where the local computations happen
   , stEx :: [(Type, Bool)]
   -- ^Type of exceptions we throw and contexts (use @[]@ to disable exceptions)
-  , stUp :: (Type, Type)
-  -- ^The upstream interface to our parent
-  , stDown :: [(Type, Type)]
-  -- ^The downstream interfaces to children
+  , stAsync :: [(Type, Type)]
+  -- ^Asynchronous channels
+  , stSync :: [(Type, Type)]
+  -- ^Syncronous channels
   }
 
 -- $actions
@@ -60,21 +60,19 @@ data SyncPars = SyncPars
 --
 -- - @bef@ and @aft@ are the states before and after the given action.
 data SyncActions (st :: SyncPars) (bef :: Bool) (aft :: Bool) a where
-  -- |Accept an oracle call from parent
-  AcceptAction :: (y -> a) -> SyncActions ('SyncPars m ex '(x, y) down) False True a
-  -- |Yield the result of an oracle call from the parent
-  YieldAction :: x -> a -> SyncActions ('SyncPars m ex '(x, y) down) True False a
+  RecvAction :: (SomeSndMessage ach -> a) -> SyncActions ('SyncPars m ex ach sch) False True a
+  SendAction :: SomeFstMessage ach -> a -> SyncActions ('SyncPars m ex ach sch) True False a
   -- |Perform a call to a child, immediately getting the result
-  CallAction :: Chan x y down -> x -> (y -> a) -> SyncActions ('SyncPars m ex up down) b b a
+  CallAction :: Chan x y sch -> x -> (y -> a) -> SyncActions ('SyncPars m ex ach sch) b b a
   -- |Throw an exception.
-  ThrowAction :: InList '(e, b) ex -> e -> SyncActions ('SyncPars m ex up down) b b' a
+  ThrowAction :: InList '(e, b) ex -> e -> SyncActions ('SyncPars m ex ach sch) b b' a
 
   -- |Run a local action in the inner monad.
-  SyncLiftAction :: m x -> (x -> a) -> SyncActions ('SyncPars m ex up down) b b a
+  SyncLiftAction :: m x -> (x -> a) -> SyncActions ('SyncPars m ex ach sch) b b a
 
 instance Functor (SyncActions st bef aft) where
-  fmap f (AcceptAction cont) = AcceptAction $ f . cont
-  fmap f (YieldAction m r) = YieldAction m $ f r
+  fmap f (RecvAction cont) = RecvAction $ f . cont
+  fmap f (SendAction m r) = SendAction m $ f r
   fmap f (CallAction i m cont) = CallAction i m $ f . cont
   fmap _ (ThrowAction i e) = ThrowAction i e
   fmap f (SyncLiftAction m cont) = SyncLiftAction m $ f . cont
@@ -133,8 +131,8 @@ instance XCatch
                 -> XFree (SyncActions ('SyncPars m ex' up down)) bef aft a
         xcatch' (Pure x) _ = xreturn x
         xcatch' (Join a) h' = case a of
-            AcceptAction cont -> Join $ AcceptAction $ (`xcatch'` h') . cont
-            YieldAction x r -> Join $ YieldAction x $ r `xcatch'` h'
+            RecvAction cont -> Join $ RecvAction $ (`xcatch'` h') . cont
+            SendAction x r -> Join $ SendAction x $ r `xcatch'` h'
             CallAction i m cont -> Join $ CallAction i m $ (`xcatch'` h') . cont
             ThrowAction i e -> h' i e
             SyncLiftAction m cont -> Join $ SyncLiftAction m $ (`xcatch'` h') . cont
@@ -142,28 +140,31 @@ instance XCatch
 instance GetWT (SyncAlgo ('SyncPars m ex up down)) where
   getWT = pure $ getSBool
 
-instance SyncUp (SyncAlgo ('SyncPars m ex '(x, y) down)) '(x, y) where
-  accept = xfreeSync $ AcceptAction id
-  yield x = xfreeSync $ YieldAction x ()
+instance Async (SyncAlgo ('SyncPars m ex ach sch)) ach where
+  sendMess m = xfreeSync $ SendAction m ()
+  recvAny = xfreeSync $ RecvAction id
 
-instance SyncDown (SyncAlgo ('SyncPars m ex up down)) down where
+-- instance SyncUp (SyncAlgo ('SyncPars m ex '[ '(x, y)] down)) '(x, y) where
+
+
+instance Sync (SyncAlgo ('SyncPars m ex ach sch)) sch where
   call i x = xfreeSync $ CallAction i x id
 
 -- $eval
 
 -- |The result of `runTillYield`
-data YieldRes m up down aft a where
+data YieldRes (m :: Type -> Type) (ach :: [(Type, Type)]) (sch :: [(Type, Type)]) (aft :: Bool) a where
   -- |Algorithm called `yield`.
-  YRYield :: Fst up
-          -> SyncAlgo ('SyncPars m '[] up down) False aft a
-          -> YieldRes m up down aft a
+  YRSend :: SomeFstMessage ach
+         -> SyncAlgo ('SyncPars m '[] ach sch) False aft a
+         -> YieldRes m ach sch aft a
   -- |Algorithm has called a child oracle via `call`
-  YRCall :: Chan x y down
+  YRCall :: Chan x y sch
          -> x
-         -> (y -> SyncAlgo ('SyncPars m '[] up down) True aft a)
-         -> YieldRes m up down aft a
+         -> (y -> SyncAlgo ('SyncPars m '[] ach sch) True aft a)
+         -> YieldRes m ach sch aft a
   -- |Algorithm halted without sending anything
-  YRHalt :: a -> YieldRes m up down True a
+  YRHalt :: a -> YieldRes m ach sch True a
 
 -- |Given `SyncAlgo` action starting in `True` state (holding write token), run
 -- it until it does `call`, `yield` or halts.
@@ -172,7 +173,7 @@ runTillYield :: Monad m
             -> m (YieldRes m up down b a)
 runTillYield (SyncAlgo (Pure v)) = pure $ YRHalt v
 runTillYield (SyncAlgo (Join v)) = case v of
-  YieldAction x r -> pure $ YRYield x $ SyncAlgo r
+  SendAction x r -> pure $ YRSend x $ SyncAlgo r
   CallAction i x cont -> pure $ YRCall i x $ SyncAlgo . cont
   ThrowAction contra _ -> case contra of {}
   SyncLiftAction m cont -> m >>= runTillYield . SyncAlgo . cont
@@ -180,7 +181,7 @@ runTillYield (SyncAlgo (Join v)) = case v of
 -- |The result of `deliver`
 data DeliverRes m up down aft a where
   -- |Algorithm ran `accept`
-  DRAccept :: SyncAlgo ('SyncPars m '[] up down) True aft a
+  DRRecv :: SyncAlgo ('SyncPars m '[] up down) True aft a
            -> DeliverRes m up down aft a
   -- |Algorithm issued an oracle call to a child via `call`
   DRCall :: Chan x y down
@@ -195,12 +196,12 @@ data DeliverRes m up down aft a where
 -- the oracle call from its parent (running it until it receives the write
 -- token via `accept`).
 deliver :: Monad m
-        => Snd up
-        -> SyncAlgo ('SyncPars m '[] up down) False b a
-        -> m (DeliverRes m up down b a)
+        => SomeSndMessage ach
+        -> SyncAlgo ('SyncPars m '[] ach sch) False b a
+        -> m (DeliverRes m ach sch b a)
 deliver _ (SyncAlgo (Pure v)) = pure $ DRHalt v
 deliver m (SyncAlgo (Join v)) = case v of
-  AcceptAction cont ->pure $ DRAccept $ SyncAlgo $ cont m
+  RecvAction cont -> pure $ DRRecv $ SyncAlgo $ cont m
   CallAction i x cont -> pure $ DRCall i x $ SyncAlgo . cont
   ThrowAction contra _ -> case contra of {}
   SyncLiftAction a cont -> a >>= deliver m . SyncAlgo . cont
@@ -208,13 +209,13 @@ deliver m (SyncAlgo (Join v)) = case v of
 -- |An algorithm with no parent and with access to child oracles given by
 -- `down`. Starts and finished holding the write token
 type OracleCallerWrapper m down a =
-  SyncAlgo ('SyncPars m '[] '(Void, Void) down) True True a
+  SyncAlgo ('SyncPars m '[] '[] down) True True a
 
 -- |An algorithm serving oracle calls from parent, but not having access to
 -- any oracles of its own and not returning any result. It exposes the `up`
 -- interface as the last argument for use with `HList`.
 type OracleWrapper m a up =
-  SyncAlgo ('SyncPars m '[] '(Snd up, OracleReq (Fst up)) '[]) False True a
+  SyncAlgo ('SyncPars m '[] '[ '(Snd up, OracleReq (Fst up))] '[]) False True a
 
 data OracleReq a = OracleReqHalt | OracleReq a
 
@@ -228,14 +229,14 @@ data OracleReq a = OracleReqHalt | OracleReq a
 runWithOracle :: Monad m
                => OracleCallerWrapper m '[ '(x, y) ] a
                -- ^The oracle caller algorithm
-               -> (OracleWrapper m s '(x, y))
+               -> OracleWrapper m s '(x, y)
                -- ^The oracle
                -> MaybeT m (a, s)
                -- ^The outputs of caller and oracle. Fails with `mzero` if
                -- the oracle terminates before time or doesn't terminate when
                -- requested
 runWithOracle top bot = Trans.lift (runTillYield top) >>= \case
-    YRYield contra _ -> case contra of {}
+    YRSend contra _ -> case contra of {}
     YRHalt r -> do
       s <- oracleHalt bot
       pure (r, s)
@@ -248,18 +249,21 @@ runWithOracle top bot = Trans.lift (runTillYield top) >>= \case
                => OracleWrapper m s '(x, y)
                -> x
                -> MaybeT m (y, OracleWrapper m s '(x, y))
-    oracleCall bot m = Trans.lift (deliver (OracleReq m) bot) >>= \case
+    oracleCall bot m = Trans.lift (deliver (SomeSndMessage Here (OracleReq m)) bot) >>= \case
       DRCall contra _ _ -> case contra of {}
-      DRAccept cont -> Trans.lift (runTillYield cont) >>= \case
+      DRRecv cont -> Trans.lift (runTillYield cont) >>= \case
         YRCall contra _ _ -> case contra of {}
         YRHalt _ -> mzero
-        YRYield r bot' -> pure (r, bot')
+        YRSend r bot' -> case r of
+            SomeFstMessage Here r' -> pure (r', bot')
+            SomeFstMessage (There contra) _ -> case contra of {}
+          
     oracleHalt :: Monad m
                => OracleWrapper m s '(x, y)
                -> MaybeT m s
-    oracleHalt bot = Trans.lift (deliver OracleReqHalt bot) >>= \case
+    oracleHalt bot = Trans.lift (deliver (SomeSndMessage Here OracleReqHalt) bot) >>= \case
       DRCall contra _ _ -> case contra of {}
-      DRAccept cont -> Trans.lift (runTillYield cont) >>= \case
+      DRRecv cont -> Trans.lift (runTillYield cont) >>= \case
         YRCall contra _ _ -> case contra of {}
         YRHalt s -> pure s
-        YRYield _ _ -> mzero
+        YRSend _ _ -> mzero

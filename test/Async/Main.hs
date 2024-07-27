@@ -8,7 +8,7 @@ import qualified Control.XMonad.Do as M
 
 import Data.Type.Equality ((:~:)(Refl))
 
-import UCHS.Monad.AsyncAlgo
+import UCHS.Monad.SyncAlgo
 import UCHS.Monad.Algo
 import UCHS.Monad.Class
 import UCHS.Monad.AsyncAlgo.SomeWTM
@@ -21,7 +21,7 @@ tests :: TestTree
 tests = testCase "none" $ pure ()
 
 -- |Sends String s to the given channel, waits for the other side to repond with
-test :: String -> AsyncAlgo ('AsyncPars (Algo pr ra) e '[ '(String, Int)]) True True Int
+test :: String -> SyncAlgo ('SyncPars (Algo pr ra) e '[ '(String, Int)] '[]) True True Int
 test s = M.do
   send Here s
   recvAny >>=: \case
@@ -35,7 +35,7 @@ test s = M.do
 --
 -- 2. Inside @SomeWTM@, wrap each branch where your WT state is fixed in
 -- @decided@.
-maybeSends :: Chan Bool Bool l -> SomeWT ('AsyncPars (Algo pr ra) e l) False Bool
+maybeSends :: Chan Bool Bool l -> SomeWT ('SyncPars (Algo pr ra) e l '[]) False Bool
 maybeSends chan = ContFromAnyWT $ \cont -> M.do
   (SomeSndMessage sender msg) <- recvAny
   case testEquality chan sender of
@@ -45,7 +45,7 @@ maybeSends chan = ContFromAnyWT $ \cont -> M.do
     Nothing -> cont False
 
 useMaybeSends :: Chan Bool Bool l
-              -> AsyncAlgo ('AsyncPars (Algo pr ra) '[ '(ExBadSender, True) ] l) False True Bool
+              -> SyncAlgo ('SyncPars (Algo pr ra) '[ '(ExBadSender, True) ] l '[]) False True Bool
 useMaybeSends chan = M.do
   -- Step #1: pass @maybeSends@ to dispatchSomeWT
   -- Step #2: pass it a continuation that starts from unknown WT state

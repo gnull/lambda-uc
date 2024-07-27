@@ -1,5 +1,3 @@
-{-# LANGUAGE DatatypeContexts #-}
-
 module UCHS.Games.SignatureScheme where
 
 import UCHS.Types

@@ -15,12 +15,13 @@ module UCHS.Monad.Class
   , XCatch(..)
   -- ** Synchronous Interaction
   -- $sync
-  , SyncUp(..)
-  , SyncDown(..)
+  , Sync(..)
   -- ** Asynchronous Interaction
   -- $async
   , Async(..)
   -- $derived
+  , accept
+  , yield
   , ExBadSender(..)
   , recv
   , sendSync
@@ -30,6 +31,7 @@ import Data.Kind
 import Data.HList
 
 import Control.XMonad
+import Control.XApplicative
 import qualified Control.XMonad.Do as M
 
 import Control.XMonad
@@ -108,24 +110,19 @@ class (XThrow m ex, XMonad m') => XCatch m ex m' where
 --
 -- Side-effects of a syncronous interactive algorithm. Such an algorithm can:
 --
--- 1. handle oracle calls from its parent (`SyncUp`),
--- 2. issue oracle calls to its children (`SyncDown`).
+-- 1. issue oracle calls to its children (`Sync`).
 --
 -- Oracle calls are synchronous: calling algorithm is put to sleep until its
--- child responds to the call. An algorithm may implement one of `SyncUp` and
--- `SyncDown` or both depending on whether it is supposed to provide and/or
+-- child responds to the call. An algorithm may implement one of `Syncp` and
+-- `Sync` or both depending on whether it is supposed to provide and/or
 -- call oracle interfaces.
 
-class GetWT m => SyncUp (m :: Bool -> Bool -> Type -> Type) (up :: (Type, Type)) | m -> up where
-  -- |Accept an oracle call from parent.
-  accept :: m False True (Snd up)
-  -- |Yield the response to the previosly accepted oracle call from parent.
-  yield :: (Fst up) -> m True False ()
-
-class GetWT m => SyncDown (m :: Bool -> Bool -> Type -> Type) (down :: [(Type, Type)]) | m -> down where
+class GetWT m => Sync (m :: Bool -> Bool -> Type -> Type) (down :: [(Type, Type)]) | m -> down where
   -- |Perform an oracle call to a child. The call waits for the child to
   -- respond (putting caller to sleep until then).
   call :: Chan x y down -> x -> m b b y
+
+
 
 -- $async
 --
@@ -153,6 +150,18 @@ class GetWT m => Async (m :: Bool -> Bool -> Type -> Type) (chans :: [(Type, Typ
 -- $derived
 --
 -- Some convenient shorthand operations built from basic ones.
+
+
+accept :: Async m '[ '(x, y)]
+       => m False True y
+accept = M.do
+  recvAny >>=: \case
+    SomeSndMessage Here m -> xpure m
+    SomeSndMessage (There contra) _ -> case contra of {}
+
+yield :: Async m '[ '(x, y)]
+      => x -> m True False ()
+yield = send Here
 
 -- |An exception thrown if a message does not arrive from the expected sender.
 data ExBadSender = ExBadSender

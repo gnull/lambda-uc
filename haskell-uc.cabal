@@ -55,7 +55,6 @@ library
       UCHS.Monad.Class
       UCHS.Monad.Algo
       UCHS.Monad.SyncAlgo
-      UCHS.Monad.AsyncAlgo
       UCHS.Monad.AsyncAlgo.SomeWTM
       UCHS.Monad.Extra
       UCHS.Games.SignatureScheme
