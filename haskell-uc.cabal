@@ -54,8 +54,8 @@ library
       UCHS.Types
       UCHS.Monad.Class
       UCHS.Monad.Algo
-      UCHS.Monad.SyncAlgo
-      UCHS.Monad.AsyncAlgo.SomeWTM
+      UCHS.Monad.InterT
+      UCHS.Monad.InterT.SomeWT
       UCHS.Monad.Extra
       UCHS.Games.SignatureScheme
       Ideas.Monad

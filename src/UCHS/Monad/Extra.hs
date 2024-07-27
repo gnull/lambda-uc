@@ -19,7 +19,7 @@ import UCHS.Types
 import UCHS.Monad.Class
 
 import qualified UCHS.Monad.Algo as L
-import qualified UCHS.Monad.SyncAlgo as S
+import qualified UCHS.Monad.InterT as S
 
 import qualified Control.XMonad.Do as M
 
@@ -35,7 +35,7 @@ import qualified Control.XMonad.Do as M
 -- `liftAlgo` :: `L.Algo` True False a -> `L.Algo` True True a
 --
 -- -- Moving to an interactive monad
--- `liftAlgo` :: `L.Algo` pr ra a -> `S.SyncAlgo` ('S.SyncPars (`L.Algo` pr ra) ex up down) b b a
+-- `liftAlgo` :: `L.Algo` pr ra a -> `S.InterT` ('S.InterPars (`L.Algo` pr ra) ex up down) b b a
 --
 -- -- Moving to IO to actually interpret an `L.Algo`
 -- `liftAlgo` :: `L.Algo` pr ra a -> `IO` a
@@ -43,7 +43,7 @@ import qualified Control.XMonad.Do as M
 --
 --
 -- These functions additionally demonstrate what combination of typeclasses
--- each of `L.Algo`, `S.SyncAlgo` and `A.AsyncAlgo` is equivalent to.
+-- each of `L.Algo`, `S.InterT` and `A.AsyncAlgo` is equivalent to.
 -- Conversion in the other direction (from polymorphic monad to concrete
 -- syntax) is done automatically.
 
@@ -69,22 +69,22 @@ liftSyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b 
                 )
                => (SBool pr, SBool ra)
                -- ^An argument that helps GHC evaluate constraints
-               -> S.SyncAlgo ('S.SyncPars (L.Algo pr ra) ex up down) bef aft a
+               -> S.InterT ('S.InterPars (L.Algo pr ra) ex up down) bef aft a
                -> m bef aft a
-liftSyncAlgo _ (S.SyncAlgo (Pure v)) = xreturn v
-liftSyncAlgo h (S.SyncAlgo (Join v)) =
+liftSyncAlgo _ (S.InterT (Pure v)) = xreturn v
+liftSyncAlgo h (S.InterT (Join v)) =
     case v of
-      S.SendAction m r -> sendMess m >>: liftSyncAlgo h (S.SyncAlgo r)
-      S.RecvAction cont -> recvAny >>=: liftSyncAlgo h . S.SyncAlgo . cont
-      S.CallAction i m cont -> call i m >>=: liftSyncAlgo h . S.SyncAlgo . cont
+      S.SendAction m r -> sendMess m >>: liftSyncAlgo h (S.InterT r)
+      S.RecvAction cont -> recvAny >>=: liftSyncAlgo h . S.InterT . cont
+      S.CallAction i m cont -> call i m >>=: liftSyncAlgo h . S.InterT . cont
       S.ThrowAction i e -> xthrow i e
-      S.SyncLiftAction (L.Algo m) cont -> case m of
-        F.Pure r -> liftSyncAlgo h $ S.SyncAlgo $ cont r
+      S.LiftAction (L.Algo m) cont -> case m of
+        F.Pure r -> liftSyncAlgo h $ S.InterT $ cont r
         F.Free (L.PrintAction s r) -> M.do
           debugPrint s
           r' <- liftSyncAlgo h $ S.lift $ L.Algo r
-          liftSyncAlgo h $ S.SyncAlgo $ cont r'
+          liftSyncAlgo h $ S.InterT $ cont r'
         F.Free (L.RandAction contInner) -> M.do
           x <- rand
           r' <- liftSyncAlgo h $ S.lift $ L.Algo $ contInner x
-          liftSyncAlgo h $ S.SyncAlgo $ cont r'
+          liftSyncAlgo h $ S.InterT $ cont r'

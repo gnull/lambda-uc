@@ -6,7 +6,7 @@ import Test.Tasty.HUnit      (testCase, assertEqual, (@?=))
 import Control.XMonad
 import qualified Control.XMonad.Do as M
 
-import UCHS.Monad.SyncAlgo
+import UCHS.Monad.InterT
 import UCHS.Monad.Algo
 import UCHS.Monad.Class
 import UCHS.Monad.Extra

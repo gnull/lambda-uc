@@ -3,7 +3,7 @@ module UCHS.Games.SignatureScheme where
 import UCHS.Types
 import UCHS.Monad.Class
 import UCHS.Monad.Algo
-import UCHS.Monad.SyncAlgo
+import UCHS.Monad.InterT
 import UCHS.Monad.Extra
 
 import Control.XMonad
@@ -13,7 +13,7 @@ import qualified Control.XMonad.Do as M
 import Data.Maybe (isJust)
 import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Monad (MonadPlus(..))
-import qualified Control.Monad.Trans.Class as Trans
+-- import qualified Control.Monad.Trans.Class as Trans
 
 type SigAlgo :: Bool -> Type -> Type
 type SigAlgo ra = Algo False ra
