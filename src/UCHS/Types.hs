@@ -46,6 +46,10 @@ type family IfThenElse c t f where
 class Empty x
 instance Empty x
 
+-- |Known boolean value. Implemented by constants, but not by `forall (b ::
+-- Bool). b`. Adding this to the context of a function polymorphic over `b` is
+-- the same as adding an explicit parameter `SBool b` to it. I.e. `SBool b ->`
+-- is the same as `KnownBool b =>`.
 class KnownBool (b :: Bool) where
   getSBool :: SBool b
 

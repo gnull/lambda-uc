@@ -52,6 +52,7 @@ library
       Control.XFreer.Join
       Data.HList
       UCHS.Types
+      UCHS.Monad
       UCHS.Monad.Class
       UCHS.Monad.Algo
       UCHS.Monad.InterT

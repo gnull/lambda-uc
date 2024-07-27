@@ -8,10 +8,8 @@ import qualified Control.XMonad.Do as M
 
 import Data.Type.Equality ((:~:)(Refl))
 
-import UCHS.Monad.InterT
+import UCHS.Monad
 import UCHS.Monad.InterT.SomeWT
-import UCHS.Monad.Algo
-import UCHS.Monad.Class
 import UCHS.Types
 
 main :: IO ()

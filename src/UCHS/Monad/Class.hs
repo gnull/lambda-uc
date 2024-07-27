@@ -46,7 +46,8 @@ import qualified Control.Monad.Trans.Class as Trans
 -- A local (non-interactive) algorithm may perform the following side-effects:
 -- throwing exceptions, sampling random bits, printing debug messages.
 --
--- These side effects are also compatible with interactive algorithms.
+-- Implemented by both local `UCHS.Monad.Algo.Algo` and interactive
+-- `UCHS.Monad.InterT.InterT`.
 
 class Monad m => Print (m :: Type -> Type) where
   -- |Print debug info.

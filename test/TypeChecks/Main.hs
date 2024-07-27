@@ -6,9 +6,7 @@ import Test.Tasty            (TestTree, defaultMain)
 import Test.Tasty.HUnit      (testCase, assertEqual)
 import Test.ShouldNotTypecheck (shouldNotTypecheck)
 
-import UCHS.Monad.Class
-import UCHS.Monad.InterT
-import UCHS.Monad.Algo
+import UCHS.Monad
 import UCHS.Types
 
 main :: IO ()

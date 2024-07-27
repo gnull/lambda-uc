@@ -129,7 +129,7 @@ instance XCatch
                 -> (forall e b. InList '(e, b) ex -> e -> XFree (InterActions ('InterPars m ex' up down)) b aft a)
                 -> XFree (InterActions ('InterPars m ex' up down)) bef aft a
         xcatch' (Pure x) _ = xreturn x
-        xcatch' (Join a) h' = case a of
+        xcatch' (Join a') h' = case a' of
             RecvAction cont -> Join $ RecvAction $ (`xcatch'` h') . cont
             SendAction x r -> Join $ SendAction x $ r `xcatch'` h'
             CallAction i m cont -> Join $ CallAction i m $ (`xcatch'` h') . cont
@@ -142,9 +142,6 @@ instance GetWT (InterT ('InterPars m ex up down)) where
 instance Async (InterT ('InterPars m ex ach sch)) ach where
   sendMess m = xfreeSync $ SendAction m ()
   recvAny = xfreeSync $ RecvAction id
-
--- instance SyncUp (InterT ('InterPars m ex '[ '(x, y)] down)) '(x, y) where
-
 
 instance Sync (InterT ('InterPars m ex ach sch)) sch where
   call i x = xfreeSync $ CallAction i x id
@@ -166,7 +163,7 @@ data SendRes (m :: Type -> Type) (ach :: [(Type, Type)]) (sch :: [(Type, Type)])
   SrHalt :: a -> SendRes m ach sch True a
 
 -- |Given `InterT` action starting in `True` state (holding write token), run
--- it until it does `call`, `yield` or halts.
+-- it until it does `call`, `send` or halts.
 runTillSend :: Monad m
             => InterT ('InterPars m '[] up down) True b a
             -> m (SendRes m up down b a)
@@ -177,7 +174,7 @@ runTillSend (InterT (Join v)) = case v of
   ThrowAction contra _ -> case contra of {}
   LiftAction m cont -> m >>= runTillSend . InterT . cont
 
--- |The result of `runTillRecv`
+-- |The result of `runTillRecv`.
 data RecvRes m up down aft a where
   -- |Algorithm ran `accept`
   RrRecv :: InterT ('InterPars m '[] up down) True aft a
@@ -191,9 +188,9 @@ data RecvRes m up down aft a where
   RrHalt :: a
          -> RecvRes m up down False a
 
--- |Given an action that starts in a `False` state (no write token), runTillRecv
--- the oracle call from its parent (running it until it receives the write
--- token via `accept`).
+-- |Given an action that starts in a `False` state (no write token),
+-- runTillRecv the oracle call from its parent (running it until it receives
+-- the write token via `recvAny`).
 runTillRecv :: Monad m
         => SomeSndMessage ach
         -> InterT ('InterPars m '[] ach sch) False b a
@@ -206,7 +203,7 @@ runTillRecv m (InterT (Join v)) = case v of
   LiftAction a cont -> a >>= runTillRecv m . InterT . cont
 
 -- |An algorithm with no parent and with access to child oracles given by
--- `down`. Starts and finished holding the write token
+-- `down`. Starts and finished holding the write token.
 type OracleCallerWrapper m down a =
   InterT ('InterPars m '[] '[] down) True True a
 
@@ -219,12 +216,16 @@ type OracleWrapper m a up =
 data OracleReq a = OracleReqHalt | OracleReq a
 
 -- |Given main algorithm `top` and an oracle algorithm `bot`, run them together
--- and return the result of `top`. Note that `runWithOracles` passes all the
--- messages between the running interactive algorithms, therefore its result is
--- a non-interactive algorithm.
+-- and return their results. The `top` returns its result directly when
+-- terminating, then a special `OracleReqHalt` message is sent to the `bot` to
+-- ask it to terminate and return its result.
 --
--- The `forall aft` part in the type of child oracle ensures that oracles do
--- not terminate in-between handling the requests.
+-- We throw a `mzero` error in case the oracle does not follow the termination
+-- condition: terminates before receiving `OracleReqHalt` or tries to respond
+-- to `OracleReqHalt` instead of terminating.
+--
+-- Note that `runWithOracles` passes all the messages between the running
+-- interactive algorithms, therefore its result is a non-interactive algorithm.
 runWithOracle :: Monad m
                => OracleCallerWrapper m '[ '(x, y) ] a
                -- ^The oracle caller algorithm
@@ -248,19 +249,19 @@ runWithOracle top bot = Trans.lift (runTillSend top) >>= \case
                => OracleWrapper m s '(x, y)
                -> x
                -> MaybeT m (y, OracleWrapper m s '(x, y))
-    oracleCall bot m = Trans.lift (runTillRecv (SomeSndMessage Here (OracleReq m)) bot) >>= \case
+    oracleCall bot' m = Trans.lift (runTillRecv (SomeSndMessage Here (OracleReq m)) bot') >>= \case
       RrCall contra _ _ -> case contra of {}
       RrRecv cont -> Trans.lift (runTillSend cont) >>= \case
         SrCall contra _ _ -> case contra of {}
         SrHalt _ -> mzero
-        SrSend r bot' -> case r of
-            SomeFstMessage Here r' -> pure (r', bot')
+        SrSend r bot'' -> case r of
+            SomeFstMessage Here r' -> pure (r', bot'')
             SomeFstMessage (There contra) _ -> case contra of {}
           
     oracleHalt :: Monad m
                => OracleWrapper m s '(x, y)
                -> MaybeT m s
-    oracleHalt bot = Trans.lift (runTillRecv (SomeSndMessage Here OracleReqHalt) bot) >>= \case
+    oracleHalt bot' = Trans.lift (runTillRecv (SomeSndMessage Here OracleReqHalt) bot') >>= \case
       RrCall contra _ _ -> case contra of {}
       RrRecv cont -> Trans.lift (runTillSend cont) >>= \case
         SrCall contra _ _ -> case contra of {}
