@@ -1,39 +1,44 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module UCHS.Monad.InterT.Eval where
+module UCHS.Monad.InterT.Eval
+  ( ProtoNode
+  , EnvNode
+  , SubRespTree(..)
+  , subRespEval
+  )
+ where
 
-import Control.XMonad
-import qualified Control.XMonad.Do as M
+-- import Control.XMonad
+-- import qualified Control.XMonad.Do as M
 
 import UCHS.Monad
 import UCHS.Types
 
-type Append :: forall a. [a] -> [a] -> [a]
-type family Append l l' where
-  Append '[] ys = ys
-  Append (x : xs) ys = (x : (Append xs ys))
-
-type Concat :: forall a. [[a]] -> [a]
-type family Concat l where
-  Concat '[] = '[]
-  -- Concat (x : xs) = Append x (Concat xs)
-
+-- |A protocol without it subroutine implementations built-in.
+--
+-- - `m` is the monad for local computations,
+-- - `up` is the interface we expose to environment (or another protocol that
+--   call us as a subroutine),
+-- - `down` is the list of interfaces of subroutines we call on,
+-- - `bef` is the WT state we start from.
+--
+-- This type definition ensures that we never terminate, we must continuously
+-- be ready to receive messages and respond to them somehow.
 type ProtoNode m up down bef = InterT ('InterPars m '[] ( '(Snd up, Fst up) : down) '[]) bef False Void
+
+-- |An enviroment algorithm. The `down` is the interface of the functionality
+-- environment is allowed to call.
 type EnvNode m down a = InterT ('InterPars m '[] '[down] '[]) True True a
 
--- |A tree of subroutine-respecting protocols
+-- |A tree of subroutine-respecting protocols.
+--
+-- A `SubRespTree m up` is simply `ProtoNode m up down False` where the
+-- required subroutine interfaces were filled with actual implementations (and,
+-- therefore, are not required and not exposed by a type parameter anymore).
 data SubRespTree (m :: Type -> Type) (up :: (Type, Type)) where
   SubRespTreeNode :: ProtoNode m up down False
                   -> HList (SubRespTree m) down
                   -> SubRespTree m up
-
--- |Church encoding of `SubRespTree`
-subRespTreeChurch :: SubRespTree m up
-                  -> ( forall down. ProtoNode m up down False
-                       -> HList (SubRespTree m) down -> a
-                     )
-                  -> a
-subRespTreeChurch (SubRespTreeNode p s) cont = cont p s
 
 -- |Run environment with a given protocol (no adversary yet).
 subRespEval :: forall m (iface :: (Type, Type)) a. Monad m
@@ -66,29 +71,3 @@ subRespEval = \e (SubRespTreeNode p ch) -> runTillSend e >>= \case
             subroutineCall cont chchs
           cont'' <- mayOnlyRecvVoidPrf <$> runTillRecv (SomeSndMessage (There i) m'') cont'
           subroutineCall cont'' s'
-
--- |Proof: A program with sync channels and return type `Void` may not
--- terminate; if it starts from `False` state, it will inevitably request an rx
--- message.
-mayOnlyRecvVoidPrf :: RecvRes m ach '[] False Void
-       -> InterT ('InterPars m '[] ach '[]) True False Void
-mayOnlyRecvVoidPrf = \case
-  RrCall contra _ _ -> case contra of {}
-  RrHalt contra -> case contra of {}
-  RrRecv x -> x
-
--- |Proof: a program with no sync channels that must terminate in `True` state
--- but starts in `False` state will inevitably request an rx message.
-mayOnlyRecvWTPrf :: RecvRes m ach '[] True a
-                 -> InterT ('InterPars m '[] ach '[]) True True a
-mayOnlyRecvWTPrf = \case
-  RrCall contra _ _ -> case contra of {}
-  RrRecv x -> x
-
--- |Proof: a program with no sync channels that must terminate in `False` state
--- that starts from `True` state will inevitable produce a tx message.
-mayOnlySendWTPrf :: SendRes m ach '[] False a
-       -> (SomeFstMessage ach, InterT ('InterPars m '[] ach '[]) False False a)
-mayOnlySendWTPrf = \case
-  SrCall contra _ _ -> case contra of {}
-  SrSend x cont -> (x, cont)

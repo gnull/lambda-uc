@@ -21,6 +21,11 @@ module UCHS.Monad.InterT (
   , OracleCallerWrapper
   , OracleWrapper
   , OracleReq(..)
+  -- * Helper lemmas
+  -- $lemmas
+  , mayOnlyRecvVoidPrf
+  , mayOnlyRecvWTPrf
+  , mayOnlySendWTPrf
 ) where
 
 -- import Prelude hiding ((>>=), return)
@@ -267,3 +272,60 @@ runWithOracle top bot = Trans.lift (runTillSend top) >>= \case
         SrCall contra _ _ -> case contra of {}
         SrHalt s -> pure s
         SrSend _ _ -> mzero
+
+-- $lemmas
+--
+-- These lemmas make it easier to extract the contents of `RecvRes` and
+-- `SendRes` in cases when types guarrantee that these values can be
+-- deconstructed in only one way (i.e. there is only one value constrctor that
+-- could have produces the value of this type).
+--
+-- These helpers allow (when applicable) you to write a sequence of
+-- `runTillRecv` and `runTillSend` in a linear fashion. You can do
+--
+-- @
+-- do
+--   x \<- `mayOnlyRecvVoidPrf` \<$> `runTillRecv` _ _
+--   (y, cont) \<- `mayOnlySendWTPrf` \<$> `runTillSend` _
+--   _
+-- @
+--
+-- instead of manually proving that some constructors are impossible as below.
+--
+-- @
+-- do
+--   `runTillRecv` _ _ `>>=` \case
+--     `RrCall` contra _ _ -> case contra of {}
+--     `RrHalt` contra -> case contra of {}
+--     `RrRecv` x -> do
+--       `runTillSend` _ `>>=` \case
+--         `SrCall` contra _ _ -> case contra of {}
+--         `SrSend` y cont -> do
+--           _
+-- @
+
+-- |Proof: A program with sync channels and return type `Void` may not
+-- terminate; if it starts from `False` state, it will inevitably request an rx
+-- message.
+mayOnlyRecvVoidPrf :: RecvRes m ach '[] False Void
+       -> InterT ('InterPars m '[] ach '[]) True False Void
+mayOnlyRecvVoidPrf = \case
+  RrCall contra _ _ -> case contra of {}
+  RrHalt contra -> case contra of {}
+  RrRecv x -> x
+
+-- |Proof: a program with no sync channels that must terminate in `True` state
+-- but starts in `False` state will inevitably request an rx message.
+mayOnlyRecvWTPrf :: RecvRes m ach '[] True a
+                 -> InterT ('InterPars m '[] ach '[]) True True a
+mayOnlyRecvWTPrf = \case
+  RrCall contra _ _ -> case contra of {}
+  RrRecv x -> x
+
+-- |Proof: a program with no sync channels that must terminate in `False` state
+-- that starts from `True` state will inevitable produce a tx message.
+mayOnlySendWTPrf :: SendRes m ach '[] False a
+       -> (SomeFstMessage ach, InterT ('InterPars m '[] ach '[]) False False a)
+mayOnlySendWTPrf = \case
+  SrCall contra _ _ -> case contra of {}
+  SrSend x cont -> (x, cont)
