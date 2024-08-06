@@ -43,9 +43,11 @@ padMessageIndex (SomeValue i' x') = SomeValue (There i') x'
 type Chan :: forall a b. a -> b -> [(a, b)] -> Type
 type Chan x y xs = InList '(x, y) xs
 
+-- Mixing this with `Fst` and `Snd` is hard at this point, since haskell fails
+-- to automatically derive `(Snd up, Fst up) ~ ChanSwap up`.
 type ChanSwap :: (Type, Type) -> (Type, Type)
 type family ChanSwap p where
-  ChanSwap '(x, y) = '(x, y)
+  ChanSwap '(x, y) = '(y, x)
 
 data SomeSndMessage xs where
   SomeSndMessage :: Chan x y xs -> y -> SomeSndMessage xs
@@ -69,6 +71,22 @@ data HList f (types :: [a]) where
 (!!) (HCons x _) Here = x
 (!!) (HCons _ xs) (There t) = xs !! t
 (!!) HNil contra = case contra of
+
+-- |Applies given mutating action to one of the elements in the list
+forIth :: Monad m
+            => InList x types
+            -- ^Action
+            -> HList f types
+            -- ^Element index
+            -> (f x -> m (f x, z))
+            -- ^List
+            -> m (HList f types, z)
+forIth Here (HCons x xs) f = do
+  (x', z) <- f x
+  pure (HCons x' xs, z)
+forIth (There i) (HCons x xs) f = do
+  (xs', z) <- forIth i xs f
+  pure (HCons x xs', z)
 
 -- |Convert @HList@ to a regular list.
 homogenize
