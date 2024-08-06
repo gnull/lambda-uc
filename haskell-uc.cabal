@@ -35,6 +35,7 @@ common deft
     -Wmissing-home-modules
     -Wpartial-fields
     -Wredundant-constraints
+    -Werror=incomplete-patterns
   default-language: GHC2021
   default-extensions:
     DataKinds
