@@ -2,10 +2,10 @@ image: nixos/unstable
 tasks:
 - build: |
     cd haskell-uc
-    nix-shell --run 'cabal build'
+    nix-shell --run 'cabal new-build'
 - haddock: |
     cd haskell-uc
-    nix-shell --run 'cabal haddock'
+    nix-shell --run 'cabal new-haddock'
 - test: |
     cd haskell-uc
-    nix-shell --run 'cabal test'
+    nix-shell --run 'cabal new-test'
