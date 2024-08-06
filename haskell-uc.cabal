@@ -65,6 +65,7 @@ library
   other-modules:
   hs-source-dirs:
       src
+  tested-with: GHC == 9.6.6
 
 common deft-test
   import: deft
