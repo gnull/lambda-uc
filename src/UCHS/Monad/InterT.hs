@@ -11,17 +11,19 @@ module UCHS.Monad.InterT (
   -- * Syntax
   -- $actions
   , InterActions(..)
-  -- * Evaluation
+  -- * Execution with Oracle
   -- $eval
-  , runTillSend
-  , SendRes(..)
-  , runTillRecv
-  , RecvRes(..)
   , runWithOracle
   , OracleCallerWrapper
   , OracleWrapper
   , OracleReq(..)
-  -- * Helper lemmas
+  -- * Step-by-step Execution
+  -- $step
+  , runTillSend
+  , SendRes(..)
+  , runTillRecv
+  , RecvRes(..)
+  -- ** Helper lemmas
   -- $lemmas
   , mayOnlyRecvVoidPrf
   , mayOnlyRecvWTPrf
@@ -151,7 +153,13 @@ instance Async (InterT ('InterPars m ex ach sch)) ach where
 instance Sync (InterT ('InterPars m ex ach sch)) sch where
   call i x = xfreeSync $ CallAction i x id
 
--- $eval
+-- $step
+--
+-- The following functions let you evaluate an interactive algorithm
+-- step-by-step. An algorithm in `True` state can be ran until it sends
+-- something (or halts, or does an oracle call) via `runTillSend`, and an
+-- algorithm in `False` state can be executed until it reqests a message for
+-- reception (or halts, or does an oracle call) via `runTillRecv`.
 
 -- |The result of `runTillSend`
 data SendRes (m :: Type -> Type) (ach :: [(Type, Type)]) (sch :: [(Type, Type)]) (aft :: Bool) a where
@@ -206,6 +214,20 @@ runTillRecv m (InterT (Join v)) = case v of
   CallAction i x cont -> pure $ RrCall i x $ InterT . cont
   ThrowAction contra _ -> case contra of {}
   LiftAction a cont -> a >>= runTillRecv m . InterT . cont
+
+-- $eval
+--
+-- The following are definitions related to running an algorithm with an given
+-- oracle. The `runWithOracle` executes an algorithm with an oracle, while
+-- `OracleCallerWrapper` and `OracleWrapper` are convenient type synonyms
+-- for the interactive algorithms that define the oracle caller and oracle
+-- respectively.
+--
+-- The oracle is expected to terminate and produce the result `s` right after
+-- receiving special request `OracleReqHalt`, but not before then. If the
+-- oracle violates this condition, the `runWithOracle` fails with `mzero`. To
+-- differentiate between service `OracleReqHalt` and the regular queries from
+-- the algorithm, we wrap the latter in `OracleReq` type.
 
 -- |An algorithm with no parent and with access to child oracles given by
 -- `down`. Starts and finished holding the write token.
