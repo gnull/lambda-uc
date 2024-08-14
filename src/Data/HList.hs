@@ -86,11 +86,44 @@ data HList f (types :: [a]) where
     HNil :: HList f '[]
     HCons :: f t -> HList f ts -> HList f (t : ts)
 
+pattern HListMatch0 :: HList f '[]
+pattern HListMatch0 = HNil
+{-# COMPLETE HListMatch0 #-}
+
+pattern HListMatch1 :: f a -> HList f '[a]
+pattern HListMatch1 a = HCons a HNil
+{-# COMPLETE HListMatch1 #-}
+
+pattern HListMatch2 :: f a -> f a' -> HList f '[a, a']
+pattern HListMatch2 a a' = HCons a (HListMatch1 a')
+{-# COMPLETE HListMatch2 #-}
+
+pattern HListMatch3 :: f a -> f a' -> f a'' -> HList f '[a, a', a'']
+pattern HListMatch3 a a' a'' = HCons a (HListMatch2 a' a'')
+{-# COMPLETE HListMatch3 #-}
+
 -- |Heterigenous zip of two lists
 type HList2 :: forall a b. (a -> b -> Type) -> [a] -> [b] -> Type
 data HList2 f (x :: [a]) (y :: [b]) where
     HNil2 :: HList2 f '[] '[]
     HCons2 :: f x y -> HList2 f xs ys -> HList2 f (x:xs) (y:ys)
+
+
+pattern HList2Match0 :: HList2 f '[] '[]
+pattern HList2Match0 = HNil2
+{-# COMPLETE HList2Match0 #-}
+
+pattern HList2Match1 :: f a b -> HList2 f '[a] '[b]
+pattern HList2Match1 a = HCons2 a HNil2
+{-# COMPLETE HList2Match1 #-}
+
+pattern HList2Match2 :: f a b -> f a' b' -> HList2 f '[a, a'] '[b, b']
+pattern HList2Match2 a a' = HCons2 a (HList2Match1 a')
+{-# COMPLETE HList2Match2 #-}
+
+pattern HList2Match3 :: f a b -> f a' b' -> f a'' b'' -> HList2 f '[a, a', a''] '[b, b', b'']
+pattern HList2Match3 a a' a'' = HCons2 a (HList2Match2 a' a'')
+{-# COMPLETE HList2Match3 #-}
 
 -- |Fetch the value under given index. Statically checked version of @Prelude.(!!)@.
 (!!) :: HList f types -> InList x types -> f x

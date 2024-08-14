@@ -15,10 +15,11 @@ module UCHS.Monad.InterT (
   -- * Execution with Oracle
   -- $eval
   , runWithOracles
-  , runWithOracles1
   , OracleCallerWrapper
   , OracleWrapper(..)
   , OracleReq(..)
+  , runWithOracles1
+  , runWithOracles2
   -- * Step-by-step Execution
   -- $step
   , runTillSend
@@ -319,8 +320,17 @@ runWithOracles1 :: Monad m
                 => OracleCallerWrapper m '[ '(x, y) ] a
                 -> OracleWrapper m '(x, y) b
                 -> MaybeT m (a, b)
-runWithOracles1 top bot = runWithOracles top (HCons2 bot HNil2) <&>
-  \(a, HCons (Identity b) HNil) -> (a, b)
+runWithOracles1 top bot = runWithOracles top (HList2Match1 bot) <&>
+  \(a, HListMatch1 (Identity b)) -> (a, b)
+
+-- |Version of `runWithOracles` that accepts two oracles
+runWithOracles2 :: Monad m
+                => OracleCallerWrapper m '[ '(x, y), '(x', y') ] a
+                -> OracleWrapper m '(x, y) b
+                -> OracleWrapper m '(x', y') b'
+                -> MaybeT m (a, b, b')
+runWithOracles2 top bot bot' = runWithOracles top (HList2Match2 bot bot') <&>
+  \(a, HListMatch2 (Identity b) (Identity b')) -> (a, b, b')
 
 -- $lemmas
 --
