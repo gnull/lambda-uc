@@ -31,14 +31,14 @@ type SpSignatureScheme sk pk mes sig = Integer -> SignatureScheme sk pk mes sig
 -- got.
 oracleMapM :: (Monad m)
            => (a -> m b)
-           -> OracleWrapper m [(a, b)] '(a, b)
-oracleMapM f = M.do
+           -> OracleWrapper m '(a, b) [(a, b)]
+oracleMapM f = OracleWrapper $ M.do
   accept >>=: \case
     OracleReqHalt -> xreturn []
     OracleReq x -> M.do
       y <- lift $ f x
       yield y
-      rest <- oracleMapM f
+      rest <- runOracleWrapper $ oracleMapM f
       xreturn $ (x, y) : rest
 
 type AdvAlgo pk mes sig = pk -> OracleCallerWrapper (SigAlgo True) '[ '(mes, sig) ] (mes, sig)
@@ -57,7 +57,7 @@ gameEuCma sec sch adv = do
   let sch' = sch sec
   (sk, pk) <- sigKey sch'
   fmap isJust $ runMaybeT $ do
-    ((m, sig), q) <- runWithOracle (adv sec pk) (oracleMapM $ sigSign sch' sk)
+    ((m, sig), q) <- runWithOracles1 (adv sec pk) $ (oracleMapM $ sigSign sch' sk)
     -- check that the guess is correct
     True <- pure $ sigVer sch' pk m sig
     -- check that it was never queried

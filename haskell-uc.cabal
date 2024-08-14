@@ -61,7 +61,7 @@ library
       UCHS.Monad.InterT.SomeWT
       UCHS.Monad.Extra
       UCHS.Games.SignatureScheme
-      Ideas.Monad
+      -- Ideas.Monad
   other-modules:
   hs-source-dirs:
       src

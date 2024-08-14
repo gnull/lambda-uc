@@ -5,17 +5,22 @@ module UCHS.Types
   , SBool(..)
   , Or
   , Fst
+  , MapFst
   , Snd
   , Empty
   , IfThenElse
   , KnownBool(..)
+  , SameLen(..)
+  , SameLength(..)
   )
 where
 
 import Data.Void (Void)
 
-import Data.Kind (Type)
+import Data.Kind (Type, Constraint)
 import Data.HList
+
+import Data.Type.Equality ((:~:)(Refl))
 
 -- |Singleton @Bool@ used to store the dependent value of Write Token
 data SBool (a :: Bool) where
@@ -27,14 +32,6 @@ type family Or x y where
   Or True _ = True
   Or _ True = True
   Or _ _ = False
-
-type Fst :: (Type, Type) -> Type
-type family Fst p where
-  Fst '(x, _) = x
-
-type Snd :: (Type, Type) -> Type
-type family Snd p where
-  Snd '(_, y) = y
 
 -- |Type-level if-then-else, we use it to choose constraints conditionally
 type IfThenElse :: forall a. Bool -> a -> a -> a
@@ -58,3 +55,33 @@ instance KnownBool False where
 
 instance KnownBool True where
   getSBool = STrue
+
+-- -- |Signleton type to express the list structure (length) but not the contents.
+-- data SListLen :: forall a. [a] -> Type where
+--   SListLenZ :: SListLen '[]
+--   SListLenS :: forall a (x :: a) (l :: [a]). SListLen l -> SListLen (x : l)
+
+-- -- |Class of list values for which their length is known at compile time.
+-- type KnownLength :: forall a. [a] -> Constraint
+-- class KnownLength l where
+--   getSListLen :: SListLen l
+
+-- instance KnownLength '[] where
+--   getSListLen = SListLenZ
+
+-- instance KnownLength xs => KnownLength (x:xs) where
+--   getSListLen = SListLenS $ getSListLen @_ @xs
+
+data SameLen :: forall a b. [a] -> [b] -> Type where
+  SameLenNil :: SameLen '[] '[]
+  SameLenCons :: SameLen l l' -> SameLen (x:l) (x':l')
+
+type SameLength :: forall a b. [a] -> [b] -> Constraint
+class SameLength l l' where
+  proveSameLength :: SameLen l l'
+
+instance SameLength '[] '[] where
+  proveSameLength = SameLenNil
+
+instance SameLength l l' => SameLength (x:l) (x':l') where
+  proveSameLength = SameLenCons proveSameLength

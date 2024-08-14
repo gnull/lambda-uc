@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module UCHS.Monad.InterT (
   -- * Interactive Algorithm Monad
@@ -13,9 +14,10 @@ module UCHS.Monad.InterT (
   , InterActions(..)
   -- * Execution with Oracle
   -- $eval
-  , runWithOracle
+  , runWithOracles
+  , runWithOracles1
   , OracleCallerWrapper
-  , OracleWrapper
+  , OracleWrapper(..)
   , OracleReq(..)
   -- * Step-by-step Execution
   -- $step
@@ -32,6 +34,9 @@ module UCHS.Monad.InterT (
 
 -- import Prelude hiding ((>>=), return)
 import qualified Control.Monad as Monad
+import Data.Functor
+import Data.Functor.Identity
+
 import Control.XFreer.Join
 import Control.XApplicative
 import Control.XMonad
@@ -218,14 +223,14 @@ runTillRecv m (InterT (Join v)) = case v of
 -- $eval
 --
 -- The following are definitions related to running an algorithm with an given
--- oracle. The `runWithOracle` executes an algorithm with an oracle, while
+-- oracle. The `runWithOracles` executes an algorithm with an oracle, while
 -- `OracleCallerWrapper` and `OracleWrapper` are convenient type synonyms
 -- for the interactive algorithms that define the oracle caller and oracle
 -- respectively.
 --
 -- The oracle is expected to terminate and produce the result `s` right after
 -- receiving special request `OracleReqHalt`, but not before then. If the
--- oracle violates this condition, the `runWithOracle` fails with `mzero`. To
+-- oracle violates this condition, the `runWithOracles` fails with `mzero`. To
 -- differentiate between service `OracleReqHalt` and the regular queries from
 -- the algorithm, we wrap the latter in `OracleReq` type.
 
@@ -237,63 +242,85 @@ type OracleCallerWrapper m down a =
 -- |An algorithm serving oracle calls from parent, but not having access to
 -- any oracles of its own and not returning any result. It exposes the `up`
 -- interface as the last argument for use with `HList`.
-type OracleWrapper m a up =
-  InterT ('InterPars m '[] '[ '(Snd up, OracleReq (Fst up))] '[]) False True a
+data OracleWrapper (m :: Type -> Type) (up :: (Type, Type)) (ret :: Type) =
+  OracleWrapper
+    { runOracleWrapper
+      :: InterT ('InterPars m '[] '[ '(Snd up, OracleReq (Fst up))] '[]) False True ret
+    }
 
 data OracleReq a = OracleReqHalt | OracleReq a
 
--- |Given main algorithm `top` and an oracle algorithm `bot`, run them together
--- and return their results. The `top` returns its result directly when
--- terminating, then a special `OracleReqHalt` message is sent to the `bot` to
--- ask it to terminate and return its result.
+-- |Given main algorithm `top` and a list of oracle algorithms `bot`,
+-- `runWithOracles top bot` will run them together (`top` querying any oracle
+-- the oracles in `bot`) and return their results.
 --
--- We throw a `mzero` error in case the oracle does not follow the termination
+-- The `top` returns its result directly when terminating, then a special
+-- `OracleReqHalt` message is sent to all of `bot` to ask them to terminate and
+-- return their results.
+--
+-- We throw a `mzero` error in case an oracle does not follow the termination
 -- condition: terminates before receiving `OracleReqHalt` or tries to respond
 -- to `OracleReqHalt` instead of terminating.
 --
 -- Note that `runWithOracles` passes all the messages between the running
 -- interactive algorithms, therefore its result is a non-interactive algorithm.
-runWithOracle :: Monad m
-               => OracleCallerWrapper m '[ '(x, y) ] a
+runWithOracles :: forall m (down :: [(Type, Type)]) (rets :: [Type]) a.
+               (Monad m, SameLength down rets)
+               => OracleCallerWrapper m down a
                -- ^The oracle caller algorithm
-               -> OracleWrapper m s '(x, y)
-               -- ^The oracle
-               -> MaybeT m (a, s)
+               -> HList2 (OracleWrapper m) down rets
+               -- ^The implementations of oracles available to caller
+               -> MaybeT m (a, HList Identity rets)
                -- ^The outputs of caller and oracle. Fails with `mzero` if
                -- the oracle terminates before time or doesn't terminate when
                -- requested
-runWithOracle top bot = Trans.lift (runTillSend top) >>= \case
+runWithOracles = \top bot -> Trans.lift (runTillSend top) >>= \case
     SrSend (SomeFstMessage contra _) _ -> case contra of {}
     SrHalt r -> do
-      s <- oracleHalt bot
+      s <- haltAll bot
       pure (r, s)
-    SrCall (There contra) _ _ -> case contra of {}
-    SrCall Here m cont -> do
-      (r, bot') <- oracleCall bot m
-      runWithOracle (cont r) bot'
+    SrCall i m cont -> do
+      (bot', r) <- forIthFst i bot $ oracleCall m
+      runWithOracles (cont r) bot'
   where
-    oracleCall :: Monad m
-               => OracleWrapper m s '(x, y)
-               -> x
-               -> MaybeT m (y, OracleWrapper m s '(x, y))
-    oracleCall bot' m = Trans.lift (runTillRecv (SomeSndMessage Here (OracleReq m)) bot') >>= \case
+    oracleCall :: x
+               -> OracleWrapper m '(x, y) s
+               -> MaybeT m (OracleWrapper m '(x, y) s, y)
+    oracleCall m (OracleWrapper bot) = Trans.lift (runTillRecv (SomeSndMessage Here (OracleReq m)) bot) >>= \case
       RrCall contra _ _ -> case contra of {}
       RrRecv cont -> Trans.lift (runTillSend cont) >>= \case
         SrCall contra _ _ -> case contra of {}
         SrHalt _ -> mzero
-        SrSend r bot'' -> case r of
-            SomeFstMessage Here r' -> pure (r', bot'')
+        SrSend r bot' -> case r of
+            SomeFstMessage Here r' -> pure (OracleWrapper bot', r')
             SomeFstMessage (There contra) _ -> case contra of {}
           
-    oracleHalt :: Monad m
-               => OracleWrapper m s '(x, y)
-               -> MaybeT m s
-    oracleHalt bot' = Trans.lift (runTillRecv (SomeSndMessage Here OracleReqHalt) bot') >>= \case
+    halt :: OracleWrapper m up x
+         -> MaybeT m x
+    halt (OracleWrapper bot) = Trans.lift (runTillRecv (SomeSndMessage Here OracleReqHalt) bot) >>= \case
       RrCall contra _ _ -> case contra of {}
       RrRecv cont -> Trans.lift (runTillSend cont) >>= \case
         SrCall contra _ _ -> case contra of {}
         SrHalt s -> pure s
         SrSend _ _ -> mzero
+
+    haltAll :: forall (down' :: [(Type, Type)]) (rets' :: [Type]).
+               HList2 (OracleWrapper m) down' rets'
+            -> MaybeT m (HList Identity rets')
+    haltAll = \case
+      HNil2 -> pure HNil
+      HCons2 x xs -> do
+        x' <- halt x
+        xs' <- haltAll xs
+        pure $ HCons (Identity x') xs'
+
+-- |Version of `runWithOracles` that accepts only one oracle
+runWithOracles1 :: Monad m
+                => OracleCallerWrapper m '[ '(x, y) ] a
+                -> OracleWrapper m '(x, y) b
+                -> MaybeT m (a, b)
+runWithOracles1 top bot = runWithOracles top (HCons2 bot HNil2) <&>
+  \(a, HCons (Identity b) HNil) -> (a, b)
 
 -- $lemmas
 --

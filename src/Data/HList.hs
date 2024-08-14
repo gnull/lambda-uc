@@ -5,6 +5,8 @@ import Prelude hiding ((!!))
 import Data.Kind (Type)
 import Data.Type.Equality ((:~:)(Refl))
 
+import Data.Functor.Identity
+
 -- * Dependent pointer into a list
 
 -- |Dependent index of an element of type @(x, y)@ in list @xs@
@@ -49,6 +51,24 @@ type ChanSwap :: (Type, Type) -> (Type, Type)
 type family ChanSwap p where
   ChanSwap '(x, y) = '(y, x)
 
+type Fst :: forall a b. (a, b) -> a
+type family Fst p where
+  Fst '(x, _) = x
+
+type MapFst :: forall a b. [(a, b)] -> [a]
+type family MapFst l where
+  MapFst '[] = '[]
+  MapFst ( '(x, y) : l) = x : MapFst l
+
+type Snd :: forall a b. (a, b) -> b
+type family Snd p where
+  Snd '(_, y) = y
+
+type Zip :: forall a b. [a] -> [b] -> [(a, b)]
+type family Zip l l' where
+  Zip '[] '[] = '[]
+  Zip (x:xs) (y:ys) = '(x, y) : Zip xs ys
+
 data SomeSndMessage xs where
   SomeSndMessage :: Chan x y xs -> y -> SomeSndMessage xs
 
@@ -66,11 +86,33 @@ data HList f (types :: [a]) where
     HNil :: HList f '[]
     HCons :: f t -> HList f ts -> HList f (t : ts)
 
+-- |Heterigenous zip of two lists
+type HList2 :: forall a b. (a -> b -> Type) -> [a] -> [b] -> Type
+data HList2 f (x :: [a]) (y :: [b]) where
+    HNil2 :: HList2 f '[] '[]
+    HCons2 :: f x y -> HList2 f xs ys -> HList2 f (x:xs) (y:ys)
+
 -- |Fetch the value under given index. Statically checked version of @Prelude.(!!)@.
 (!!) :: HList f types -> InList x types -> f x
 (!!) (HCons x _) Here = x
 (!!) (HCons _ xs) (There t) = xs !! t
 (!!) HNil contra = case contra of
+
+-- |Applies given mutating action to one of the elements in the list
+forIthFst :: Monad m
+       => InList x xs
+       -- ^Element index
+       -> HList2 f xs ys
+       -- ^List
+       -> (forall y. f x y -> m (f x y, z))
+       -- ^Action
+       -> m (HList2 f xs ys, z)
+forIthFst Here (HCons2 x xs) f = do
+  (x', z) <- f x
+  pure (HCons2 x' xs, z)
+forIthFst (There i) (HCons2 x xs) f = do
+  (xs', z) <- forIthFst i xs f
+  pure (HCons2 x xs', z)
 
 -- |Applies given mutating action to one of the elements in the list
 forIth :: Monad m
@@ -88,9 +130,16 @@ forIth (There i) (HCons x xs) f = do
   (xs', z) <- forIth i xs f
   pure (HCons x xs', z)
 
+-- |Like `map`, but for `HList`.
+hMap :: (forall a. InList a types -> f a -> g a) -> HList f types -> HList g types
+hMap f = \case
+  HNil -> HNil
+  HCons x xs -> HCons (f Here x) $ hMap (\i-> f $ There i) xs
+
 -- |Convert @HList@ to a regular list.
 homogenize
-  :: (forall x. InList x types -> f x -> a)
+  :: forall t (types :: [t]) (f :: t -> Type) a.
+     (forall x. InList x types -> f x -> a)
   -> HList f types
   -> [a]
 homogenize _ HNil = []
