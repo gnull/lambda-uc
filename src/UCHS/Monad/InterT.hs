@@ -15,8 +15,9 @@ module UCHS.Monad.InterT (
   -- * Execution with Oracle
   -- $eval
   , runWithOracles
-  , OracleCallerWrapper
+  , OracleCaller
   , OracleWrapper(..)
+  , Oracle
   , OracleReq(..)
   , runWithOracles1
   , runWithOracles2
@@ -225,7 +226,7 @@ runTillRecv m (InterT (Join v)) = case v of
 --
 -- The following are definitions related to running an algorithm with an given
 -- oracle. The `runWithOracles` executes an algorithm with an oracle, while
--- `OracleCallerWrapper` and `OracleWrapper` are convenient type synonyms
+-- `OracleCaller` and `OracleWrapper` are convenient type synonyms
 -- for the interactive algorithms that define the oracle caller and oracle
 -- respectively.
 --
@@ -237,16 +238,19 @@ runTillRecv m (InterT (Join v)) = case v of
 
 -- |An algorithm with no parent and with access to child oracles given by
 -- `down`. Starts and finished holding the write token.
-type OracleCallerWrapper m down a =
+type OracleCaller m down a =
   InterT ('InterPars m '[] '[] down) True True a
 
 -- |An algorithm serving oracle calls from parent, but not having access to
--- any oracles of its own and not returning any result. It exposes the `up`
--- interface as the last argument for use with `HList`.
-data OracleWrapper (m :: Type -> Type) (up :: (Type, Type)) (ret :: Type) =
+-- any oracles of its own and not returning any result.
+type Oracle (m :: Type -> Type) (up :: (Type, Type)) (ret :: Type) =
+  InterT ('InterPars m '[] '[ '(Snd up, OracleReq (Fst up))] '[]) False True ret
+
+-- |Version of `Oracle` that's wrapped in newtype, convenient for use with `HList2`.
+newtype OracleWrapper (m :: Type -> Type) (up :: (Type, Type)) (ret :: Type) =
   OracleWrapper
     { runOracleWrapper
-      :: InterT ('InterPars m '[] '[ '(Snd up, OracleReq (Fst up))] '[]) False True ret
+      :: Oracle m up ret
     }
 
 data OracleReq a = OracleReqHalt | OracleReq a
@@ -267,7 +271,7 @@ data OracleReq a = OracleReqHalt | OracleReq a
 -- interactive algorithms, therefore its result is a non-interactive algorithm.
 runWithOracles :: forall m (down :: [(Type, Type)]) (rets :: [Type]) a.
                (Monad m, SameLength down rets)
-               => OracleCallerWrapper m down a
+               => OracleCaller m down a
                -- ^The oracle caller algorithm
                -> HList2 (OracleWrapper m) down rets
                -- ^The implementations of oracles available to caller
@@ -317,7 +321,7 @@ runWithOracles = \top bot -> Trans.lift (runTillSend top) >>= \case
 
 -- |Version of `runWithOracles` that accepts only one oracle
 runWithOracles1 :: Monad m
-                => OracleCallerWrapper m '[ '(x, y) ] a
+                => OracleCaller m '[ '(x, y) ] a
                 -> OracleWrapper m '(x, y) b
                 -> MaybeT m (a, b)
 runWithOracles1 top bot = runWithOracles top (HList2Match1 bot) <&>
@@ -325,7 +329,7 @@ runWithOracles1 top bot = runWithOracles top (HList2Match1 bot) <&>
 
 -- |Version of `runWithOracles` that accepts two oracles
 runWithOracles2 :: Monad m
-                => OracleCallerWrapper m '[ '(x, y), '(x', y') ] a
+                => OracleCaller m '[ '(x, y), '(x', y') ] a
                 -> OracleWrapper m '(x, y) b
                 -> OracleWrapper m '(x', y') b'
                 -> MaybeT m (a, b, b')

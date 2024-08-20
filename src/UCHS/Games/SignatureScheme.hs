@@ -15,6 +15,8 @@ import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Monad (MonadPlus(..))
 -- import qualified Control.Monad.Trans.Class as Trans
 
+import UCHS.Games.Common
+
 type SigAlgo :: Bool -> Type -> Type
 type SigAlgo ra = Algo False ra
 
@@ -26,22 +28,7 @@ data SignatureScheme sk pk mes sig = SignatureScheme
 
 type SpSignatureScheme sk pk mes sig = Integer -> SignatureScheme sk pk mes sig
 
--- |Oracle that computes the given monadic function upon request. When
--- requested to terminate, returns the list of all request-response pairs it
--- got.
-oracleMapM :: (Monad m)
-           => (a -> m b)
-           -> OracleWrapper m '(a, b) [(a, b)]
-oracleMapM f = OracleWrapper $ M.do
-  accept >>=: \case
-    OracleReqHalt -> xreturn []
-    OracleReq x -> M.do
-      y <- lift $ f x
-      yield y
-      rest <- runOracleWrapper $ oracleMapM f
-      xreturn $ (x, y) : rest
-
-type AdvAlgo pk mes sig = pk -> OracleCallerWrapper (SigAlgo True) '[ '(mes, sig) ] (mes, sig)
+type AdvAlgo pk mes sig = pk -> OracleCaller (SigAlgo True) '[ '(mes, sig) ] (mes, sig)
 type SpAdvAlgo pk mes sig = Integer -> AdvAlgo pk mes sig
 
 -- |Existential Unforgeability under Chosen Message Attack, EU-CMA
@@ -63,7 +50,3 @@ gameEuCma sec sch adv = do
     -- check that it was never queried
     assert $ not $ any (\(m', _) -> m' == m) q
     return ()
-
-assert :: MonadPlus m => Bool -> m ()
-assert True = pure ()
-assert False = mzero

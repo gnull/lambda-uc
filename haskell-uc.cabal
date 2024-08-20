@@ -25,6 +25,7 @@ common deft
     , freer-indexed
     , free
     , random
+    , data-default
   ghc-options:
     -Wall
     -Wcompat
@@ -38,6 +39,8 @@ common deft
     -Werror=incomplete-patterns
   default-language: GHC2021
   default-extensions:
+    -- The only obstacle to declaring this as safe haskell is DerivingVia we use here
+    -- Safe
     DataKinds
     FunctionalDependencies
     GADTs
@@ -60,7 +63,9 @@ library
       UCHS.Monad.InterT.Eval
       UCHS.Monad.InterT.SomeWT
       UCHS.Monad.Extra
+      UCHS.Games.Common
       UCHS.Games.SignatureScheme
+      UCHS.Games.SymEncryption
       -- Ideas.Monad
   other-modules:
   hs-source-dirs:

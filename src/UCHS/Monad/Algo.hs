@@ -1,5 +1,4 @@
 {-# LANGUAGE DerivingVia #-}
--- {-# LANGUAGE ScopedTypeVariables #-}
 
 module UCHS.Monad.Algo where
 

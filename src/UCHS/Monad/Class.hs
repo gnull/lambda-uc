@@ -6,6 +6,7 @@ module UCHS.Monad.Class
   -- $local
     Print(..)
   , Rand(..)
+  , UniformDist(..)
   , Throw(..)
   , Catch(..)
   -- * Interactive Computations
@@ -73,6 +74,10 @@ instance (Trans.MonadTrans t, Rand m) => Rand (t m) where
 
 instance Rand IO where
   rand = Random.randomIO
+
+class UniformDist s where
+  -- |Sample a uniformly random value from `s`
+  uniformDist :: forall m. Rand m => m s
 
 class Monad m => Throw (m :: Type -> Type) (e :: Type) | m -> e where
   -- |Throw an exception.
