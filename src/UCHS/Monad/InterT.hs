@@ -27,6 +27,7 @@ module UCHS.Monad.InterT (
   , SendRes(..)
   , runTillRecv
   , RecvRes(..)
+  , runTillHalt
   -- ** Helper lemmas
   -- $lemmas
   , mayOnlyRecvVoidPrf
@@ -221,6 +222,32 @@ runTillRecv m (InterT (Join v)) = case v of
   CallAction i x cont -> pure $ RrCall i x $ InterT . cont
   ThrowAction contra _ -> case contra of {}
   LiftAction a cont -> a >>= runTillRecv m . InterT . cont
+
+-- |Run an action until it terminates, return its result.
+--
+-- If the action tries to send or receive, return nothing.
+runTillHalt :: Monad m
+            => InterT ('InterPars m '[] ach sch) b b' a
+            -> m (Maybe a)
+runTillHalt (InterT (Pure x)) = pure $ Just x
+runTillHalt (InterT (Join cont)) = case cont of
+  RecvAction _ -> pure Nothing
+  SendAction _ _ -> pure Nothing
+  CallAction _ _ _ -> pure Nothing
+  ThrowAction contra _ -> case contra of {}
+  LiftAction m cont' -> do
+    v <- m
+    runTillHalt $ InterT $ cont' v
+
+  -- RecvAction :: (SomeSndMessage ach -> a) -> InterActions ('InterPars m ex ach sch) False True a
+  -- SendAction :: SomeFstMessage ach -> a -> InterActions ('InterPars m ex ach sch) True False a
+  -- -- |Perform a call to a child, immediately getting the result
+  -- CallAction :: Chan x y sch -> x -> (y -> a) -> InterActions ('InterPars m ex ach sch) b b a
+  -- -- |Throw an exception.
+  -- ThrowAction :: InList '(e, b) ex -> e -> InterActions ('InterPars m ex ach sch) b b' a
+
+  -- -- |Run a local action in the inner monad.
+  -- LiftAction :: m x -> (x -> a) -> InterActions ('InterPars m ex ach sch) b b a
 
 -- $eval
 --

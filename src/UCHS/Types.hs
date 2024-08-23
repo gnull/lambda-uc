@@ -4,9 +4,8 @@ module UCHS.Types
   , module Data.Kind
   , SBool(..)
   , Or
-  , Fst
-  , MapFst
-  , Snd
+  , BoolNeg
+  , lemmaBoolNegInv
   , Empty
   , IfThenElse
   , KnownBool(..)
@@ -32,6 +31,17 @@ type family Or x y where
   Or True _ = True
   Or _ True = True
   Or _ _ = False
+
+type BoolNeg :: Bool -> Bool
+type family BoolNeg x where
+  BoolNeg True = False
+  BoolNeg False = True
+
+-- | ¬¬x = x
+lemmaBoolNegInv :: forall b. KnownBool b => BoolNeg (BoolNeg b) :~: b
+lemmaBoolNegInv = case getSBool @b of
+  STrue -> Refl
+  SFalse -> Refl
 
 -- |Type-level if-then-else, we use it to choose constraints conditionally
 type IfThenElse :: forall a. Bool -> a -> a -> a
