@@ -12,6 +12,8 @@ module UCHS.Monad.Class
   -- * Interactive Computations
   -- $interactive
   , GetWT(..)
+  , Index
+  , IndexReachable(..)
   , XThrow(..)
   , XCatch(..)
   -- ** Synchronous Interaction
@@ -94,9 +96,9 @@ class (Throw m e, Monad m') => Catch m e m' | m -> e where
 -- write-token-aware exceptions.
 
 class XMonad m => GetWT m where
-  getWT :: KnownBool b => m b b (SBool b)
+  getWT :: KnownMaybeBool b => m b b (SMaybeBool b)
 
-class XMonad m => XThrow (m :: Bool -> Bool -> Type -> Type) (ex :: [(Type, Bool)]) | m -> ex where
+class XMonad m => XThrow (m :: Index -> Index -> Type -> Type) (ex :: [(Type, Index)]) | m -> ex where
   -- |Throw a context-aware exception. The list of possible exceptions `ex`
   -- contains types annotated with the write-token state from which they can be
   -- thrown.
@@ -123,7 +125,7 @@ class (XThrow m ex, XMonad m') => XCatch m ex m' where
 -- `Sync` or both depending on whether it is supposed to provide and/or
 -- call oracle interfaces.
 
-class GetWT m => Sync (m :: Bool -> Bool -> Type -> Type) (down :: [(Type, Type)]) | m -> down where
+class GetWT m => Sync (m :: Index -> Index -> Type -> Type) (down :: [(Type, Type)]) | m -> down where
   -- |Perform an oracle call to a child. The call waits for the child to
   -- respond (putting caller to sleep until then).
   call :: Chan x y down -> x -> m b b y
@@ -142,16 +144,24 @@ class GetWT m => Sync (m :: Bool -> Bool -> Type -> Type) (down :: [(Type, Type)
 -- from anyone — as the exact order of messages can not be predicted at compile
 -- time.
 
-class GetWT m => Async (m :: Bool -> Bool -> Type -> Type) (chans :: [(Type, Type)]) | m -> chans where
-  -- |Send message to the channel it is marked with.
-  sendMess :: SomeFstMessage chans -> m True False ()
+class GetWT m => Async (m :: Index -> Index -> Type -> Type) (chans :: [(Type, Type)]) | m -> chans where
+  -- |Send a message to the channel it is marked with.
+  sendMess :: SomeFstMessage chans -> m (Just True) (Just False) ()
 
   -- |Curried version of `sendMess`.
-  send :: Chan x y chans -> x -> m True False ()
+  send :: Chan x y chans -> x -> m (Just True) (Just False) ()
   send i m = sendMess $ SomeFstMessage i m
 
+  -- |Send a message to the channel it is marked with and disable further
+  -- asynchronous communcation.
+  sendMessFinal :: SomeFstMessage chans -> m (Just True) Nothing ()
+
+  -- |Curried version of `sendMessFinal`.
+  sendFinal :: Chan x y chans -> x -> m (Just True) Nothing ()
+  sendFinal i m = sendMessFinal $ SomeFstMessage i m
+
   -- |Receive the next message which can arrive from any of `chan` channels.
-  recvAny :: m False True (SomeSndMessage chans)
+  recvAny :: m (Just False) (Just True) (SomeSndMessage chans)
 
 -- $derived
 --
@@ -159,14 +169,14 @@ class GetWT m => Async (m :: Bool -> Bool -> Type -> Type) (chans :: [(Type, Typ
 
 
 accept :: Async m '[ '(x, y)]
-       => m False True y
+       => m (Just False) (Just True) y
 accept = M.do
   recvAny >>=: \case
     SomeSndMessage Here m -> xpure m
     SomeSndMessage (There contra) _ -> case contra of {}
 
 yield :: Async m '[ '(x, y)]
-      => x -> m True False ()
+      => x -> m (Just True) (Just False) ()
 yield = send Here
 
 -- |An exception thrown if a message does not arrive from the expected sender.
@@ -174,9 +184,9 @@ data ExBadSender = ExBadSender
 
 -- |Receive from a specific channel. If an unexpected message arrives from
 -- another channel, throw the `ExBadSender` exception.
-recv :: (XThrow m '[ '(ExBadSender, True)], Async m l)
+recv :: (XThrow m '[ '(ExBadSender, Just True)], Async m l)
      => Chan x y l
-     -> m False True y
+     -> m (Just False) (Just True) y
 recv i = M.do
   SomeSndMessage j m <- recvAny
   case testEquality i j of
@@ -187,8 +197,8 @@ recv i = M.do
 -- |Send message to a given channel and wait for a response. If some other
 -- message arrives before the expected response, throw the `ExBadSender`
 -- exception.
-sendSync :: (XThrow m '[ '(ExBadSender, True)], Async m l)
-         => x -> Chan x y l -> m True True y
+sendSync :: (XThrow m '[ '(ExBadSender, Just True)], Async m l)
+         => x -> Chan x y l -> m (Just True) (Just True) y
 sendSync m chan = M.do
   send chan m
   (SomeSndMessage i y) <- recvAny

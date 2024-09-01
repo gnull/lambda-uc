@@ -63,11 +63,10 @@ library
       UCHS.Monad.InterT.Eval
       UCHS.Monad.InterT.SomeWT
       UCHS.Monad.Extra
-      UCHS.Protocols.P2
+      -- UCHS.Protocols.P2
       UCHS.Games.Common
       UCHS.Games.SignatureScheme
       UCHS.Games.SymEncryption
-      -- Ideas.Monad
   other-modules:
   hs-source-dirs:
       src

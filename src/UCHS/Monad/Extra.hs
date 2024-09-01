@@ -75,6 +75,7 @@ liftSyncAlgo _ (S.InterT (Pure v)) = xreturn v
 liftSyncAlgo h (S.InterT (Join v)) =
     case v of
       S.SendAction m r -> sendMess m >>: liftSyncAlgo h (S.InterT r)
+      S.SendFinalAction m r -> sendMessFinal m >>: liftSyncAlgo h (S.InterT r)
       S.RecvAction cont -> recvAny >>=: liftSyncAlgo h . S.InterT . cont
       S.CallAction i m cont -> call i m >>=: liftSyncAlgo h . S.InterT . cont
       S.ThrowAction i e -> xthrow i e

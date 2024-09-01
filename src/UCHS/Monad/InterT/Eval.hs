@@ -24,11 +24,11 @@ import UCHS.Types
 --
 -- This type definition ensures that we never terminate, we must continuously
 -- be ready to receive messages and respond to them somehow.
-type ProtoNode m up down bef = InterT ('InterPars m '[] ( '(Snd up, Fst up) : down) '[]) bef False Void
+type ProtoNode m up down bef = InterT ('InterPars m '[] ( '(Snd up, Fst up) : down) '[]) bef (Just False) Void
 
 -- |An enviroment algorithm. The `down` is the interface of the functionality
 -- environment is allowed to call.
-type EnvNode m down a = InterT ('InterPars m '[] '[down] '[]) True True a
+type EnvNode m down a = InterT ('InterPars m '[] '[down] '[]) (Just True) (Just True) a
 
 -- |A tree of subroutine-respecting protocols.
 --
@@ -36,7 +36,7 @@ type EnvNode m down a = InterT ('InterPars m '[] '[down] '[]) True True a
 -- required subroutine interfaces were filled with actual implementations (and,
 -- therefore, are not required and not exposed by a type parameter anymore).
 data SubRespTree (m :: Type -> Type) (up :: (Type, Type)) where
-  SubRespTreeNode :: ProtoNode m up down False
+  SubRespTreeNode :: ProtoNode m up down (Just False)
                   -> HList (SubRespTree m) down
                   -> SubRespTree m up
 
@@ -51,6 +51,7 @@ subRespEval = \e (SubRespTreeNode p ch) -> runTillSend e >>= \case
     SrCall contra _ _ -> case contra of {}
     SrHalt x -> pure x
     SrSend (SomeFstMessage (There contra) _) _ -> case contra of {}
+    SrSendFinal _ cont -> case cannotEscapeNothingPrf cont of {}
     SrSend (SomeFstMessage Here m) cont -> do
       p' <- mayOnlyRecvVoidPrf <$> runTillRecv (SomeSndMessage Here m) p
       (t, resp) <- subroutineCall @iface p' ch
@@ -58,7 +59,7 @@ subRespEval = \e (SubRespTreeNode p ch) -> runTillSend e >>= \case
       subRespEval e' t
   where
     subroutineCall :: forall up down.
-                   ProtoNode m up down True
+                   ProtoNode m up down (Just True)
                    -> HList (SubRespTree m) down
                    -> m (SubRespTree m up, Snd up)
     subroutineCall p s = do
