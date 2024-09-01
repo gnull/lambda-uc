@@ -11,7 +11,7 @@ module UCHS.Monad.Class
   , Catch(..)
   -- * Interactive Computations
   -- $interactive
-  , GetWT(..)
+  , getWT
   , Index
   , IndexReachable(..)
   , XThrow(..)
@@ -95,8 +95,9 @@ class (Throw m e, Monad m') => Catch m e m' | m -> e where
 -- algorithms: reading the current state of the write token, throwing
 -- write-token-aware exceptions.
 
-class XMonad m => GetWT m where
-  getWT :: KnownMaybeBool b => m b b (SMaybeBool b)
+-- |Wrapper around `getSMaybeBool` that tells you what context you're in.
+getWT :: (XMonad m, KnownMaybeBool b) => m b b (SMaybeBool b)
+getWT = xreturn getSMaybeBool
 
 class XMonad m => XThrow (m :: Index -> Index -> Type -> Type) (ex :: [(Type, Index)]) | m -> ex where
   -- |Throw a context-aware exception. The list of possible exceptions `ex`
@@ -125,7 +126,7 @@ class (XThrow m ex, XMonad m') => XCatch m ex m' where
 -- `Sync` or both depending on whether it is supposed to provide and/or
 -- call oracle interfaces.
 
-class GetWT m => Sync (m :: Index -> Index -> Type -> Type) (down :: [(Type, Type)]) | m -> down where
+class XMonad m => Sync (m :: Index -> Index -> Type -> Type) (down :: [(Type, Type)]) | m -> down where
   -- |Perform an oracle call to a child. The call waits for the child to
   -- respond (putting caller to sleep until then).
   call :: Chan x y down -> x -> m b b y
@@ -144,7 +145,7 @@ class GetWT m => Sync (m :: Index -> Index -> Type -> Type) (down :: [(Type, Typ
 -- from anyone — as the exact order of messages can not be predicted at compile
 -- time.
 
-class GetWT m => Async (m :: Index -> Index -> Type -> Type) (chans :: [(Type, Type)]) | m -> chans where
+class XMonad m => Async (m :: Index -> Index -> Type -> Type) (chans :: [(Type, Type)]) | m -> chans where
   -- |Send a message to the channel it is marked with.
   sendMess :: SomeFstMessage chans -> m (Just True) (Just False) ()
 

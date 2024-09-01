@@ -182,9 +182,6 @@ instance XCatch
             ThrowAction i e -> h' i e
             LiftAction m cont -> Join $ LiftAction m $ (`xcatch'` h') . cont
 
-instance GetWT (InterT ('InterPars m ex up down)) where
-  getWT = pure $ getSMaybeBool
-
 instance Async (InterT ('InterPars m ex ach sch)) ach where
   sendMess m = xfreeSync $ SendAction m ()
   sendMessFinal m = xfreeSync $ SendFinalAction m ()
