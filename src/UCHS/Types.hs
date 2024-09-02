@@ -119,7 +119,7 @@ instance SameLength l l' => SameLength (x:l) (x':l') where
 
 type Index = Maybe Bool
 
--- |Predicate stating the following:
+-- |Models the reachability relation defined as:
 --
 -- 1. `Just a` can reach any state.
 -- 2. `Nothing` can reach `Nothing`.

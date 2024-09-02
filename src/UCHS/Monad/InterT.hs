@@ -35,6 +35,7 @@ module UCHS.Monad.InterT (
   , mayOnlyRecvWTPrf
   , mayOnlySendWTPrf
   , cannotEscapeNothingPrf
+  , justUnreachableFromNothingPrf
 ) where
 
 -- import Prelude hiding ((>>=), return)
@@ -476,3 +477,13 @@ mayOnlySendWTPrf = \case
   SrCall contra _ _ -> case contra of {}
   SrSendFinal _ cont -> case cannotEscapeNothingPrf cont of {}
   SrSend x cont -> (x, cont)
+
+-- |Proof: `Just aft` being reachable from `Nothing` is a cotradiction.
+--
+-- We use the class constraint to derive a contradiction here, and the `InterT`
+-- is given merely to capture the monad indices. In a way, this statement is
+-- dual to `cannotEscapeNothingPrf` which proves the same contradiction from
+-- the perspective of someone consuming the expressions of type `InterT`.
+justUnreachableFromNothingPrf :: forall ps aft a. IndexReachable Nothing (Just aft)
+                              => InterT ps Nothing (Just aft) a
+justUnreachableFromNothingPrf = case getIndexReachablePrf @Nothing @(Just aft) of {}

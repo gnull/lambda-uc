@@ -39,15 +39,15 @@ maybeSends chan = ContFromAnyWT $ \cont -> M.do
   case testEquality chan sender of
     Just Refl -> M.do
       send chan False
-      cont getIndexReachablePrf msg
-    Nothing -> cont getIndexReachablePrf False
+      cont msg
+    Nothing -> cont False
 
 useMaybeSends :: Chan Bool Bool l
               -> InterT ('InterPars (Algo pr ra) '[ '(ExBadSender, Just True) ] l '[]) (Just False) (Just True) Bool
 useMaybeSends chan = M.do
   -- Step #1: pass @maybeSends@ to dispatchSomeWT
   -- Step #2: pass it a continuation that starts from unknown WT state
-  res <- dispatchSomeWT (maybeSends chan) $ \prf b -> M.do
+  res <- dispatchSomeWT (maybeSends chan) $ \b -> M.do
     -- _ -- in this context, the state of WT is unknown
     -- Step #3: match on the current WT and provide actions for every branch
     getWT >>=: \case
@@ -55,6 +55,6 @@ useMaybeSends chan = M.do
       SJustFalse -> M.do
         m <- recv chan
         xreturn m
-      SNothing -> case prf of {}
+      SNothing -> justUnreachableFromNothingPrf
   -- _ -- in this context, the state of WT is fixed
   xreturn $ not res
