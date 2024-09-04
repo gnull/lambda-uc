@@ -28,7 +28,7 @@ module UCHS.Monad.InterT (
   , SendRes(..)
   , runTillRecv
   , RecvRes(..)
-  , runTillHalt
+  , runTillHaltAsync
   -- ** Helper lemmas
   -- $lemmas
   , mayOnlyRecvVoidPrf
@@ -257,20 +257,18 @@ runTillRecv m (InterT (Join v)) = case v of
 
 -- |Run an action until it terminates, return its result.
 --
--- If the action tries to send or receive, return nothing.
-runTillHalt :: Monad m
-            => InterT ('InterPars m '[] ach sch) b b' a
-            -> m (Maybe a)
-runTillHalt (InterT (Pure x)) = pure $ Just x
-runTillHalt (InterT (Join cont)) = case cont of
-  RecvAction _ -> pure Nothing
-  SendAction _ _ -> pure Nothing
-  SendFinalAction _ _ -> pure Nothing
-  CallAction _ _ _ -> pure Nothing
+-- The action has no sync channels and runs with `Off` index value, i.e. has
+-- its async communication disabled at runtime.
+runTillHaltAsync :: Monad m
+            => InterT ('InterPars m '[] ach '[]) Off b' a
+            -> m a
+runTillHaltAsync (InterT (Pure x)) = pure x
+runTillHaltAsync (InterT (Join cont)) = case cont of
+  CallAction contra _ _ -> case contra of {}
   ThrowAction contra _ -> case contra of {}
   LiftAction m cont' -> do
     v <- m
-    runTillHalt $ InterT $ cont' v
+    runTillHaltAsync $ InterT $ cont' v
 
   -- RecvAction :: (SomeSndMessage ach -> a) -> InterActions ('InterPars m ex ach sch) False True a
   -- SendAction :: SomeFstMessage ach -> a -> InterActions ('InterPars m ex ach sch) True False a

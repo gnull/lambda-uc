@@ -16,9 +16,13 @@ import UCHS.Monad
 
 type Party m iface f t a = InterT ('InterPars m '[] '[iface] '[]) f t a
 
--- |A heterogenous list where two types alternate.
+-- |A transcript of 2-party protocol.
+--
+-- Implemented as a heterogenous list where two types alternate. Indices
+-- specify: the type of head, the type of element after the head (if any) and
+-- the type of the last element.
 data Transcript (h :: Type) (snd :: Type) (end :: Type) where
-  AltHNil :: h -> Transcript h snd h
+  AltHOne :: f -> Transcript f snd f
   AltHCons :: h -> Transcript snd h end -> Transcript h snd end
 
 -- |Two party (2PC) protocol with Semi-honest adversary.
@@ -26,41 +30,41 @@ data Transcript (h :: Type) (snd :: Type) (end :: Type) where
 -- We return the actual outputs of Alice and Bob and the transcript of their
 -- interaction if they halt simultaneously, as exptected. If one of them
 -- terminates with the other keeping running, we crash with `mzero`.
-runP2 :: forall m x y f t a b. (Monad m, KnownBool f, KnownBool t)
-      => Party m '(x, y) f t a
+--
+-- Alice (the first argument) always sends the first message. Protocols where
+-- parties do not send anything and just terminate are not allowed.
+runP2 :: forall (t :: Bool) m x y a b. (Monad m)
+      => SBool t
+      -- ^Choice of who must send the last message.
+      -> Party m '(x, y) (On NextSend) (IfThenElse t (On NextSend) Off) a
       -- ^Alice
-      -> Party m '(y, x) (BoolNeg f) (BoolNeg t) b
+      -> Party m '(y, x) (On NextRecv) (IfThenElse t Off (On NextSend)) b
       -- ^Bob
-      -> MaybeT m ((a, b), Maybe (IfThenElse f (Transcript x y) (Transcript y x) (IfThenElse t y x)))
-runP2 = case getSBool @f of
-    STrue -> helper
-    SFalse -> case getSBool @t of
-      STrue -> \a b -> first swap <$> helper b a
-      SFalse -> \a b -> first swap <$> helper b a
-  where
-    helper :: forall x' y' t' a' b'. KnownBool t'
-           => Party m '(x', y') True t' a'
-           -> Party m '(y', x') False (BoolNeg t') b'
-           -> MaybeT m ((a', b'), Maybe (Transcript x' y' (IfThenElse t' y' x')))
-    helper a b = do
+      -> MaybeT m ((a, b), Transcript x y (IfThenElse t y x))
+runP2 t a b = do
       Trans.lift (runTillSend a) >>= \case
         SrCall contra _ _ -> case contra of {}
-        SrHalt ar -> Trans.lift (runTillHalt b) >>= \case
-          Nothing -> mzero
-          Just br -> pure ((ar, br), Nothing)
+        SrHalt _ -> case t of
+          STrue -> mzero -- runtime fail if no messages were sent
+        SrSend (SomeFstMessage (There contra) _) _ -> case contra of {}
         SrSend (SomeFstMessage Here m) contA ->
           Trans.lift (runTillRecv (SomeSndMessage Here m) b) >>= \case
-            RrRecv contB -> case getSBool @t' of
-              STrue -> (swap *** fmap (AltHCons m)) <$> helper contB contA
-              SFalse -> (swap *** consWithMaybe m) <$> helper contB contA
             RrCall contra _ _ -> case contra of {}
-            RrHalt rb -> Trans.lift (runTillHalt contA) >>= \case
-              Nothing -> mzero
-              Just ra -> case getSBool @t' of
-                -- SFalse -> pure ((ra, rb), Just $ AltHNil m)
-                STrue -> pure ((ra, rb), Just $ _)
-        SrSend (SomeFstMessage (There contra) _) _ -> case contra of {}
-
-    consWithMaybe :: h -> Maybe (Transcript snd h h) -> Maybe (Transcript h snd h)
-    consWithMaybe h Nothing = Just $ AltHNil h
-    consWithMaybe h (Just l) = Just $ AltHCons h l
+            RrHalt _ -> mzero
+            RrRecv contB -> case t of
+              STrue -> (swap *** AltHCons m) <$> runP2 SFalse contB contA
+              SFalse -> (swap *** AltHCons m) <$> runP2 STrue contB contA
+        SrSendFinal (SomeFstMessage (There contra) _) _ -> case contra of {}
+        SrSendFinal (SomeFstMessage Here m) contA -> do
+          resA <- Trans.lift $ runTillHaltAsync contA
+          Trans.lift (runTillRecv (SomeSndMessage Here m) b) >>= \case
+            RrCall contra _ _ -> case contra of {}
+            RrHalt _ -> case t of {}
+            RrRecv contB -> Trans.lift (runTillSend contB) >>= \case
+              SrCall contra _ _ -> case contra of {}
+              SrHalt resB -> case t of
+                SFalse -> pure ((resA, resB), AltHOne m)
+              SrSend (SomeFstMessage (There contra) _) _ -> case contra of {}
+              SrSend (SomeFstMessage Here _) _ -> mzero
+              SrSendFinal (SomeFstMessage (There contra) _) _ -> case contra of {}
+              SrSendFinal (SomeFstMessage Here _) _ -> mzero
