@@ -31,8 +31,23 @@ data Transcript (h :: Type) (snd :: Type) (end :: Type) where
 -- interaction if they halt simultaneously, as exptected. If one of them
 -- terminates with the other keeping running, we crash with `mzero`.
 --
--- Alice (the first argument) always sends the first message. Protocols where
--- parties do not send anything and just terminate are not allowed.
+-- Alice always sends the first message. Protocols where parties do not send
+-- anything and just terminate are not allowed, they cause a runtime error
+-- `mzero`.
+--
+-- The `SBool t` argument decides who sends the last message:
+--
+-- @
+--  -- Bob sends the last message:
+--  runP2 `SFalse` :: Party m '(x, y) (On NextSend) Off a
+--                -> Party m '(y, x) (On NextRecv) (On NextSend) b
+--                -> MaybeT m ((a, b), Transcript x y x)
+--
+--  -- Alice sends the last message:
+--  runP2 `STrue` :: Party m '(x, y) (On NextSend) (On NextSend) a
+--                -> Party m '(y, x) (On NextRecv) Off b
+--                -> MaybeT m ((a, b), Transcript x y y)
+-- @
 runP2 :: forall (t :: Bool) m x y a b. (Monad m)
       => SBool t
       -- ^Choice of who must send the last message.
