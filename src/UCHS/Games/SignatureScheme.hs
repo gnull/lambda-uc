@@ -4,6 +4,7 @@ import UCHS.Types
 import UCHS.Monad.Class
 import UCHS.Monad.Algo
 import UCHS.Monad.InterT
+import UCHS.Monad.InterT.Eval.Oracle
 import UCHS.Monad.Extra
 
 import Control.XMonad

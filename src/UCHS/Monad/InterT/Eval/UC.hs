@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module UCHS.Monad.InterT.Eval
+module UCHS.Monad.InterT.Eval.UC
   ( ProtoNode
   , EnvNode
   , SubRespTree(..)

@@ -60,10 +60,11 @@ library
       UCHS.Monad.Class
       UCHS.Monad.Algo
       UCHS.Monad.InterT
-      UCHS.Monad.InterT.Eval
+      UCHS.Monad.InterT.Eval.Oracle
+      UCHS.Monad.InterT.Eval.UC
+      UCHS.Monad.InterT.Eval.PC2
       UCHS.Monad.InterT.SomeWT
       UCHS.Monad.Extra
-      UCHS.Protocols.P2
       UCHS.Games.Common
       UCHS.Games.SignatureScheme
       UCHS.Games.SymEncryption

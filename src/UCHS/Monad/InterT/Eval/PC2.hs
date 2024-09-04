@@ -1,4 +1,4 @@
-module UCHS.Protocols.P2 where
+module UCHS.Monad.InterT.Eval.PC2 where
 
 import Data.Tuple (swap)
 import Data.Type.Equality ((:~:)(Refl))
