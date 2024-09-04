@@ -24,11 +24,11 @@ import UCHS.Types
 --
 -- This type definition ensures that we never terminate, we must continuously
 -- be ready to receive messages and respond to them somehow.
-type ProtoNode m up down bef = InterT ('InterPars m '[] ( '(Snd up, Fst up) : down) '[]) bef (Just False) Void
+type ProtoNode m up down bef = InterT ('InterPars m '[] ( '(Snd up, Fst up) : down) '[]) bef (On NextRecv) Void
 
 -- |An enviroment algorithm. The `down` is the interface of the functionality
 -- environment is allowed to call.
-type EnvNode m down a = InterT ('InterPars m '[] '[down] '[]) (Just True) (Just True) a
+type EnvNode m down a = InterT ('InterPars m '[] '[down] '[]) (On NextSend) (On NextSend) a
 
 -- |A tree of subroutine-respecting protocols.
 --
@@ -36,7 +36,7 @@ type EnvNode m down a = InterT ('InterPars m '[] '[down] '[]) (Just True) (Just 
 -- required subroutine interfaces were filled with actual implementations (and,
 -- therefore, are not required and not exposed by a type parameter anymore).
 data SubRespTree (m :: Type -> Type) (up :: (Type, Type)) where
-  SubRespTreeNode :: ProtoNode m up down (Just False)
+  SubRespTreeNode :: ProtoNode m up down (On NextRecv)
                   -> HList (SubRespTree m) down
                   -> SubRespTree m up
 
@@ -59,7 +59,7 @@ subRespEval = \e (SubRespTreeNode p ch) -> runTillSend e >>= \case
       subRespEval e' t
   where
     subroutineCall :: forall up down.
-                   ProtoNode m up down (Just True)
+                   ProtoNode m up down (On NextSend)
                    -> HList (SubRespTree m) down
                    -> m (SubRespTree m up, Snd up)
     subroutineCall p s = do

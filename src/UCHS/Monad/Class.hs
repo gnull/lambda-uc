@@ -96,8 +96,8 @@ class (Throw m e, Monad m') => Catch m e m' | m -> e where
 -- write-token-aware exceptions.
 
 -- |Wrapper around `getSMaybeBool` that tells you what context you're in.
-getWT :: (XMonad m, KnownMaybeBool b) => m b b (SMaybeBool b)
-getWT = xreturn getSMaybeBool
+getWT :: (XMonad m, KnownIndex b) => m b b (SIndex b)
+getWT = xreturn getSIndex
 
 class XMonad m => XThrow (m :: Index -> Index -> Type -> Type) (ex :: [(Type, Index)]) | m -> ex where
   -- |Throw a context-aware exception. The list of possible exceptions `ex`
@@ -147,22 +147,22 @@ class XMonad m => Sync (m :: Index -> Index -> Type -> Type) (down :: [(Type, Ty
 
 class XMonad m => Async (m :: Index -> Index -> Type -> Type) (chans :: [(Type, Type)]) | m -> chans where
   -- |Send a message to the channel it is marked with.
-  sendMess :: SomeFstMessage chans -> m (Just True) (Just False) ()
+  sendMess :: SomeFstMessage chans -> m (On NextSend) (On NextRecv) ()
 
   -- |Curried version of `sendMess`.
-  send :: Chan x y chans -> x -> m (Just True) (Just False) ()
+  send :: Chan x y chans -> x -> m (On NextSend) (On NextRecv) ()
   send i m = sendMess $ SomeFstMessage i m
 
   -- |Send a message to the channel it is marked with and disable further
   -- asynchronous communcation.
-  sendMessFinal :: SomeFstMessage chans -> m (Just True) Nothing ()
+  sendMessFinal :: SomeFstMessage chans -> m (On NextSend) Off ()
 
   -- |Curried version of `sendMessFinal`.
-  sendFinal :: Chan x y chans -> x -> m (Just True) Nothing ()
+  sendFinal :: Chan x y chans -> x -> m (On NextSend) Off ()
   sendFinal i m = sendMessFinal $ SomeFstMessage i m
 
   -- |Receive the next message which can arrive from any of `chan` channels.
-  recvAny :: m (Just False) (Just True) (SomeSndMessage chans)
+  recvAny :: m (On NextRecv) (On NextSend) (SomeSndMessage chans)
 
 -- $derived
 --
@@ -170,14 +170,14 @@ class XMonad m => Async (m :: Index -> Index -> Type -> Type) (chans :: [(Type, 
 
 
 accept :: Async m '[ '(x, y)]
-       => m (Just False) (Just True) y
+       => m (On NextRecv) (On NextSend) y
 accept = M.do
   recvAny >>=: \case
     SomeSndMessage Here m -> xpure m
     SomeSndMessage (There contra) _ -> case contra of {}
 
 yield :: Async m '[ '(x, y)]
-      => x -> m (Just True) (Just False) ()
+      => x -> m (On NextSend) (On NextRecv) ()
 yield = send Here
 
 -- |An exception thrown if a message does not arrive from the expected sender.
@@ -185,9 +185,9 @@ data ExBadSender = ExBadSender
 
 -- |Receive from a specific channel. If an unexpected message arrives from
 -- another channel, throw the `ExBadSender` exception.
-recv :: (XThrow m '[ '(ExBadSender, Just True)], Async m l)
+recv :: (XThrow m '[ '(ExBadSender, On NextSend)], Async m l)
      => Chan x y l
-     -> m (Just False) (Just True) y
+     -> m (On NextRecv) (On NextSend) y
 recv i = M.do
   SomeSndMessage j m <- recvAny
   case testEquality i j of
@@ -198,8 +198,8 @@ recv i = M.do
 -- |Send message to a given channel and wait for a response. If some other
 -- message arrives before the expected response, throw the `ExBadSender`
 -- exception.
-sendSync :: (XThrow m '[ '(ExBadSender, Just True)], Async m l)
-         => x -> Chan x y l -> m (Just True) (Just True) y
+sendSync :: (XThrow m '[ '(ExBadSender, On NextSend)], Async m l)
+         => x -> Chan x y l -> m (On NextSend) (On NextSend) y
 sendSync m chan = M.do
   send chan m
   (SomeSndMessage i y) <- recvAny

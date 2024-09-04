@@ -5,17 +5,18 @@ module UCHS.Types
   , module Data.Type.Equality
   , Not
   , SBool(..)
-  , SMaybeBool(..)
+  , SIndex(..)
   , Or
   , BoolNeg
   , Empty
   , IfThenElse
   , KnownBool(..)
   , lemmaBoolNegInv
-  , KnownMaybeBool(..)
+  , KnownIndex(..)
   , SameLen(..)
   , SameLength(..)
-  , Index
+  , Index(..)
+  , NextOp(..)
   , IndexReachableT(..)
   , IndexReachable(..)
   )
@@ -35,10 +36,10 @@ data SBool (a :: Bool) where
   SFalse :: SBool False
 
 -- |Singleton @Bool@ used to store the dependent value of Write Token
-data SMaybeBool (a :: Maybe Bool) where
-  SJustTrue :: SMaybeBool (Just True)
-  SJustFalse :: SMaybeBool (Just False)
-  SNothing :: SMaybeBool Nothing
+data SIndex (a :: Index) where
+  SOnSend :: SIndex (On NextSend)
+  SOnRecv :: SIndex (On NextRecv)
+  SOff :: SIndex Off
 
 type Or :: Bool -> Bool -> Bool
 type family Or x y where
@@ -78,14 +79,14 @@ instance KnownBool False where
 instance KnownBool True where
   getSBool = STrue
 
-class KnownMaybeBool (b :: Maybe Bool) where
-  getSMaybeBool :: SMaybeBool b
-instance KnownMaybeBool Nothing where
-  getSMaybeBool = SNothing
-instance KnownMaybeBool (Just False) where
-  getSMaybeBool = SJustFalse
-instance KnownMaybeBool (Just True) where
-  getSMaybeBool = SJustTrue
+class KnownIndex (b :: Index) where
+  getSIndex :: SIndex b
+instance KnownIndex Off where
+  getSIndex = SOff
+instance KnownIndex (On NextRecv) where
+  getSIndex = SOnRecv
+instance KnownIndex (On NextSend) where
+  getSIndex = SOnSend
 
 -- -- |Signleton type to express the list structure (length) but not the contents.
 -- data SListLen :: forall a. [a] -> Type where
@@ -117,22 +118,35 @@ instance SameLength '[] '[] where
 instance SameLength l l' => SameLength (x:l) (x':l') where
   proveSameLength = SameLenCons proveSameLength
 
-type Index = Maybe Bool
+-- |Next operation of the asyncronous algorithm
+data NextOp
+  = NextSend
+  -- ^Our turn to `UCHS.Monad.Class.Async.send`
+  | NextRecv
+  -- ^Our turn to `UCHS.Monad.Class.Async.recvAny`
+
+-- |The index of our monad for asynchronous algorithms
+data Index
+  = On NextOp
+  -- ^Asynchronous interaction is on, next operation is given by the `NextOp`
+  | Off
+  -- ^Asynchronous interaction is off, we're not allowed to call
+  -- `UCHS.Monad.Class.Async.send` or `UCHS.Monad.Class.Async.recvAny`
 
 -- |Models the reachability relation defined as:
 --
 -- 1. `Just a` can reach any state.
 -- 2. `Nothing` can reach `Nothing`.
 data IndexReachableT (bef :: Index) (aft :: Index) where
-  IndexReachableJust :: IndexReachableT (Just a) b
-  IndexReachableNothing :: IndexReachableT Nothing Nothing
+  IndexReachableJust :: IndexReachableT (On a) b
+  IndexReachableNothing :: IndexReachableT Off Off
 
 -- |Typeclass for automatically deriving `IndexReachableT`.
 class IndexReachable bef aft where
   getIndexReachablePrf :: IndexReachableT bef aft
 
-instance IndexReachable (Just a) b where
+instance IndexReachable (On a) b where
   getIndexReachablePrf = IndexReachableJust
 
-instance IndexReachable Nothing Nothing where
+instance IndexReachable Off Off where
   getIndexReachablePrf = IndexReachableNothing

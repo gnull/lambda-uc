@@ -14,7 +14,7 @@ import UCHS.Monad.InterT
 -- 3. runs the continuation given as first argument from there to finish in Write Token state `aft` with result `b`.
 data ContFromAnyWT st bef aft a b
   -- = forall i. ContFromAnyWT (InterT pr ra l i aft a)
-  = ContFromAnyWT ((forall i. (KnownMaybeBool i, IndexReachable i aft) => a -> InterT st i aft b) -> InterT st bef aft b)
+  = ContFromAnyWT ((forall i. (KnownIndex i, IndexReachable i aft) => a -> InterT st i aft b) -> InterT st bef aft b)
 
 -- |A version of `ContFromAnyWT` that hides `aft` and `b` under quantifiers.
 --
@@ -29,6 +29,6 @@ type SomeWT st bef a = forall aft b. ContFromAnyWT st bef aft a b
 -- This effectively composes two computations, taking existential
 -- quantification inside `ContFromAnyWT` into account.
 dispatchSomeWT :: ContFromAnyWT st bef aft a b
-                -> (forall i. (KnownMaybeBool i, IndexReachable i aft) => a -> InterT st i aft b)
+                -> (forall i. (KnownIndex i, IndexReachable i aft) => a -> InterT st i aft b)
                 -> InterT st bef aft b
 dispatchSomeWT (ContFromAnyWT x) = x
