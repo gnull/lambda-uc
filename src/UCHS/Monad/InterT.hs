@@ -17,7 +17,6 @@ module UCHS.Monad.InterT (
   , AsyncT
   , AsyncExT
   , SyncT
-  , SyncExT
   -- * Step-by-step Execution
   -- $step
   , runTillSend
@@ -197,15 +196,28 @@ type AsyncExT m ex ach = InterT ('InterPars m ex ach '[])
 type AsyncT m ach = AsyncExT m '[] ach
 
 -- |Non-indexed transformer that adds syncronous `call` (channels given by
--- @ach@) to monad @m@, as well as throwing exceptions defined by the list
--- @ex@.
+-- @ach@) to monad @m@.
 --
--- `SyncExT` does not handle asynchronous interaction, therefore it does not
--- need to be indexed.
-type SyncExT m ex sch = InterT ('InterPars m ex '[] sch) (On NextSend) (On NextSend)
-
--- |Same as `SyncExT`, but with exceptions off.
-type SyncT m sch = SyncExT m '[] sch
+-- `SyncExT` does not handle asynchronous interaction, therefore it does
+-- not change index state. Consider code below for an example. The function
+-- @reportSum@ has access to to oracles: oracle A with requests of type
+-- `String`, and responses of type `Int`; and oracle B with request of type
+-- `()` and responses of type `String`.
+--
+-- @
+--   reportSum :: `SyncT` m '[ '(String, Int), '((), String)] (Int, String)
+--   reportSum = do
+--     let a = Here
+--         b = There Here
+--     x <- `call` a "hello"
+--     y <- `call` a "world"
+--     z <- `call` b ()
+--     `return` (x + y, z)
+-- @
+--
+-- To run the code above, implement the oracles and use
+-- `UCHS.Monad.InterT.Eval.Oracle.runWithOracles2`.
+type SyncT m sch = InterT ('InterPars m '[] '[] sch) (On NextSend) (On NextSend)
 
 -- $step
 --
