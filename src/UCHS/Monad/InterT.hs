@@ -13,6 +13,11 @@ module UCHS.Monad.InterT (
   -- * Syntax
   -- $actions
   , InterActions(..)
+  -- * Derived Definitions
+  , AsyncT
+  , AsyncExT
+  , SyncT
+  , SyncExT
   -- * Step-by-step Execution
   -- $step
   , runTillSend
@@ -97,22 +102,22 @@ instance Functor (InterActions st bef aft) where
 
 -- |The monad for expressing interactive algorithms.
 --
--- By instantiating @InterT@ with different parameters, you can finely
+-- By instantiating `InterT` with different parameters, you can finely
 -- control what side-effects you allow:
 --
--- - Local computations in Monad `stInner st`.
--- - Syncronous calls to oracle interfaces in `stSync st`.
--- - Asynchronous communcation over interfaces defined in `stAsync st`.
+-- - Local computations in Monad @stInner st@.
+-- - Syncronous calls to oracle interfaces in @stSync st@.
+-- - Asynchronous communcation over interfaces defined in @stAsync st@.
 --
---   Asynchronous communcation depends on the `Index` state of `InnerT`. There
+--   Asynchronous communcation depends on the `Index` state of `InterT`. There
 --   are three possible index states which are interpreted as follows.
 --
 --   - `Off` means that asyncronous communcation is disabled.
---   - `On NextSend` means that it's our turn to send.
---   - `On NextRecv` means that it's our turn to receive (we currently have one
+--   - @`On` `NextSend`@ means that it's our turn to send.
+--   - @`On` `NextRecv`@ means that it's our turn to receive (we currently have one
 --     message in our inbox).
 --
---   The states `On NextSend` and `On NextRecv` are toggled with `send` and
+--   The states @`On` `NextSend`@ and @`On` `NextRecv`@ are toggled with `send` and
 --   `recvAny`. The state `Off` is reached via `sendFinal` and stays
 --   this way until the algorithm terminates. Any asyncronous algorithm will
 --   alternate between `send` and `recvAny` some number of times, until it
@@ -178,6 +183,29 @@ instance Async (InterT ('InterPars m ex ach sch)) ach where
 
 instance Sync (InterT ('InterPars m ex ach sch)) sch where
   call i x = xfreeSync $ CallAction i x id
+
+-- $derived
+-- The following definitions specialize `InterT` for narrower use-cases. These
+-- definitions should suffice for most of the programs you'd want to write.
+
+-- |Indexed transformer that adds asyncronous `send`/`recvAny` (channels
+-- given by @ach@) to monad @m@, as well as throwing exceptions defined by the
+-- list @ex@.
+type AsyncExT m ex ach = InterT ('InterPars m ex ach '[])
+
+-- |Same as `AsyncExT`, but with exceptions off.
+type AsyncT m ach = AsyncExT m '[] ach
+
+-- |Non-indexed transformer that adds syncronous `call` (channels given by
+-- @ach@) to monad @m@, as well as throwing exceptions defined by the list
+-- @ex@.
+--
+-- `SyncExT` does not handle asynchronous interaction, therefore it does not
+-- need to be indexed.
+type SyncExT m ex sch = InterT ('InterPars m ex '[] sch) (On NextSend) (On NextSend)
+
+-- |Same as `SyncExT`, but with exceptions off.
+type SyncT m sch = SyncExT m '[] sch
 
 -- $step
 --

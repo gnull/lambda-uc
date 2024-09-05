@@ -45,14 +45,13 @@ import qualified Control.Monad.Trans.Class as Trans
 -- the algorithm, we wrap the latter in `OracleReq` type.
 
 -- |An algorithm with no parent and with access to child oracles given by
--- `down`. Starts and finished holding the write token.
-type OracleCaller m down a =
-  InterT ('InterPars m '[] '[] down) (On NextSend) (On NextSend) a
+-- `down`.
+type OracleCaller m down = SyncT m down
 
 -- |An algorithm serving oracle calls from parent, but not having access to
--- any oracles of its own and not returning any result.
-type Oracle (m :: Type -> Type) (up :: (Type, Type)) (ret :: Type) =
-  InterT ('InterPars m '[] '[ '(Snd up, OracleReq (Fst up))] '[]) (On NextRecv) (On NextSend) ret
+-- any oracles of its own.
+type Oracle (m :: Type -> Type) (up :: (Type, Type)) =
+  AsyncT m '[ '(Snd up, OracleReq (Fst up))] (On NextRecv) (On NextSend)
 
 -- |Version of `Oracle` that's wrapped in newtype, convenient for use with `HList2`.
 newtype OracleWrapper (m :: Type -> Type) (up :: (Type, Type)) (ret :: Type) =

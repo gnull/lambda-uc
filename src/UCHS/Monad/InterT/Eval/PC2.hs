@@ -1,20 +1,17 @@
 module UCHS.Monad.InterT.Eval.PC2 where
 
 import Data.Tuple (swap)
-import Data.Type.Equality ((:~:)(Refl))
 
 import Control.Monad
-import Control.Arrow (first, second, (***))
+import Control.Arrow ((***))
 import Control.Monad.Trans.Maybe (MaybeT(..))
 import qualified Control.Monad.Trans.Class as Trans
-
-import Control.XMonad
 
 import Data.HList
 import UCHS.Types
 import UCHS.Monad
 
-type Party m iface f t a = InterT ('InterPars m '[] '[iface] '[]) f t a
+type Party m iface = AsyncT m '[iface]
 
 -- |A transcript of 2-party protocol.
 --

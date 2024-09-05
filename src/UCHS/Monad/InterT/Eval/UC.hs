@@ -1,5 +1,3 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module UCHS.Monad.InterT.Eval.UC
   ( ProtoNode
   , EnvNode
@@ -24,11 +22,11 @@ import UCHS.Types
 --
 -- This type definition ensures that we never terminate, we must continuously
 -- be ready to receive messages and respond to them somehow.
-type ProtoNode m up down bef = InterT ('InterPars m '[] ( '(Snd up, Fst up) : down) '[]) bef (On NextRecv) Void
+type ProtoNode m up down bef = AsyncT m ( '(Snd up, Fst up) : down) bef (On NextRecv) Void
 
 -- |An enviroment algorithm. The `down` is the interface of the functionality
 -- environment is allowed to call.
-type EnvNode m down a = InterT ('InterPars m '[] '[down] '[]) (On NextSend) (On NextSend) a
+type EnvNode m down a = AsyncT m '[down] (On NextSend) (On NextSend) a
 
 -- |A tree of subroutine-respecting protocols.
 --
