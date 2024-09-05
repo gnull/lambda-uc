@@ -6,7 +6,7 @@ module UCHS.Monad.Extra
   --
   -- $intro
     liftAlgo
-  , liftSyncAlgo
+  , liftInterT
   -- , liftAsyncAlgo
   )
   where
@@ -60,7 +60,7 @@ liftAlgo (L.Algo (F.Free v)) =
     L.PrintAction s r -> debugPrint s >> (liftAlgo $ L.Algo r)
     L.RandAction cont -> rand >>= (\b -> liftAlgo $ L.Algo $ cont b)
 
-liftSyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b))
+liftInterT :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b))
                 , IfThenElse ra (forall b. Rand (m b b)) (forall b. Empty (m b b))
                 , (forall b. Monad (m b b))
                 , XThrow m ex
@@ -71,21 +71,21 @@ liftSyncAlgo :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b 
                -- ^An argument that helps GHC evaluate constraints
                -> S.InterT ('S.InterPars (L.Algo pr ra) ex up down) bef aft a
                -> m bef aft a
-liftSyncAlgo _ (S.InterT (Pure v)) = xreturn v
-liftSyncAlgo h (S.InterT (Join v)) =
+liftInterT _ (S.InterT (Pure v)) = xreturn v
+liftInterT h (S.InterT (Join v)) =
     case v of
-      S.SendAction m r -> sendMess m >>: liftSyncAlgo h (S.InterT r)
-      S.SendFinalAction m r -> sendMessFinal m >>: liftSyncAlgo h (S.InterT r)
-      S.RecvAction cont -> recvAny >>=: liftSyncAlgo h . S.InterT . cont
-      S.CallAction i m cont -> call i m >>=: liftSyncAlgo h . S.InterT . cont
+      S.SendAction m r -> sendMess m >>: liftInterT h (S.InterT r)
+      S.SendFinalAction m r -> sendMessFinal m >>: liftInterT h (S.InterT r)
+      S.RecvAction cont -> recvAny >>=: liftInterT h . S.InterT . cont
+      S.CallAction i m cont -> call i m >>=: liftInterT h . S.InterT . cont
       S.ThrowAction i e -> xthrow i e
       S.LiftAction (L.Algo m) cont -> case m of
-        F.Pure r -> liftSyncAlgo h $ S.InterT $ cont r
+        F.Pure r -> liftInterT h $ S.InterT $ cont r
         F.Free (L.PrintAction s r) -> M.do
           debugPrint s
-          r' <- liftSyncAlgo h $ S.lift $ L.Algo r
-          liftSyncAlgo h $ S.InterT $ cont r'
+          r' <- liftInterT h $ S.lift $ L.Algo r
+          liftInterT h $ S.InterT $ cont r'
         F.Free (L.RandAction contInner) -> M.do
           x <- rand
-          r' <- liftSyncAlgo h $ S.lift $ L.Algo $ contInner x
-          liftSyncAlgo h $ S.InterT $ cont r'
+          r' <- liftInterT h $ S.lift $ L.Algo $ contInner x
+          liftInterT h $ S.InterT $ cont r'
