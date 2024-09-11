@@ -23,8 +23,8 @@ module UCHS.Monad.Class
   -- $async
   , Async(..)
   -- $derived
-  , accept
-  , yield
+  , oracleAccept
+  , oracleYield
   , ExBadSender(..)
   , recv
   , sendSync
@@ -168,41 +168,43 @@ class XMonad m => Async (m :: Index -> Index -> Type -> Type) (chans :: [(Type, 
 --
 -- Some convenient shorthand operations built from basic ones.
 
-
-accept :: Async m '[ '(x, y)]
-       => m (On NextRecv) (On NextSend) y
-accept = M.do
+oracleAccept :: Async m '[ '(x, y)]
+             => m (On NextRecv) (On NextSend) y
+oracleAccept = M.do
   recvAny >>=: \case
     SomeSndMessage Here m -> xpure m
     SomeSndMessage (There contra) _ -> case contra of {}
 
-yield :: Async m '[ '(x, y)]
-      => x -> m (On NextSend) (On NextRecv) ()
-yield = send Here
+oracleYield :: Async m '[ '(x, y)]
+            => x -> m (On NextSend) (On NextRecv) ()
+oracleYield = send Here
 
 -- |An exception thrown if a message does not arrive from the expected sender.
 data ExBadSender = ExBadSender
 
 -- |Receive from a specific channel. If an unexpected message arrives from
 -- another channel, throw the `ExBadSender` exception.
-recv :: (XThrow m '[ '(ExBadSender, On NextSend)], Async m l)
-     => Chan x y l
+recv :: (XThrow m ex, Async m l)
+     => InList '(ExBadSender, On NextSend) ex
+     -> Chan x y l
      -> m (On NextRecv) (On NextSend) y
-recv i = M.do
+recv e i = M.do
   SomeSndMessage j m <- recvAny
   case testEquality i j of
     Just Refl -> xreturn m
     Nothing -> M.do
-      xthrow Here ExBadSender
+      xthrow e ExBadSender
 
 -- |Send message to a given channel and wait for a response. If some other
 -- message arrives before the expected response, throw the `ExBadSender`
 -- exception.
-sendSync :: (XThrow m '[ '(ExBadSender, On NextSend)], Async m l)
-         => x -> Chan x y l -> m (On NextSend) (On NextSend) y
-sendSync m chan = M.do
+sendSync :: (XThrow m ex, Async m l)
+         => InList '(ExBadSender, On NextSend) ex
+         -> x
+         -> Chan x y l -> m (On NextSend) (On NextSend) y
+sendSync e m chan = M.do
   send chan m
   (SomeSndMessage i y) <- recvAny
   case testEquality i chan of
     Just Refl -> xreturn y
-    Nothing -> xthrow Here ExBadSender
+    Nothing -> xthrow e ExBadSender

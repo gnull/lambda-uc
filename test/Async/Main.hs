@@ -42,9 +42,10 @@ maybeSends chan = ContFromAnyWT $ \cont -> M.do
       cont msg
     Nothing -> cont False
 
-useMaybeSends :: Chan Bool Bool ach
-              -> AsyncExT m '[ '(ExBadSender, On NextSend) ] ach (On NextRecv) (On NextSend) Bool
-useMaybeSends chan = M.do
+useMaybeSends :: InList '(ExBadSender, On NextSend) ex
+              -> Chan Bool Bool ach
+              -> AsyncExT m ex ach (On NextRecv) (On NextSend) Bool
+useMaybeSends e chan = M.do
   -- Step #1: pass @maybeSends@ to dispatchSomeWT
   -- Step #2: pass it a continuation that starts from unknown WT state
   res <- dispatchSomeWT (maybeSends chan) $ \b -> M.do
@@ -53,7 +54,7 @@ useMaybeSends chan = M.do
     getWT >>=: \case
       SOnSend -> xreturn b
       SOnRecv -> M.do
-        m <- recv chan
+        m <- recv e chan
         xreturn m
       SOff -> justUnreachableFromNothingPrf
   -- _ -- in this context, the state of WT is fixed
