@@ -1,6 +1,27 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module UCHS.Monad.InterT.Eval.Async where
+module UCHS.Monad.InterT.Eval.Async
+  (
+  -- * Core combinators
+  -- $core
+    fork
+  , mapTail
+  , swap
+  , connect
+  , connectSelf
+  -- *Helper functions and types
+  -- $helpers
+  , chanFromConcat
+  , fstToConcat
+  , sndToConcat
+  , ForkIndexComp(..)
+  , ForkIndexCompT(..)
+  , ForkIndexOr
+  , MayOnlyReturnAfterRecv(..)
+  , MayOnlyReturnAfterRecvT(..)
+  , ChooseRet
+  )
+where
 
 import Data.Either.Extra (mapLeft)
 
@@ -49,8 +70,10 @@ instance MayOnlyReturnAfterRecv i Void where
 instance MayOnlyReturnAfterRecv NextSend a where
   mayOnlyReturnAfterRecvPrf = MayOnlyReturnType
 
+-- |Given an index in the concatenation of @`Concat` ach ach'@, return the
+-- corresponding element's index either in @ach@ or in @ach'@.
 chanFromConcat :: forall (ach :: [(Type, Type)]) ach' x y.
-               KnownLenT ach
+                  KnownLenT ach
                -> Chan x y (Concat ach ach')
                -> Either (Chan x y ach) (Chan x y ach')
 chanFromConcat = \case
@@ -59,6 +82,7 @@ chanFromConcat = \case
     Here -> Left Here
     There ch -> mapLeft There $ chanFromConcat rest ch
 
+-- |Given an element's index in @ach@, return the same element's index in @`Concat` ach ach'@.
 fstToConcat :: forall ach ach' x y.
                KnownLenT ach
             -> Chan x y ach
@@ -66,6 +90,7 @@ fstToConcat :: forall ach ach' x y.
 fstToConcat _ Here = Here
 fstToConcat (KnownLenS n) (There rest) = There $ fstToConcat @_ @(ach') n rest
 
+-- |Given an element's index in @ach'@, return the same element's index in @`Concat` ach ach'@.
 sndToConcat :: forall ach ach' x y.
                KnownLenT ach
             -> Chan x y ach'
@@ -73,6 +98,7 @@ sndToConcat :: forall ach ach' x y.
 sndToConcat KnownLenZ = id
 sndToConcat (KnownLenS n) = There . sndToConcat n
 
+-- |Run two processes in parallel exposing the channels of both of them.
 fork :: forall m ach ach' bef bef' aft aft' a a'.
         ( Monad m
         , ForkIndexComp bef bef'
@@ -118,3 +144,41 @@ fork prf l r = case getIndexStartCompPrf @bef @bef' of
         MayOnlyReturnVoid -> case res of {}
         MayOnlyReturnType -> case getIndexStartCompPrf @aft @aft' of
           ForkIndexCompSnd -> xreturn res
+
+-- |Apply the given action to the tail of the channels list, keeping the head unchanged.
+mapTail :: ( KnownIndex bef
+           , Monad m
+           )
+        => AsyncT m (h:ach) bef aft a
+        -- ^Original action
+        -> (forall i. KnownIndex i => AsyncT m ach i aft a -> AsyncT m ach' i aft a)
+        -- ^What to do with the tail of the channels list
+        -> AsyncT m (h:ach') bef aft a
+        -- ^Result with tail changed
+mapTail x f = getWT >>=: \case
+  SNextSend -> M.do
+    lift (runTillSend x) >>=: \case
+      SrSend (SomeFstMessage i m) cont -> case i of
+        Here -> M.do
+          send Here m
+          mapTail cont f
+        There i' -> M.do
+          undefined
+      SrCall contra _ _ -> case contra of {}
+      SrHalt res -> xreturn res
+  SNextRecv -> undefined
+
+-- |Swap the places of the first two channels.
+swap :: AsyncT m (f : s : rest) bef aft a
+     -> AsyncT m (s : f : rest) bef aft a
+swap = undefined
+
+-- |Connect the first two channels with each other.
+connect :: AsyncT m ('(x, y) : '(y, x) : rest) bef aft a
+        -> AsyncT m rest bef aft a
+connect = undefined
+
+-- |Connect the first channel to itself.
+connectSelf :: AsyncT m ('(x, x) : rest) bef aft a
+            -> AsyncT m rest bef aft a
+connectSelf = undefined
