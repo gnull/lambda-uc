@@ -26,6 +26,7 @@ common deft
     , free
     , random
     , data-default
+    , extra
   ghc-options:
     -Wall
     -Wcompat
@@ -63,6 +64,7 @@ library
       UCHS.Monad.InterT.Eval.Oracle
       UCHS.Monad.InterT.Eval.UC
       UCHS.Monad.InterT.Eval.PC2
+      UCHS.Monad.InterT.Eval.Async
       UCHS.Monad.InterT.SomeWT
       UCHS.Monad.Extra
       UCHS.Games.Common

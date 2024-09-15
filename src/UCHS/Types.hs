@@ -12,7 +12,11 @@ module UCHS.Types
   , IfThenElse
   , KnownBool(..)
   , lemmaBoolNegInv
+  , Concat
+  , concatInjPrf
   , KnownIndex(..)
+  , KnownLenT(..)
+  , KnownLen(..)
   , SameLen(..)
   , SameLength(..)
   , Index(..)
@@ -26,6 +30,8 @@ import Data.Void (Void)
 
 import Data.Kind (Type, Constraint)
 import Data.HList
+
+import Unsafe.Coerce (unsafeCoerce)
 
 import Data.Type.Equality ((:~:)(Refl))
 
@@ -68,6 +74,19 @@ lemmaBoolNegInv = case getSBool @b of
   STrue -> Refl
   SFalse -> Refl
 
+type Concat :: forall a. [a] -> [a] -> [a]
+type family Concat xs ys where
+  Concat '[] ys = ys
+  Concat (x:xs) ys = x:Concat xs ys
+
+concatInjPrf :: forall xs ys ys'.
+             Concat xs ys :~: Concat xs ys'
+             -> KnownLenT xs
+             -> ys :~: ys'
+concatInjPrf Refl = \case
+  KnownLenZ -> Refl
+  KnownLenS rest -> concatInjPrf Refl rest
+
 -- |Known boolean value. Implemented by constants, but not by `forall (b ::
 -- Bool). b`. Adding this to the context of a function polymorphic over `b` is
 -- the same as adding an explicit parameter `SBool b` to it. I.e. `SBool b ->`
@@ -88,21 +107,21 @@ instance KnownIndex (On NextRecv) where
 instance KnownIndex (On NextSend) where
   getSIndex = SOnSend
 
--- -- |Signleton type to express the list structure (length) but not the contents.
--- data SListLen :: forall a. [a] -> Type where
---   SListLenZ :: SListLen '[]
---   SListLenS :: forall a (x :: a) (l :: [a]). SListLen l -> SListLen (x : l)
+-- |Signleton type to express the list structure (length) but not the contents.
+data KnownLenT :: forall a. [a] -> Type where
+  KnownLenZ :: KnownLenT '[]
+  KnownLenS :: forall a (x :: a) (l :: [a]). KnownLenT l -> KnownLenT (x : l)
 
--- -- |Class of list values for which their length is known at compile time.
--- type KnownLength :: forall a. [a] -> Constraint
--- class KnownLength l where
---   getSListLen :: SListLen l
+-- |Class of list values for which their length is known at compile time.
+type KnownLen :: forall a. [a] -> Constraint
+class KnownLen l where
+  getKnownLenPrf :: KnownLenT l
 
--- instance KnownLength '[] where
---   getSListLen = SListLenZ
+instance KnownLen '[] where
+  getKnownLenPrf = KnownLenZ
 
--- instance KnownLength xs => KnownLength (x:xs) where
---   getSListLen = SListLenS $ getSListLen @_ @xs
+instance KnownLen xs => KnownLen (x:xs) where
+  getKnownLenPrf = KnownLenS $ getKnownLenPrf @_ @xs
 
 data SameLen :: forall a b. [a] -> [b] -> Type where
   SameLenNil :: SameLen '[] '[]
