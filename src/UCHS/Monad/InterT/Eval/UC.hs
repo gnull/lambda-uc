@@ -22,11 +22,11 @@ import UCHS.Types
 --
 -- This type definition ensures that we never terminate, we must continuously
 -- be ready to receive messages and respond to them somehow.
-type ProtoNode m up down bef = AsyncT m ( '(Snd up, Fst up) : down) bef (On NextRecv) Void
+type ProtoNode m up down bef = AsyncT m ( '(Snd up, Fst up) : down) bef NextRecv Void
 
 -- |An enviroment algorithm. The `down` is the interface of the functionality
 -- environment is allowed to call.
-type EnvNode m down a = AsyncT m '[down] (On NextSend) (On NextSend) a
+type EnvNode m down a = AsyncT m '[down] NextSend NextSend a
 
 -- |A tree of subroutine-respecting protocols.
 --
@@ -34,7 +34,7 @@ type EnvNode m down a = AsyncT m '[down] (On NextSend) (On NextSend) a
 -- required subroutine interfaces were filled with actual implementations (and,
 -- therefore, are not required and not exposed by a type parameter anymore).
 data SubRespTree (m :: Type -> Type) (up :: (Type, Type)) where
-  SubRespTreeNode :: ProtoNode m up down (On NextRecv)
+  SubRespTreeNode :: ProtoNode m up down NextRecv
                   -> HList (SubRespTree m) down
                   -> SubRespTree m up
 
@@ -49,7 +49,6 @@ subRespEval = \e (SubRespTreeNode p ch) -> runTillSend e >>= \case
     SrCall contra _ _ -> case contra of {}
     SrHalt x -> pure x
     SrSend (SomeFstMessage (There contra) _) _ -> case contra of {}
-    SrSendFinal _ cont -> case cannotEscapeNothingPrf cont of {}
     SrSend (SomeFstMessage Here m) cont -> do
       p' <- mayOnlyRecvVoidPrf <$> runTillRecv (SomeSndMessage Here m) p
       (t, resp) <- subroutineCall @iface p' ch
@@ -57,7 +56,7 @@ subRespEval = \e (SubRespTreeNode p ch) -> runTillSend e >>= \case
       subRespEval e' t
   where
     subroutineCall :: forall up down.
-                   ProtoNode m up down (On NextSend)
+                   ProtoNode m up down NextSend
                    -> HList (SubRespTree m) down
                    -> m (SubRespTree m up, Snd up)
     subroutineCall p s = do

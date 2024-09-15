@@ -23,14 +23,11 @@ module UCHS.Monad.InterT (
   , SendRes(..)
   , runTillRecv
   , RecvRes(..)
-  , runTillHaltAsync
   -- ** Helper lemmas
   -- $lemmas
   , mayOnlyRecvVoidPrf
   , mayOnlyRecvWTPrf
   , mayOnlySendWTPrf
-  , cannotEscapeNothingPrf
-  , justUnreachableFromNothingPrf
 ) where
 
 -- import Prelude hiding ((>>=), return)
@@ -42,8 +39,6 @@ import Control.XFreer.Join
 import Control.XApplicative
 import Control.XMonad
 import qualified Control.XMonad.Do as M
-
-import Unsafe.Coerce (unsafeCoerce)
 
 -- import Data.Type.Equality ((:~:)(Refl))
 
@@ -78,9 +73,8 @@ data InterPars = InterPars
 -- @bef@ and @aft@ are the states before and after the given action. The
 -- meaning of possible states is as follows:
 data InterActions (st :: InterPars) (bef :: Index) (aft :: Index) a where
-  RecvAction :: (SomeSndMessage ach -> a) -> InterActions ('InterPars m ex ach sch) (On NextRecv) (On NextSend) a
-  SendAction :: SomeFstMessage ach -> a -> InterActions ('InterPars m ex ach sch) (On NextSend) (On NextRecv) a
-  SendFinalAction :: SomeFstMessage ach -> a -> InterActions ('InterPars m ex ach sch) (On NextSend) Off a
+  RecvAction :: (SomeSndMessage ach -> a) -> InterActions ('InterPars m ex ach sch) NextRecv NextSend a
+  SendAction :: SomeFstMessage ach -> a -> InterActions ('InterPars m ex ach sch) NextSend NextRecv a
   -- |Perform a call to a child, immediately getting the result
   CallAction :: Chan x y sch -> x -> (y -> a) -> InterActions ('InterPars m ex ach sch) b b a
   -- |Throw an exception.
@@ -92,7 +86,6 @@ data InterActions (st :: InterPars) (bef :: Index) (aft :: Index) a where
 instance Functor (InterActions st bef aft) where
   fmap f (RecvAction cont) = RecvAction $ f . cont
   fmap f (SendAction m r) = SendAction m $ f r
-  fmap f (SendFinalAction m r) = SendFinalAction m $ f r
   fmap f (CallAction i m cont) = CallAction i m $ f . cont
   fmap _ (ThrowAction i e) = ThrowAction i e
   fmap f (LiftAction m cont) = LiftAction m $ f . cont
@@ -116,13 +109,9 @@ instance Functor (InterActions st bef aft) where
 --   - @`On` `NextRecv`@ means that it's our turn to receive (we currently have one
 --     message in our inbox).
 --
---   The states @`On` `NextSend`@ and @`On` `NextRecv`@ are toggled with `send` and
---   `recvAny`. The state `Off` is reached via `sendFinal` and stays
---   this way until the algorithm terminates. Any asyncronous algorithm will
---   alternate between `send` and `recvAny` some number of times, until it
---   terminates or calls `sendFinal` (and then terninates).
---
--- - @bef@ and @aft@ specify whether this action consumes and/or produces the Write Token.
+--   The states `NextSend` and `NextRecv` are toggled with `send` and
+--   `recvAny`. Any asyncronous algorithm will alternate between `send` and
+--   `recvAny` some number of times, until it terminates.
 newtype InterT (st :: InterPars)
               (bef :: Index) -- ^State before an action
               (aft :: Index) -- ^State after an action
@@ -170,14 +159,12 @@ instance XCatch
         xcatch' (Join a') h' = case a' of
             RecvAction cont -> Join $ RecvAction $ (`xcatch'` h') . cont
             SendAction x r -> Join $ SendAction x $ r `xcatch'` h'
-            SendFinalAction x r -> Join $ SendFinalAction x $ r `xcatch'` h'
             CallAction i m cont -> Join $ CallAction i m $ (`xcatch'` h') . cont
             ThrowAction i e -> h' i e
             LiftAction m cont -> Join $ LiftAction m $ (`xcatch'` h') . cont
 
 instance Async (InterT ('InterPars m ex ach sch)) ach where
   sendMess m = xfreeSync $ SendAction m ()
-  sendMessFinal m = xfreeSync $ SendFinalAction m ()
   recvAny = xfreeSync $ RecvAction id
 
 instance Sync (InterT ('InterPars m ex ach sch)) sch where
@@ -217,7 +204,7 @@ type AsyncT m ach = AsyncExT m '[] ach
 --
 -- To run the code above, implement the oracles and use
 -- `UCHS.Monad.InterT.Eval.Oracle.runWithOracles2`.
-type SyncT m sch = InterT ('InterPars m '[] '[] sch) (On NextSend) (On NextSend)
+type SyncT m sch = InterT ('InterPars m '[] '[] sch) NextSend NextSend
 
 -- $step
 --
@@ -231,29 +218,24 @@ type SyncT m sch = InterT ('InterPars m '[] '[] sch) (On NextSend) (On NextSend)
 data SendRes (m :: Type -> Type) (ach :: [(Type, Type)]) (sch :: [(Type, Type)]) (aft :: Index) a where
   -- |Algorithm called `send` or `oracleYield`.
   SrSend :: SomeFstMessage ach
-         -> InterT ('InterPars m '[] ach sch) (On NextRecv) aft a
+         -> InterT ('InterPars m '[] ach sch) NextRecv aft a
          -> SendRes m ach sch aft a
   -- |Algorithm called `sendFinal`.
-  SrSendFinal :: SomeFstMessage ach
-              -> InterT ('InterPars m '[] ach sch) Off aft a
-              -> SendRes m ach sch aft a
-  -- |Algorithm has called an oracle via `call`
   SrCall :: Chan x y sch
          -> x
-         -> (y -> InterT ('InterPars m '[] ach sch) (On NextSend) aft a)
+         -> (y -> InterT ('InterPars m '[] ach sch) NextSend aft a)
          -> SendRes m ach sch aft a
   -- |Algorithm halted without sending anything
-  SrHalt :: a -> SendRes m ach sch (On NextSend) a
+  SrHalt :: a -> SendRes m ach sch NextSend a
 
 -- |Given `InterT` action starting in `True` state (holding write token), run
 -- it until it does `call`, `send` or halts.
 runTillSend :: Monad m
-            => InterT ('InterPars m '[] up down) (On NextSend) b a
+            => InterT ('InterPars m '[] up down) NextSend b a
             -> m (SendRes m up down b a)
 runTillSend (InterT (Pure v)) = pure $ SrHalt v
 runTillSend (InterT (Join v)) = case v of
   SendAction x r -> pure $ SrSend x $ InterT r
-  SendFinalAction x r -> pure $ SrSendFinal x $ InterT r
   CallAction i x cont -> pure $ SrCall i x $ InterT . cont
   ThrowAction contra _ -> case contra of {}
   LiftAction m cont -> m >>= runTillSend . InterT . cont
@@ -261,23 +243,23 @@ runTillSend (InterT (Join v)) = case v of
 -- |The result of `runTillRecv`.
 data RecvRes m up down aft a where
   -- |Algorithm ran `recvAny`
-  RrRecv :: InterT ('InterPars m '[] up down) (On NextSend) aft a
+  RrRecv :: InterT ('InterPars m '[] up down) NextSend aft a
          -> RecvRes m up down aft a
   -- |Algorithm issued an oracle call to a child via `call`
   RrCall :: Chan x y down
          -> x
-         -> (y -> InterT ('InterPars m '[] up down) (On NextRecv) aft a)
+         -> (y -> InterT ('InterPars m '[] up down) NextRecv aft a)
          -> RecvRes m up down aft a
   -- |Algorithm has halted without accepting a call
   RrHalt :: a
-         -> RecvRes m up down (On NextRecv) a
+         -> RecvRes m up down NextRecv a
 
 -- |Given an action that starts in a `False` state (no write token),
 -- runTillRecv the oracle call from its parent (running it until it receives
 -- the write token via `recvAny`).
 runTillRecv :: Monad m
         => SomeSndMessage ach
-        -> InterT ('InterPars m '[] ach sch) (On NextRecv) b a
+        -> InterT ('InterPars m '[] ach sch) NextRecv b a
         -> m (RecvRes m ach sch b a)
 runTillRecv _ (InterT (Pure v)) = pure $ RrHalt v
 runTillRecv m (InterT (Join v)) = case v of
@@ -285,21 +267,6 @@ runTillRecv m (InterT (Join v)) = case v of
   CallAction i x cont -> pure $ RrCall i x $ InterT . cont
   ThrowAction contra _ -> case contra of {}
   LiftAction a cont -> a >>= runTillRecv m . InterT . cont
-
--- |Run an action until it terminates, return its result.
---
--- The action has no sync channels and runs with `Off` index value, i.e. has
--- its async communication disabled at runtime.
-runTillHaltAsync :: Monad m
-            => InterT ('InterPars m '[] ach '[]) Off b' a
-            -> m a
-runTillHaltAsync (InterT (Pure x)) = pure x
-runTillHaltAsync (InterT (Join cont)) = case cont of
-  CallAction contra _ _ -> case contra of {}
-  ThrowAction contra _ -> case contra of {}
-  LiftAction m cont' -> do
-    v <- m
-    runTillHaltAsync $ InterT $ cont' v
 
 -- $lemmas
 --
@@ -332,37 +299,21 @@ runTillHaltAsync (InterT (Join cont)) = case cont of
 --           _
 -- @
 
--- |Proof: an interactive computation that starts in `Off` state and does
--- not use exceptions, must finish in `Off` state (unless it diverges).
---
--- The proof uses `unsafeCoerce`, Haskell can't verify this for us. So make
--- sure it's proven correctly on paper.
-cannotEscapeNothingPrf :: InterT ('InterPars m '[] ach sch) Off aft a
-                       -> aft :~: Off
-cannotEscapeNothingPrf (InterT i) = case i of
-  Pure v -> Refl
-  Join (CallAction _ _ _) -> unsafeCoerce $ Refl @()
-  Join (ThrowAction contra _) -> case contra of {}
-  Join (LiftAction _ _) -> unsafeCoerce $ Refl @()
-  -- ^Here, we know by induction that the programmer can't escape
-  -- `Off`. But I don't think I can express this induction (over a sequance
-  -- of nested lambdas) in Haskell, therefore the `unsafeCoerce`.
-
 -- |Proof: A program with sync channels and return type `Void` may not
 -- terminate; if it starts from `On NextRecv` state, it will inevitably request
 -- an rx message.
-mayOnlyRecvVoidPrf :: RecvRes m ach '[] (On NextRecv) Void
-                   -> InterT ('InterPars m '[] ach '[]) (On NextSend) (On NextRecv) Void
+mayOnlyRecvVoidPrf :: RecvRes m ach '[] NextRecv Void
+                   -> InterT ('InterPars m '[] ach '[]) NextSend NextRecv Void
 mayOnlyRecvVoidPrf = \case
   RrCall contra _ _ -> case contra of {}
   RrHalt contra -> case contra of {}
   RrRecv x -> x
 
--- |Proof: a program with no sync channels that must terminate in `(On NextSend)`
--- state but starts in `(On NextRecv)` state will inevitably request an rx
+-- |Proof: a program with no sync channels that must terminate in `NextSend`
+-- state but starts in `NextRecv` state will inevitably request an rx
 -- message.
-mayOnlyRecvWTPrf :: RecvRes m ach '[] (On NextSend) a
-                 -> InterT ('InterPars m '[] ach '[]) (On NextSend) (On NextSend) a
+mayOnlyRecvWTPrf :: RecvRes m ach '[] NextSend a
+                 -> InterT ('InterPars m '[] ach '[]) NextSend NextSend a
 mayOnlyRecvWTPrf = \case
   RrCall contra _ _ -> case contra of {}
   RrRecv x -> x
@@ -370,19 +321,8 @@ mayOnlyRecvWTPrf = \case
 -- |Proof: a program with no sync channels that must terminate in `On NextRecv`
 -- state that starts from `On NextSend` state will inevitable produce a tx
 -- message.
-mayOnlySendWTPrf :: SendRes m ach '[] (On NextRecv) a
-       -> (SomeFstMessage ach, InterT ('InterPars m '[] ach '[]) (On NextRecv) (On NextRecv) a)
+mayOnlySendWTPrf :: SendRes m ach '[] NextRecv a
+       -> (SomeFstMessage ach, InterT ('InterPars m '[] ach '[]) NextRecv NextRecv a)
 mayOnlySendWTPrf = \case
   SrCall contra _ _ -> case contra of {}
-  SrSendFinal _ cont -> case cannotEscapeNothingPrf cont of {}
   SrSend x cont -> (x, cont)
-
--- |Proof: `On aft` being reachable from `Off` is a cotradiction.
---
--- We use the class constraint to derive a contradiction here, and the `InterT`
--- is given merely to capture the monad indices. In a way, this statement is
--- dual to `cannotEscapeNothingPrf` which proves the same contradiction from
--- the perspective of someone consuming the expressions of type `InterT`.
-justUnreachableFromNothingPrf :: forall ps aft a. IndexReachable Off (On aft)
-                              => InterT ps Off (On aft) a
-justUnreachableFromNothingPrf = case getIndexReachablePrf @Off @(On aft) of {}

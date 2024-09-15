@@ -20,9 +20,6 @@ module UCHS.Types
   , SameLen(..)
   , SameLength(..)
   , Index(..)
-  , NextOp(..)
-  , IndexReachableT(..)
-  , IndexReachable(..)
   )
 where
 
@@ -30,8 +27,6 @@ import Data.Void (Void)
 
 import Data.Kind (Type, Constraint)
 import Data.HList
-
-import Unsafe.Coerce (unsafeCoerce)
 
 import Data.Type.Equality ((:~:)(Refl))
 
@@ -43,9 +38,8 @@ data SBool (a :: Bool) where
 
 -- |Singleton @Bool@ used to store the dependent value of Write Token
 data SIndex (a :: Index) where
-  SOnSend :: SIndex (On NextSend)
-  SOnRecv :: SIndex (On NextRecv)
-  SOff :: SIndex Off
+  SNextSend :: SIndex NextSend
+  SNextRecv :: SIndex NextRecv
 
 type Or :: Bool -> Bool -> Bool
 type family Or x y where
@@ -100,12 +94,10 @@ instance KnownBool True where
 
 class KnownIndex (b :: Index) where
   getSIndex :: SIndex b
-instance KnownIndex Off where
-  getSIndex = SOff
-instance KnownIndex (On NextRecv) where
-  getSIndex = SOnRecv
-instance KnownIndex (On NextSend) where
-  getSIndex = SOnSend
+instance KnownIndex NextRecv where
+  getSIndex = SNextRecv
+instance KnownIndex NextSend where
+  getSIndex = SNextSend
 
 -- |Signleton type to express the list structure (length) but not the contents.
 data KnownLenT :: forall a. [a] -> Type where
@@ -138,34 +130,16 @@ instance SameLength l l' => SameLength (x:l) (x':l') where
   proveSameLength = SameLenCons proveSameLength
 
 -- |Next operation of the asyncronous algorithm
-data NextOp
+data Index
   = NextSend
   -- ^Our turn to `UCHS.Monad.Class.Async.send`
   | NextRecv
   -- ^Our turn to `UCHS.Monad.Class.Async.recvAny`
 
--- |The index of our monad for asynchronous algorithms
-data Index
-  = On NextOp
-  -- ^Asynchronous interaction is on, next operation is given by the `NextOp`
-  | Off
-  -- ^Asynchronous interaction is off, we're not allowed to call
-  -- `UCHS.Monad.Class.Async.send` or `UCHS.Monad.Class.Async.recvAny`
-
--- |Models the reachability relation defined as:
---
--- 1. `Just a` can reach any state.
--- 2. `Nothing` can reach `Nothing`.
-data IndexReachableT (bef :: Index) (aft :: Index) where
-  IndexReachableJust :: IndexReachableT (On a) b
-  IndexReachableNothing :: IndexReachableT Off Off
-
--- |Typeclass for automatically deriving `IndexReachableT`.
-class IndexReachable bef aft where
-  getIndexReachablePrf :: IndexReachableT bef aft
-
-instance IndexReachable (On a) b where
-  getIndexReachablePrf = IndexReachableJust
-
-instance IndexReachable Off Off where
-  getIndexReachablePrf = IndexReachableNothing
+-- -- |The index of our monad for asynchronous algorithms
+-- data ExtendedIndex
+--   = On Index
+--   -- ^Asynchronous interaction is on, next operation is given by the `NextOp`
+--   | Off
+--   -- ^Asynchronous interaction is off, we're not allowed to call
+--   -- `UCHS.Monad.Class.Async.send` or `UCHS.Monad.Class.Async.recvAny`

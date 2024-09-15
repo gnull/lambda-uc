@@ -2,33 +2,31 @@
 
 module UCHS.Monad.InterT.Eval.Async where
 
-import Unsafe.Coerce (unsafeCoerce)
-
 import Data.Either.Extra (mapLeft)
 
 import UCHS.Monad
 import UCHS.Types
 
 data ForkIndexCompT (befFst :: Index) (befSnd :: Index) where
-  ForkIndexCompNone :: ForkIndexCompT (On NextRecv) (On NextRecv)
-  ForkIndexCompFst :: ForkIndexCompT (On NextSend) (On NextRecv)
-  ForkIndexCompSnd :: ForkIndexCompT (On NextRecv) (On NextSend)
+  ForkIndexCompNone :: ForkIndexCompT NextRecv NextRecv
+  ForkIndexCompFst :: ForkIndexCompT NextSend NextRecv
+  ForkIndexCompSnd :: ForkIndexCompT NextRecv NextSend
 
 class ForkIndexComp befFst befSnd where
   getIndexStartCompPrf :: ForkIndexCompT befFst befSnd
 
-instance ForkIndexComp (On NextRecv) (On NextRecv) where
+instance ForkIndexComp NextRecv NextRecv where
   getIndexStartCompPrf = ForkIndexCompNone
-instance ForkIndexComp (On NextSend) (On NextRecv) where
+instance ForkIndexComp NextSend NextRecv where
   getIndexStartCompPrf = ForkIndexCompFst
-instance ForkIndexComp (On NextRecv) (On NextSend) where
+instance ForkIndexComp NextRecv NextSend where
   getIndexStartCompPrf = ForkIndexCompSnd
 
 type ForkIndexOr :: Index -> Index -> Index
 type family ForkIndexOr bef bef' where
-  ForkIndexOr (On NextSend) (On NextRecv) = On NextSend
-  ForkIndexOr (On NextRecv) (On NextSend) = On NextSend
-  ForkIndexOr (On NextRecv) (On NextRecv) = On NextRecv
+  ForkIndexOr NextSend NextRecv = NextSend
+  ForkIndexOr NextRecv NextSend = NextSend
+  ForkIndexOr NextRecv NextRecv = NextRecv
 
 chanFromConcat :: forall (ach :: [(Type, Type)]) ach' x y.
                KnownLenT ach

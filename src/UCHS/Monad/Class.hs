@@ -13,7 +13,6 @@ module UCHS.Monad.Class
   -- $interactive
   , getWT
   , Index
-  , IndexReachable(..)
   , XThrow(..)
   , XCatch(..)
   -- ** Synchronous Interaction
@@ -147,36 +146,28 @@ class XMonad m => Sync (m :: Index -> Index -> Type -> Type) (down :: [(Type, Ty
 
 class XMonad m => Async (m :: Index -> Index -> Type -> Type) (chans :: [(Type, Type)]) | m -> chans where
   -- |Send a message to the channel it is marked with.
-  sendMess :: SomeFstMessage chans -> m (On NextSend) (On NextRecv) ()
+  sendMess :: SomeFstMessage chans -> m NextSend NextRecv ()
 
   -- |Curried version of `sendMess`.
-  send :: Chan x y chans -> x -> m (On NextSend) (On NextRecv) ()
+  send :: Chan x y chans -> x -> m NextSend NextRecv ()
   send i m = sendMess $ SomeFstMessage i m
 
-  -- |Send a message to the channel it is marked with and disable further
-  -- asynchronous communcation.
-  sendMessFinal :: SomeFstMessage chans -> m (On NextSend) Off ()
-
-  -- |Curried version of `sendMessFinal`.
-  sendFinal :: Chan x y chans -> x -> m (On NextSend) Off ()
-  sendFinal i m = sendMessFinal $ SomeFstMessage i m
-
   -- |Receive the next message which can arrive from any of `chan` channels.
-  recvAny :: m (On NextRecv) (On NextSend) (SomeSndMessage chans)
+  recvAny :: m NextRecv NextSend (SomeSndMessage chans)
 
 -- $derived
 --
 -- Some convenient shorthand operations built from basic ones.
 
 oracleAccept :: Async m '[ '(x, y)]
-             => m (On NextRecv) (On NextSend) y
+             => m NextRecv NextSend y
 oracleAccept = M.do
   recvAny >>=: \case
     SomeSndMessage Here m -> xpure m
     SomeSndMessage (There contra) _ -> case contra of {}
 
 oracleYield :: Async m '[ '(x, y)]
-            => x -> m (On NextSend) (On NextRecv) ()
+            => x -> m NextSend NextRecv ()
 oracleYield = send Here
 
 -- |An exception thrown if a message does not arrive from the expected sender.
@@ -185,9 +176,9 @@ data ExBadSender = ExBadSender
 -- |Receive from a specific channel. If an unexpected message arrives from
 -- another channel, throw the `ExBadSender` exception.
 recv :: (XThrow m ex, Async m l)
-     => InList '(ExBadSender, On NextSend) ex
+     => InList '(ExBadSender, NextSend) ex
      -> Chan x y l
-     -> m (On NextRecv) (On NextSend) y
+     -> m NextRecv NextSend y
 recv e i = M.do
   SomeSndMessage j m <- recvAny
   case testEquality i j of
@@ -199,9 +190,9 @@ recv e i = M.do
 -- message arrives before the expected response, throw the `ExBadSender`
 -- exception.
 sendSync :: (XThrow m ex, Async m l)
-         => InList '(ExBadSender, On NextSend) ex
+         => InList '(ExBadSender, NextSend) ex
          -> x
-         -> Chan x y l -> m (On NextSend) (On NextSend) y
+         -> Chan x y l -> m NextSend NextSend y
 sendSync e m chan = M.do
   send chan m
   (SomeSndMessage i y) <- recvAny

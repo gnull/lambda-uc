@@ -75,7 +75,6 @@ liftInterT _ (S.InterT (Pure v)) = xreturn v
 liftInterT h (S.InterT (Join v)) =
     case v of
       S.SendAction m r -> sendMess m >>: liftInterT h (S.InterT r)
-      S.SendFinalAction m r -> sendMessFinal m >>: liftInterT h (S.InterT r)
       S.RecvAction cont -> recvAny >>=: liftInterT h . S.InterT . cont
       S.CallAction i m cont -> call i m >>=: liftInterT h . S.InterT . cont
       S.ThrowAction i e -> xthrow i e

@@ -20,8 +20,6 @@ import Control.XApplicative
 import Control.XMonad
 import qualified Control.XMonad.Do as M
 
-import Unsafe.Coerce (unsafeCoerce)
-
 import UCHS.Types
 import UCHS.Monad.Class
 import UCHS.Monad.InterT
@@ -51,7 +49,7 @@ type OracleCaller m down = SyncT m down
 -- |An algorithm serving oracle calls from parent, but not having access to
 -- any oracles of its own.
 type Oracle (m :: Type -> Type) (up :: (Type, Type)) =
-  AsyncT m '[ '(Snd up, OracleReq (Fst up))] (On NextRecv) (On NextSend)
+  AsyncT m '[ '(Snd up, OracleReq (Fst up))] NextRecv NextSend
 
 -- |Version of `Oracle` that's wrapped in newtype, convenient for use with `HList2`.
 newtype OracleWrapper (m :: Type -> Type) (up :: (Type, Type)) (ret :: Type) =
@@ -88,7 +86,6 @@ runWithOracles :: forall m (down :: [(Type, Type)]) (rets :: [Type]) a.
                -- requested
 runWithOracles = \top bot -> Trans.lift (runTillSend top) >>= \case
     SrSend (SomeFstMessage contra _) _ -> case contra of {}
-    SrSendFinal (SomeFstMessage contra _) _ -> case contra of {}
     SrHalt r -> do
       s <- haltAll bot
       pure (r, s)
@@ -107,7 +104,6 @@ runWithOracles = \top bot -> Trans.lift (runTillSend top) >>= \case
         SrSend r bot' -> case r of
             SomeFstMessage Here r' -> pure (OracleWrapper bot', r')
             SomeFstMessage (There contra) _ -> case contra of {}
-        SrSendFinal _ bot' -> case cannotEscapeNothingPrf bot' of {}
           
     halt :: OracleWrapper m up x
          -> MaybeT m x
@@ -117,7 +113,6 @@ runWithOracles = \top bot -> Trans.lift (runTillSend top) >>= \case
         SrCall contra _ _ -> case contra of {}
         SrHalt s -> pure s
         SrSend _ _ -> mzero
-        SrSendFinal _ bot' -> case cannotEscapeNothingPrf bot' of {}
 
     haltAll :: forall (down' :: [(Type, Type)]) (rets' :: [Type]).
                HList2 (OracleWrapper m) down' rets'

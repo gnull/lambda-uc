@@ -19,7 +19,7 @@ tests :: TestTree
 tests = testCase "none" $ pure ()
 
 -- |Sends String s to the given channel, waits for the other side to repond with
-test :: String -> AsyncExT m e '[ '(String, Int)] (On NextSend) (On NextSend) Int
+test :: String -> AsyncExT m e '[ '(String, Int)] NextSend NextSend Int
 test s = M.do
   send Here s
   recvAny >>=: \case
@@ -33,7 +33,7 @@ test s = M.do
 --
 -- 2. Inside @SomeWTM@, wrap each branch where your WT state is fixed in
 -- @decided@.
-maybeSends :: Chan Bool Bool l -> SomeWT ('InterPars m e l '[]) (On NextRecv) Bool
+maybeSends :: Chan Bool Bool l -> SomeWT ('InterPars m e l '[]) NextRecv Bool
 maybeSends chan = ContFromAnyWT $ \cont -> M.do
   (SomeSndMessage sender msg) <- recvAny
   case testEquality chan sender of
@@ -42,9 +42,9 @@ maybeSends chan = ContFromAnyWT $ \cont -> M.do
       cont msg
     Nothing -> cont False
 
-useMaybeSends :: InList '(ExBadSender, On NextSend) ex
+useMaybeSends :: InList '(ExBadSender, NextSend) ex
               -> Chan Bool Bool ach
-              -> AsyncExT m ex ach (On NextRecv) (On NextSend) Bool
+              -> AsyncExT m ex ach NextRecv NextSend Bool
 useMaybeSends e chan = M.do
   -- Step #1: pass @maybeSends@ to dispatchSomeWT
   -- Step #2: pass it a continuation that starts from unknown WT state
@@ -52,10 +52,9 @@ useMaybeSends e chan = M.do
     -- _ -- in this context, the state of WT is unknown
     -- Step #3: match on the current WT and provide actions for every branch
     getWT >>=: \case
-      SOnSend -> xreturn b
-      SOnRecv -> M.do
+      SNextSend -> xreturn b
+      SNextRecv -> M.do
         m <- recv e chan
         xreturn m
-      SOff -> justUnreachableFromNothingPrf
   -- _ -- in this context, the state of WT is fixed
   xreturn $ not res
