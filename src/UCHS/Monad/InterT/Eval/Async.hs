@@ -66,7 +66,7 @@ type family ChooseRet i i' a a' where
 type MayOnlyReturnAfterRecv :: Index -> Type -> Constraint
 class MayOnlyReturnAfterRecv i a where
   mayOnlyReturnAfterRecvPrf :: MayOnlyReturnAfterRecvT i a
-instance MayOnlyReturnAfterRecv i Void where
+instance MayOnlyReturnAfterRecv NextRecv Void where
   mayOnlyReturnAfterRecvPrf = MayOnlyReturnVoid
 instance MayOnlyReturnAfterRecv NextSend a where
   mayOnlyReturnAfterRecvPrf = MayOnlyReturnType
@@ -254,6 +254,16 @@ connect prf prf' cont = getWT >>=: \case
 
 
 -- |Connect the first channel to itself.
-connectSelf :: AsyncT m ('(x, x) : rest) bef aft a
-            -> AsyncT m rest bef aft a
-connectSelf = undefined
+--
+-- This one can be expressed with other combinators and is not necessary.
+connectSelf :: forall bef m x rest a . (Monad m, KnownIndex bef)
+            => AsyncT m ('(x, x) : rest) bef NextSend a
+            -> AsyncT m rest bef NextSend a
+connectSelf p = getWT >>=: \case
+    SNextRecv -> connect SplitHere SplitHere $ fork getKnownLenPrf idProc p
+    SNextSend -> connect SplitHere SplitHere $ fork getKnownLenPrf idProc p
+  where
+    idProc :: AsyncT m '[ '(x, x)] NextRecv NextRecv Void
+    idProc = M.do
+      oracleAccept >>=: oracleYield
+      idProc
