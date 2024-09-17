@@ -50,9 +50,9 @@ subRespEval = \e (SubRespTreeNode p ch) -> runTillSend e >>= \case
     SrHalt x -> pure x
     SrSend (SomeFstMessage (There contra) _) _ -> case contra of {}
     SrSend (SomeFstMessage Here m) cont -> do
-      p' <- mayOnlyRecvVoidPrf <$> runTillRecv (SomeSndMessage Here m) p
+      p' <- ($ SomeSndMessage Here m) <$> mayOnlyRecvVoidPrf <$> runTillRecv p
       (t, resp) <- subroutineCall @iface p' ch
-      e' <- mayOnlyRecvWTPrf <$> runTillRecv (SomeSndMessage Here resp) cont
+      e' <- ($ SomeSndMessage Here resp) <$> mayOnlyRecvWTPrf <$> runTillRecv cont
       subRespEval e' t
   where
     subroutineCall :: forall up down.
@@ -65,7 +65,7 @@ subRespEval = \e (SubRespTreeNode p ch) -> runTillSend e >>= \case
           pure (SubRespTreeNode cont' s, m')
         (SomeFstMessage (There i) m', cont') -> do
           (s', m'') <- forIth i s $ \(SubRespTreeNode ch chchs) -> do
-            cont <- mayOnlyRecvVoidPrf <$> runTillRecv (SomeSndMessage Here m') ch
+            cont <- ($ SomeSndMessage Here m') <$> mayOnlyRecvVoidPrf <$> runTillRecv ch
             subroutineCall cont chchs
-          cont'' <- mayOnlyRecvVoidPrf <$> runTillRecv (SomeSndMessage (There i) m'') cont'
+          cont'' <- ($ SomeSndMessage (There i) m'') <$> mayOnlyRecvVoidPrf <$> runTillRecv cont'
           subroutineCall cont'' s'

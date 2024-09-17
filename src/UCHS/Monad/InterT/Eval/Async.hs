@@ -5,7 +5,7 @@ module UCHS.Monad.InterT.Eval.Async
   -- * Core combinators
   -- $core
     fork
-  , mapTail
+  -- , mapTail
   , swap
   , connect
   , connectSelf
@@ -114,13 +114,13 @@ fork prf l r = case getIndexStartCompPrf @bef @bef' of
   ForkIndexCompNone -> M.do
     SomeSndMessage i m <- recvAny
     case chanFromConcat @ach @ach' prf i of
-      Left i' -> lift (runTillRecv (SomeSndMessage i' m) l) >>=: \case
-        RrRecv l' -> fork prf l' r
+      Left i' -> lift (runTillRecv l) >>=: \case
+        RrRecv l' -> fork prf (l' $ SomeSndMessage i' m) r
         RrCall contra _ _ -> case contra of {}
         RrHalt res -> case mayOnlyReturnAfterRecvPrf @aft @a of
           MayOnlyReturnVoid -> case res of {}
-      Right i' -> lift (runTillRecv (SomeSndMessage i' m) r) >>=: \case
-        RrRecv r' -> fork prf l r'
+      Right i' -> lift (runTillRecv r) >>=: \case
+        RrRecv r' -> fork prf l (r' $ SomeSndMessage i' m)
         RrCall contra _ _ -> case contra of {}
         RrHalt res -> case mayOnlyReturnAfterRecvPrf @aft' @a' of
           MayOnlyReturnVoid -> case res of {}
@@ -145,33 +145,64 @@ fork prf l r = case getIndexStartCompPrf @bef @bef' of
         MayOnlyReturnType -> case getIndexStartCompPrf @aft @aft' of
           ForkIndexCompSnd -> xreturn res
 
--- |Apply the given action to the tail of the channels list, keeping the head unchanged.
-mapTail :: ( KnownIndex bef
-           , Monad m
-           )
-        => AsyncT m (h:ach) bef aft a
-        -- ^Original action
-        -> (forall i. KnownIndex i => AsyncT m ach i aft a -> AsyncT m ach' i aft a)
-        -- ^What to do with the tail of the channels list
-        -> AsyncT m (h:ach') bef aft a
-        -- ^Result with tail changed
-mapTail x f = getWT >>=: \case
+-- -- |Apply the given action to the tail of the channels list, keeping the head unchanged.
+-- mapTail :: ( KnownIndex bef
+--            , Monad m
+--            )
+--         => AsyncT m (h:ach) bef aft a
+--         -- ^Original action
+--         -> (forall i. KnownIndex i => AsyncT m ach i aft a -> AsyncT m ach' i aft a)
+--         -- ^What to do with the tail of the channels list
+--         -> AsyncT m (h:ach') bef aft a
+--         -- ^Result with tail changed
+-- mapTail x f = getWT >>=: \case
+--   SNextSend -> M.do
+--     lift (runTillSend x) >>=: \case
+--       SrSend (SomeFstMessage i m) cont -> case i of
+--         Here -> M.do
+--           send Here m
+--           mapTail cont f
+--         There i' -> M.do
+--           undefined
+--       SrCall contra _ _ -> case contra of {}
+--       SrHalt res -> xreturn res
+--   SNextRecv -> undefined
+
+-- |Swap the two adjacent channels.
+swap :: ( KnownIndex bef
+        , Monad m
+        )
+     => ListSplit l p (f:s:rest)
+     -> ListSplit l' p (s:f:rest)
+     -> AsyncT m l bef aft a
+     -> AsyncT m l' bef aft a
+swap SplitHere SplitHere cont = getWT >>=: \case
+  SNextRecv -> M.do
+    lift (runTillRecv cont) >>=: \case
+      RrCall contra _ _ -> case contra of {}
+      RrHalt res -> xreturn res
+      RrRecv cont' -> M.do
+        SomeSndMessage i m <- recvAny
+        swap SplitHere SplitHere $ case i of
+          Here -> cont' (SomeSndMessage (There Here) m)
+          There Here -> cont' (SomeSndMessage Here m)
+          There2 i' -> cont' (SomeSndMessage (There2 i') m)
   SNextSend -> M.do
-    lift (runTillSend x) >>=: \case
-      SrSend (SomeFstMessage i m) cont -> case i of
-        Here -> M.do
-          send Here m
-          mapTail cont f
-        There i' -> M.do
-          undefined
+    lift (runTillSend cont) >>=: \case
       SrCall contra _ _ -> case contra of {}
       SrHalt res -> xreturn res
-  SNextRecv -> undefined
-
--- |Swap the places of the first two channels.
-swap :: AsyncT m (f : s : rest) bef aft a
-     -> AsyncT m (s : f : rest) bef aft a
-swap = undefined
+      SrSend (SomeFstMessage i m) cont' -> M.do
+        case i of
+          Here -> send (There Here) m
+          There Here -> send Here m
+          There2 i' -> send (There2 i') m
+        swap SplitHere SplitHere cont'
+swap (SplitThere prf) (SplitThere prf') cont= undefined
+-- swap prf prf' cont = getWT >>=: \case
+--   SNextRecv -> M.do
+--     SomeSndMessage i m <- recvAny
+--     case
+--   SNextSend -> _
 
 -- |Connect the first two channels with each other.
 connect :: AsyncT m ('(x, y) : '(y, x) : rest) bef aft a

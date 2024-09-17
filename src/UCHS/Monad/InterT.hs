@@ -243,7 +243,7 @@ runTillSend (InterT (Join v)) = case v of
 -- |The result of `runTillRecv`.
 data RecvRes m up down aft a where
   -- |Algorithm ran `recvAny`
-  RrRecv :: InterT ('InterPars m '[] up down) NextSend aft a
+  RrRecv :: (SomeSndMessage up -> InterT ('InterPars m '[] up down) NextSend aft a)
          -> RecvRes m up down aft a
   -- |Algorithm issued an oracle call to a child via `call`
   RrCall :: Chan x y down
@@ -258,15 +258,14 @@ data RecvRes m up down aft a where
 -- runTillRecv the oracle call from its parent (running it until it receives
 -- the write token via `recvAny`).
 runTillRecv :: Monad m
-        => SomeSndMessage ach
-        -> InterT ('InterPars m '[] ach sch) NextRecv b a
+        => InterT ('InterPars m '[] ach sch) NextRecv b a
         -> m (RecvRes m ach sch b a)
-runTillRecv _ (InterT (Pure v)) = pure $ RrHalt v
-runTillRecv m (InterT (Join v)) = case v of
-  RecvAction cont -> pure $ RrRecv $ InterT $ cont m
+runTillRecv (InterT (Pure v)) = pure $ RrHalt v
+runTillRecv (InterT (Join v)) = case v of
+  RecvAction cont -> pure $ RrRecv $ InterT . cont
   CallAction i x cont -> pure $ RrCall i x $ InterT . cont
   ThrowAction contra _ -> case contra of {}
-  LiftAction a cont -> a >>= runTillRecv m . InterT . cont
+  LiftAction a cont -> a >>= runTillRecv . InterT . cont
 
 -- $lemmas
 --
@@ -303,6 +302,7 @@ runTillRecv m (InterT (Join v)) = case v of
 -- terminate; if it starts from `On NextRecv` state, it will inevitably request
 -- an rx message.
 mayOnlyRecvVoidPrf :: RecvRes m ach '[] NextRecv Void
+                   -> SomeSndMessage ach
                    -> InterT ('InterPars m '[] ach '[]) NextSend NextRecv Void
 mayOnlyRecvVoidPrf = \case
   RrCall contra _ _ -> case contra of {}
@@ -313,6 +313,7 @@ mayOnlyRecvVoidPrf = \case
 -- state but starts in `NextRecv` state will inevitably request an rx
 -- message.
 mayOnlyRecvWTPrf :: RecvRes m ach '[] NextSend a
+                 -> SomeSndMessage ach
                  -> InterT ('InterPars m '[] ach '[]) NextSend NextSend a
 mayOnlyRecvWTPrf = \case
   RrCall contra _ _ -> case contra of {}

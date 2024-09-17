@@ -20,11 +20,56 @@ data InList x xs where
     Here :: InList x (x : xs)
     There :: InList x xs -> InList x (y : xs)
 
+pattern There2 :: InList x xs -> InList x (y0 : y1 : xs)
+pattern There2 i = There (There i)
+{-# COMPLETE There2 #-}
+
+pattern There3 :: InList x xs -> InList x (y0 : y1 : y2 : xs)
+pattern There3 i = There (There2 i)
+{-# COMPLETE There3 #-}
+
 data SomeIndex xs where
     SomeIndex :: InList x xs -> SomeIndex xs
 
 data SomeValue xs where
   SomeValue :: InList x xs -> x -> SomeValue xs
+
+-- |Statement @`ListSplit` l p s@ says that `l = p ++ s`, i.e. that `l` can be
+-- cut into prefix `p` and suffix `s`.
+--
+-- Structure-wise, this is just a pointer, like `InList`, but it carries
+-- different information on type-level.
+data ListSplit :: forall a. [a] -> [a] -> [a] -> Type where
+  SplitHere :: ListSplit l '[] l
+  SplitThere :: ListSplit l p s -> ListSplit (x:l) (x:p) s
+
+pattern Split0 :: ListSplit l '[] l
+pattern Split0 = SplitHere
+{-# COMPLETE Split0 #-}
+
+pattern Split1 :: ListSplit (x0 : l) '[x0] l
+pattern Split1 = SplitThere Split0
+{-# COMPLETE Split1 #-}
+
+pattern Split2 :: ListSplit (x0 : x1 : l)
+                            (x0 : '[x1]) l
+pattern Split2 = SplitThere Split1
+{-# COMPLETE Split2 #-}
+
+pattern Split3 :: ListSplit (x0 : x1 : x2 : l)
+                            (x0 : x1 : '[x2]) l
+pattern Split3 = SplitThere Split2
+{-# COMPLETE Split3 #-}
+
+pattern Split4 :: ListSplit (x0 : x1 : x2 : x3 : l)
+                            (x0 : x1 : x2 : '[x3]) l
+pattern Split4 = SplitThere Split3
+{-# COMPLETE Split4 #-}
+
+pattern Split5 :: ListSplit (x0 : x1 : x2 : x3 : x4 : l)
+                            (x0 : x1 : x2 : x3 : '[x4]) l
+pattern Split5 = SplitThere Split4
+{-# COMPLETE Split5 #-}
 
 -- |Compare two indices for equality
 testEquality :: InList x xs -> InList y xs -> Maybe (x :~: y)

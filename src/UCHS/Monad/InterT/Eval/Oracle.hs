@@ -96,9 +96,9 @@ runWithOracles = \top bot -> Trans.lift (runTillSend top) >>= \case
     oracleCall :: x
                -> OracleWrapper m '(x, y) s
                -> MaybeT m (OracleWrapper m '(x, y) s, y)
-    oracleCall m (OracleWrapper bot) = Trans.lift (runTillRecv (SomeSndMessage Here (OracleReq m)) bot) >>= \case
+    oracleCall m (OracleWrapper bot) = Trans.lift (runTillRecv bot) >>= \case
       RrCall contra _ _ -> case contra of {}
-      RrRecv cont -> Trans.lift (runTillSend cont) >>= \case
+      RrRecv cont -> Trans.lift (runTillSend $ cont $ SomeSndMessage Here (OracleReq m)) >>= \case
         SrCall contra _ _ -> case contra of {}
         SrHalt _ -> mzero
         SrSend r bot' -> case r of
@@ -107,9 +107,9 @@ runWithOracles = \top bot -> Trans.lift (runTillSend top) >>= \case
           
     halt :: OracleWrapper m up x
          -> MaybeT m x
-    halt (OracleWrapper bot) = Trans.lift (runTillRecv (SomeSndMessage Here OracleReqHalt) bot) >>= \case
+    halt (OracleWrapper bot) = Trans.lift (runTillRecv bot) >>= \case
       RrCall contra _ _ -> case contra of {}
-      RrRecv cont -> Trans.lift (runTillSend cont) >>= \case
+      RrRecv cont -> Trans.lift (runTillSend $ cont $ SomeSndMessage Here OracleReqHalt) >>= \case
         SrCall contra _ _ -> case contra of {}
         SrHalt s -> pure s
         SrSend _ _ -> mzero
