@@ -5,7 +5,7 @@ module UCHS.Monad.InterT.Eval.Async
   -- * Core combinators
   -- $core
     fork
-  -- , mapTail
+  , mapChans
   , swap
   , connect
   , connectSelf
@@ -25,6 +25,7 @@ where
 
 import Data.Either.Extra (mapLeft)
 
+import Control.Arrow
 import Control.XMonad
 import qualified Control.XMonad.Do as M
 
@@ -145,28 +146,26 @@ fork prf l r = case getIndexStartCompPrf @bef @bef' of
         MayOnlyReturnType -> case getIndexStartCompPrf @aft @aft' of
           ForkIndexCompSnd -> xreturn res
 
--- -- |Apply the given action to the tail of the channels list, keeping the head unchanged.
--- mapTail :: ( KnownIndex bef
---            , Monad m
---            )
---         => AsyncT m (h:ach) bef aft a
---         -- ^Original action
---         -> (forall i. KnownIndex i => AsyncT m ach i aft a -> AsyncT m ach' i aft a)
---         -- ^What to do with the tail of the channels list
---         -> AsyncT m (h:ach') bef aft a
---         -- ^Result with tail changed
--- mapTail x f = getWT >>=: \case
---   SNextSend -> M.do
---     lift (runTillSend x) >>=: \case
---       SrSend (SomeFstMessage i m) cont -> case i of
---         Here -> M.do
---           send Here m
---           mapTail cont f
---         There i' -> M.do
---           undefined
---       SrCall contra _ _ -> case contra of {}
---       SrHalt res -> xreturn res
---   SNextRecv -> undefined
+mapChans :: (KnownIndex bef, Monad m)
+         => (forall x y. Chan x y l -> Chan x y l')
+         -> (forall x y. Chan x y l' -> Chan x y l)
+         -> AsyncT m l bef aft a
+         -> AsyncT m l' bef aft a
+mapChans f g cont = getWT >>=: \case
+  SNextRecv -> M.do
+    lift (runTillRecv cont) >>=: \case
+      RrCall contra _ _ -> case contra of {}
+      RrHalt res -> xreturn res
+      RrRecv cont' -> M.do
+        SomeSndMessage i m <- recvAny
+        mapChans f g $ cont' $ SomeSndMessage (g i) m
+  SNextSend -> M.do
+    lift (runTillSend cont) >>=: \case
+      SrCall contra _ _ -> case contra of {}
+      SrHalt res -> xreturn res
+      SrSend (SomeFstMessage i m) cont' -> M.do
+        send (f i) m
+        mapChans f g cont'
 
 -- |Swap the two adjacent channels.
 swap :: ( KnownIndex bef
@@ -176,38 +175,83 @@ swap :: ( KnownIndex bef
      -> ListSplit l' p (s:f:rest)
      -> AsyncT m l bef aft a
      -> AsyncT m l' bef aft a
-swap SplitHere SplitHere cont = getWT >>=: \case
-  SNextRecv -> M.do
-    lift (runTillRecv cont) >>=: \case
-      RrCall contra _ _ -> case contra of {}
-      RrHalt res -> xreturn res
-      RrRecv cont' -> M.do
-        SomeSndMessage i m <- recvAny
-        swap SplitHere SplitHere $ case i of
-          Here -> cont' (SomeSndMessage (There Here) m)
-          There Here -> cont' (SomeSndMessage Here m)
-          There2 i' -> cont' (SomeSndMessage (There2 i') m)
-  SNextSend -> M.do
-    lift (runTillSend cont) >>=: \case
-      SrCall contra _ _ -> case contra of {}
-      SrHalt res -> xreturn res
-      SrSend (SomeFstMessage i m) cont' -> M.do
-        case i of
-          Here -> send (There Here) m
-          There Here -> send Here m
-          There2 i' -> send (There2 i') m
-        swap SplitHere SplitHere cont'
-swap (SplitThere prf) (SplitThere prf') cont= undefined
--- swap prf prf' cont = getWT >>=: \case
---   SNextRecv -> M.do
---     SomeSndMessage i m <- recvAny
---     case
---   SNextSend -> _
+swap prf prf' cont = mapChans (f prf prf') (f prf' prf) cont
+  where
+    f :: ListSplit l p (f:s:rest)
+      -> ListSplit l' p (s:f:rest)
+      -> Chan x y l
+      -> Chan x y l'
+    f SplitHere SplitHere = \case
+      Here -> There Here
+      There Here -> Here
+      There2 i -> There2 i
+    f (SplitThere p) (SplitThere p') = \case
+      Here -> Here
+      There i -> There $ f p p' i
 
--- |Connect the first two channels with each other.
-connect :: AsyncT m ('(x, y) : '(y, x) : rest) bef aft a
-        -> AsyncT m rest bef aft a
-connect = undefined
+-- |Connect two adjacent channels with each other.
+connect :: (KnownIndex bef, Monad m)
+        => ListSplit l p ('(x, y) : '(y, x) : rest)
+        -> ListSplit l' p rest
+        -> AsyncT m l bef NextSend a
+        -> AsyncT m l' bef NextSend a
+connect prf prf' cont = getWT >>=: \case
+    SNextRecv -> M.do
+      lift (runTillRecv cont) >>=: \case
+        RrCall contra _ _ -> case contra of {}
+        RrRecv cont' -> M.do
+          SomeSndMessage i m <- recvAny
+          connect prf prf' $ cont' $ SomeSndMessage (g prf prf' i) m
+    SNextSend -> M.do
+      lift (runTillSend cont) >>=: \case
+        SrCall contra _ _ -> case contra of {}
+        SrHalt res -> xreturn res
+        SrSend (SomeFstMessage i m) cont' -> case f prf prf' i of
+            SomeValue Here (Refl, Refl) -> M.do
+              cont'' <- mayOnlyRecvWTPrf <$> lift (runTillRecv cont')
+              connect prf prf' $ cont'' $ SomeSndMessage (snd $ splitToInlistPair prf) m
+            SomeValue (There Here) (Refl, Refl) -> M.do
+              cont'' <- mayOnlyRecvWTPrf <$> lift (runTillRecv cont')
+              connect prf prf' $ cont'' $ SomeSndMessage (fst $ splitToInlistPair prf) m
+            SomeValue (There2 Here) i' -> M.do
+              send i' m
+              connect prf prf' cont'
+            SomeValue (There3 contra) _ -> case contra of {}
+
+  where
+    f :: ListSplit l p ( '(x', y') : '(y', x') : rest)
+      -> ListSplit l' p rest
+      -> Chan x y l
+      -> SomeValue '[ (x :~: x', y :~: y')
+                    , (x :~: y', y :~: x')
+                    , Chan x y l'
+                    ]
+    f SplitHere SplitHere = \case
+      Here -> SomeValue Here (Refl, Refl)
+      There Here -> SomeValue (There Here) (Refl, Refl)
+      There2 i -> SomeValue (There2 Here) i
+    f (SplitThere p) (SplitThere p') = \case
+      Here -> SomeValue (There2 Here) Here
+      There i -> case f p p' i of
+        SomeValue Here v -> SomeValue Here v
+        SomeValue (There Here) v -> SomeValue (There Here) v
+        SomeValue (There2 Here) v -> SomeValue (There2 Here) $ There v
+        SomeValue (There3 contra) _ -> case contra of {}
+
+    g :: ListSplit l p ( '(x', y') : '(y', x') : rest)
+      -> ListSplit l' p rest
+      -> Chan x y l'
+      -> Chan x y l
+    g SplitHere SplitHere = \i -> There2 i
+    g (SplitThere p) (SplitThere p') = \case
+      Here -> Here
+      There i -> There $ g p p' i
+
+    splitToInlistPair :: ListSplit l p ( '(x, y) : '(x', y') : rest)
+                      -> (Chan x y l, Chan x' y' l)
+    splitToInlistPair SplitHere = (Here, There Here)
+    splitToInlistPair (SplitThere i) = There *** There $ splitToInlistPair i
+
 
 -- |Connect the first channel to itself.
 connectSelf :: AsyncT m ('(x, x) : rest) bef aft a
