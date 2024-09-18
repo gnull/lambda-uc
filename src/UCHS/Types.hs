@@ -15,7 +15,7 @@ module UCHS.Types
   , Concat
   , concatInjPrf
   , KnownIndex(..)
-  , KnownLenT(..)
+  , KnownLenD(..)
   , KnownLen(..)
   , SameLen(..)
   , SameLength(..)
@@ -75,7 +75,7 @@ type family Concat xs ys where
 
 concatInjPrf :: forall xs ys ys'.
              Concat xs ys :~: Concat xs ys'
-             -> KnownLenT xs
+             -> KnownLenD xs
              -> ys :~: ys'
 concatInjPrf Refl = \case
   KnownLenZ -> Refl
@@ -100,14 +100,14 @@ instance KnownIndex NextSend where
   getSIndex = SNextSend
 
 -- |Signleton type to express the list structure (length) but not the contents.
-data KnownLenT :: forall a. [a] -> Type where
-  KnownLenZ :: KnownLenT '[]
-  KnownLenS :: forall a (x :: a) (l :: [a]). KnownLenT l -> KnownLenT (x : l)
+data KnownLenD :: forall a. [a] -> Type where
+  KnownLenZ :: KnownLenD '[]
+  KnownLenS :: forall a (x :: a) (l :: [a]). KnownLenD l -> KnownLenD (x : l)
 
 -- |Class of list values for which their length is known at compile time.
 type KnownLen :: forall a. [a] -> Constraint
 class KnownLen l where
-  getKnownLenPrf :: KnownLenT l
+  getKnownLenPrf :: KnownLenD l
 
 instance KnownLen '[] where
   getKnownLenPrf = KnownLenZ

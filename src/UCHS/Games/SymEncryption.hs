@@ -106,7 +106,7 @@ oracleEncDec :: SymEncryptionScheme key mes ciph s
              -> s
              -> Oracle ProbAlgo (EncDecIface mes ciph) ()
 oracleEncDec sch' k s = M.do
-  oracleAccept >>=: \case
+  recvOne >>=: \case
     OracleReqHalt -> xreturn ()
     OracleReq req -> M.do
       (s', c) <- case req of
@@ -118,7 +118,7 @@ oracleEncDec sch' k s = M.do
           case symEDec sch' k c of
             Nothing -> pure RespError
             Just x -> pure $ DecResp x
-      oracleYield c
+      sendOne c
       oracleEncDec sch' k s'
 
 oracleEncRandNoDec :: UniformDist mes
@@ -127,7 +127,7 @@ oracleEncRandNoDec :: UniformDist mes
                    -> s
                    -> Oracle ProbAlgo (EncDecIface mes ciph) ()
 oracleEncRandNoDec sch' k s = M.do
-  oracleAccept >>=: \case
+  recvOne >>=: \case
     OracleReqHalt -> xreturn ()
     OracleReq req -> M.do
       (s', c) <- case req of
@@ -137,7 +137,7 @@ oracleEncRandNoDec sch' k s = M.do
             Nothing -> pure (s, RespError)
             Just (s', x) -> pure $ (s', EncResp x)
         DecReq _ -> xreturn (s, RespError)
-      oracleYield c
+      sendOne c
       oracleEncRandNoDec sch' k s'
 
 oracleEncRandDec :: UniformDist mes
@@ -146,7 +146,7 @@ oracleEncRandDec :: UniformDist mes
                  -> s
                  -> Oracle ProbAlgo (EncDecIface mes ciph) ()
 oracleEncRandDec sch' k s = M.do
-  oracleAccept >>=: \case
+  recvOne >>=: \case
     OracleReqHalt -> xreturn ()
     OracleReq req -> M.do
       (s', c) <- case req of
@@ -159,5 +159,5 @@ oracleEncRandDec sch' k s = M.do
           case symEDec sch' k c of
             Nothing -> pure RespError
             Just x -> pure $ DecResp x
-      oracleYield c
+      sendOne c
       oracleEncRandNoDec sch' k s'

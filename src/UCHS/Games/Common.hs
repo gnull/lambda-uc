@@ -23,11 +23,11 @@ oracleMapM :: (Monad m)
            => (a -> m b)
            -> OracleWrapper m '(a, b) [(a, b)]
 oracleMapM f = OracleWrapper $ M.do
-  oracleAccept >>=: \case
+  recvOne >>=: \case
     OracleReqHalt -> xreturn []
     OracleReq x -> M.do
       y <- lift $ f x
-      oracleYield y
+      sendOne y
       rest <- runOracleWrapper $ oracleMapM f
       xreturn $ (x, y) : rest
 

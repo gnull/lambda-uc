@@ -216,7 +216,7 @@ type SyncT m sch = InterT ('InterPars m '[] '[] sch) NextSend NextSend
 
 -- |The result of `runTillSend`
 data SendRes (m :: Type -> Type) (ach :: [(Type, Type)]) (sch :: [(Type, Type)]) (aft :: Index) a where
-  -- |Algorithm called `send` or `oracleYield`.
+  -- |Algorithm called `send`.
   SrSend :: SomeFstMessage ach
          -> InterT ('InterPars m '[] ach sch) NextRecv aft a
          -> SendRes m ach sch aft a
@@ -242,7 +242,7 @@ runTillSend (InterT (Join v)) = case v of
 
 -- |The result of `runTillRecv`.
 data RecvRes m up down aft a where
-  -- |Algorithm ran `recvAny`
+  -- |Algorithm ran `recvAny`.
   RrRecv :: (SomeSndMessage up -> InterT ('InterPars m '[] up down) NextSend aft a)
          -> RecvRes m up down aft a
   -- |Algorithm issued an oracle call to a child via `call`

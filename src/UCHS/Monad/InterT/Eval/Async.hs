@@ -2,9 +2,13 @@
 
 module UCHS.Monad.InterT.Eval.Async
   (
-  -- * Combinators
+  -- * Execution Syntax
+  -- $exec
+    Exec(..)
+  , runExec
+  -- * Execution Implementation
   -- $core
-    fork
+  , fork
   , swap
   , connect
   , escapeSyncT
@@ -12,9 +16,6 @@ module UCHS.Monad.InterT.Eval.Async
   , permChans
   -- *Helper functions and types
   -- $helpers
-  -- , chanFromConcat
-  -- , fstToConcat
-  -- , sndToConcat
   , Forkable
   , ForkIndexComp(..)
   , ForkIndexCompD(..)
@@ -22,8 +23,10 @@ module UCHS.Monad.InterT.Eval.Async
   , MayOnlyReturnAfterRecv(..)
   , MayOnlyReturnAfterRecvD(..)
   , ChooseRet
-  -- * Examples
+  -- * Derived Gadgets
   , connectSelf
+  , idProc
+  , mergeProc
   )
 where
 
@@ -78,7 +81,7 @@ instance MayOnlyReturnAfterRecv NextSend a where
 -- |Given an index in the concatenation of @`Concat` ach ach'@, return the
 -- corresponding element's index either in @ach@ or in @ach'@.
 chanFromConcat :: forall (ach :: [(Type, Type)]) ach' x y.
-                  KnownLenT ach
+                  KnownLenD ach
                -> Chan x y (Concat ach ach')
                -> Either (Chan x y ach) (Chan x y ach')
 chanFromConcat = \case
@@ -89,7 +92,7 @@ chanFromConcat = \case
 
 -- |Given an element's index in @ach@, return the same element's index in @`Concat` ach ach'@.
 fstToConcat :: forall ach ach' x y.
-               KnownLenT ach
+               KnownLenD ach
             -> Chan x y ach
             -> Chan x y (Concat ach ach')
 fstToConcat _ Here = Here
@@ -97,7 +100,7 @@ fstToConcat (KnownLenS n) (There rest) = There $ fstToConcat @_ @(ach') n rest
 
 -- |Given an element's index in @ach'@, return the same element's index in @`Concat` ach ach'@.
 sndToConcat :: forall ach ach' x y.
-               KnownLenT ach
+               KnownLenD ach
             -> Chan x y ach'
             -> Chan x y (Concat ach ach')
 sndToConcat KnownLenZ = id
@@ -105,20 +108,11 @@ sndToConcat (KnownLenS n) = There . sndToConcat n
 
 -- $core
 --
--- These combinators are the safe way to manipulate the list of free channels.
+-- These are utility functions that are used by `runExec` to evaluate an exection.
 --
--- You start with the processes defined as @`AsyncT` m ach bef aft a`@, then
--- you combine them using `fork`, `connect` and `swap` until you've connected
--- all the free channels and left with @`AsyncT` m '[] bef aft a`@. The latter
--- can be evaluated with `escapeSyncT` to yield the final result of evaluation.
---
--- Only one process in the whole execution is allowed to return a result. It is
--- the process that finishes in `NextSend` state, all the other processes are
--- forced to have their return type `Void` (and never finish). These conditions
--- are checked statically by the typeclass restrictions of `fork`.
---
--- Function `escapeSyncT` returns the result of the process that termiates in
--- `NextSend`.
+-- The `fork`, `swap` and `connect` correspond one-to-one to the constructors
+-- of `Exec`. And `escapeSyncT` evaluates a concurrent algorithm that has all
+-- of its channels bound as a local algorithm.
 
 type Forkable bef bef' aft aft' a a' =
   ( ForkIndexComp bef bef'
@@ -145,7 +139,7 @@ type Forkable bef bef' aft aft' a a' =
 -- value is `Void`.
 fork :: forall m ach ach' bef bef' aft aft' a a'.
         (Monad m, Forkable bef bef' aft aft' a a')
-     => KnownLenT ach
+     => KnownLenD ach
      -- ^Depdendent length of free channels list in left branch
      -> AsyncT m ach bef aft a
      -- ^Left branch of the fork
@@ -349,8 +343,96 @@ connectSelf :: forall bef m x rest a . (Monad m, KnownIndex bef)
 connectSelf p = getWT >>=: \case
     SNextRecv -> connect SplitHere SplitHere $ fork getKnownLenPrf idProc p
     SNextSend -> connect SplitHere SplitHere $ fork getKnownLenPrf idProc p
+
+-- |Process that sends back everything it gets
+idProc :: Monad m
+       => AsyncT m '[ '(x, x)] NextRecv NextRecv Void
+idProc = M.do
+  recvOne >>=: sendOne
+  idProc
+
+-- |Merge two single-directional channels into one.
+--
+-- Any message that arrives on the merged channels is passed as is with no
+-- marking to tell what channel it came from.
+mergeProc :: AsyncT m '[ '(a, Void), '(Void, a), '(Void, a)] NextRecv NextRecv Void
+mergeProc = M.do
+  () <- recvAny >>=: \case
+    SomeSndMessage Here contra -> case contra of {}
+    SomeSndMessage (There Here) x -> send Here x
+    SomeSndMessage (There2 Here) x -> send Here x
+    SomeSndMessage (There3 contra) _ -> case contra of {}
+  mergeProc
+
+-- $exec
+--
+-- This section defines syntax for distributed exection of processes.
+--
+-- You define your processes and their connections as a value of type `Exec`,
+-- and then run it using `runExec`.
+--
+-- You start with the processes defined as @`AsyncT` m ach i i a`@ wrapped
+-- in `ExecProc`, then you combine them using `ExecFork`, `ExecConn` and
+-- `ExecSwap` until you've connected all the free channels and left with
+-- @`Exec` m '[] `NextSend` a@. The latter can be evaluated with `runExec` to
+-- yield the final result of evaluation.
+--
+-- Only one process in the whole execution is allowed to return a result. It
+-- is the (only) process that finishes in `NextSend` state, all the other
+-- processes are forced to have their return type `Void` (and never
+-- finish). These conditions are checked statically by the typeclass
+-- restrictions of `Exec` constructors.
+--
+-- Function `runExec` returns the result of the process that termiates in
+-- `NextSend`.
+
+data Exec m ach i a where
+  -- |An execution consisting of one process.
+  ExecProc :: (MayOnlyReturnAfterRecv i a)
+           => AsyncT m ach i i a
+           -- ^The code that the process will run
+           -> Exec m ach i a
+  -- |Combine two executions.
+  ExecFork :: (Forkable i i' i i' a a', KnownLen ach)
+           => Exec m ach i a
+           -- ^First forked process
+           -> Exec m ach' i' a'
+           -- ^Second forked process
+           -> Exec m (Concat ach ach') (ForkIndexOr i i') (ChooseRet i i' a a')
+  -- |Swap positions of two adjacent free channels.
+  ExecSwap :: ( KnownIndex i
+              , Monad m
+              )
+           => ListSplitD l p (f:s:rest)
+           -- ^Proof of @l == p ++ (f:s:rest)@
+           -> ListSplitD l' p (s:f:rest)
+           -- ^Proof of @l' == p ++ (s:f:rest)@
+           -> Exec m l i a
+           -> Exec m l' i a
+  -- |Connect two adjacent free channels of a given execution (making them bound).
+  ExecConn :: (KnownIndex i, MayOnlyReturnAfterRecv i a)
+           => ListSplitD l p ('(x, y) : '(y, x) : rest)
+           -- ^Proof of @l == p ++ ('(x, y) : '(y, x) : rest)@
+           -> ListSplitD l' p rest
+           -- ^Proof of @l' == p ++ rest@
+           -> Exec m l i a
+           -- ^Exectuion where we want to connect the channels
+           -> Exec m l' i a
+
+-- |Run an execution.
+--
+-- Note that the list of free channels must be empty, i.e. all channels must be
+-- bound for an execution to be defined.
+runExec :: Monad m
+        => Exec m '[] NextSend a
+        -> m a
+runExec = escapeSyncT . f
   where
-    idProc :: AsyncT m '[ '(x, x)] NextRecv NextRecv Void
-    idProc = M.do
-      oracleAccept >>=: oracleYield
-      idProc
+    f :: Monad m
+      => Exec m ach i a
+      -> AsyncT m ach i i a
+    f = \case
+      ExecProc p -> p
+      ExecFork l r -> fork getKnownLenPrf (f l) (f r)
+      ExecSwap k k' p -> swap k k' $ f p
+      ExecConn k k' p -> connect k k' $ f p

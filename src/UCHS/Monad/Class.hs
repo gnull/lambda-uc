@@ -22,8 +22,8 @@ module UCHS.Monad.Class
   -- $async
   , Async(..)
   -- $derived
-  , oracleAccept
-  , oracleYield
+  , recvOne
+  , sendOne
   , ExBadSender(..)
   , recv
   , sendSync
@@ -159,16 +159,16 @@ class XMonad m => Async (m :: Index -> Index -> Type -> Type) (chans :: [(Type, 
 --
 -- Some convenient shorthand operations built from basic ones.
 
-oracleAccept :: Async m '[ '(x, y)]
+recvOne :: Async m '[ '(x, y)]
              => m NextRecv NextSend y
-oracleAccept = M.do
+recvOne = M.do
   recvAny >>=: \case
     SomeSndMessage Here m -> xpure m
     SomeSndMessage (There contra) _ -> case contra of {}
 
-oracleYield :: Async m '[ '(x, y)]
+sendOne :: Async m '[ '(x, y)]
             => x -> m NextSend NextRecv ()
-oracleYield = send Here
+sendOne = send Here
 
 -- |An exception thrown if a message does not arrive from the expected sender.
 data ExBadSender = ExBadSender
