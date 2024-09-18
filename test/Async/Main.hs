@@ -1,7 +1,7 @@
 module Main where
 
-import Test.Tasty            (TestTree, defaultMain)
-import Test.Tasty.HUnit      (testCase, assertEqual)
+import Test.Tasty            (TestTree, defaultMain, testGroup)
+import Test.Tasty.HUnit      (testCase, assertEqual, (@?=))
 
 import Control.XMonad
 import qualified Control.XMonad.Do as M
@@ -9,6 +9,7 @@ import qualified Control.XMonad.Do as M
 import Data.Type.Equality ((:~:)(Refl))
 
 import UCHS.Monad
+import UCHS.Monad.InterT.Eval.Async
 import UCHS.Monad.InterT.SomeWT
 import UCHS.Types
 
@@ -16,7 +17,60 @@ main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
-tests = testCase "none" $ pure ()
+tests = testGroup "async execution tests"
+  [ testCase "round trip 2 processes" $
+      liftAlgo (runExec $ twoSum 10 1) >>= (@?= 11)
+  , testCase "round trip 3 processes" $
+      liftAlgo (runExec $ threeSum 100 10 1) >>= (@?= 111)
+  ]
+
+type M = Algo False False
+
+twoSum :: Int -> Int -> Exec M '[] NextSend Int
+twoSum x y =
+  ExecConn SplitHere SplitHere $
+  ExecFork (KnownLenS KnownLenZ) (ExecProc $ sender x) (ExecProc $ receiver y)
+
+threeSum :: Int -> Int -> Int -> Exec M '[] NextSend Int
+threeSum x y z =
+  ExecConn Split0 Split0 $
+  ExecConn Split1 Split1 $
+  ExecFork getKnownLenPrf (ExecProc $ sender2 x) $
+  ExecConn Split1 Split1 $
+  ExecFork getKnownLenPrf
+    (ExecProc $ receiver2 y)
+    (ExecProc $ receiver2 z)
+
+-- threeSum ::
+
+sender :: Int -> AsyncT M '[ '(Int, Int)] NextSend NextSend Int
+sender x = M.do
+  sendOne x
+  recvOne
+
+receiver :: Int -> AsyncT M '[ '(Int, Int)] NextRecv NextRecv Void
+receiver x = M.do
+  m <- recvOne
+  sendOne $ m + x
+  receiver x
+
+sender2 :: Int -> AsyncT M '[ '(Int, Void), '(Void, Int)] NextSend NextSend Int
+sender2 x = M.do
+  send Here x
+  recvAny >>=: \case
+    SomeSndMessage Here contra -> case contra of {}
+    SomeSndMessage (There Here) m -> xreturn m
+    SomeSndMessage (There2 contra) _ -> case contra of {}
+
+receiver2 :: Int -> AsyncT M '[ '(Int, Void), '(Void, Int)] NextRecv NextRecv Void
+receiver2 x = M.do
+  m <- recvAny >>=: \case
+    SomeSndMessage Here contra -> case contra of {}
+    SomeSndMessage (There Here) m -> xreturn m
+    SomeSndMessage (There2 contra) _ -> case contra of {}
+  send Here $ m + x
+  receiver2 x
+
 
 -- |Sends String s to the given channel, waits for the other side to repond with
 test :: String -> AsyncExT m e '[ '(String, Int)] NextSend NextSend Int

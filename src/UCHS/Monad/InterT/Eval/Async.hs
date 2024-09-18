@@ -393,8 +393,9 @@ data Exec m ach i a where
            -- ^The code that the process will run
            -> Exec m ach i a
   -- |Combine two executions.
-  ExecFork :: (Forkable i i' i i' a a', KnownLen ach)
-           => Exec m ach i a
+  ExecFork :: (Forkable i i' i i' a a')
+           => KnownLenD ach
+           -> Exec m ach i a
            -- ^First forked process
            -> Exec m ach' i' a'
            -- ^Second forked process
@@ -433,6 +434,6 @@ runExec = escapeSyncT . f
       -> AsyncT m ach i i a
     f = \case
       ExecProc p -> p
-      ExecFork l r -> fork getKnownLenPrf (f l) (f r)
+      ExecFork prf l r -> fork prf (f l) (f r)
       ExecSwap k k' p -> swap k k' $ f p
       ExecConn k k' p -> connect k k' $ f p
