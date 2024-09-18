@@ -69,11 +69,11 @@ type family ChooseRet i i' a a' where
 
 type MayOnlyReturnAfterRecv :: Index -> Type -> Constraint
 class MayOnlyReturnAfterRecv i a where
-  mayOnlyReturnAfterRecvPrf :: MayOnlyReturnAfterRecvD i a
+  getMayOnlyReturnAfterRecvPrf :: MayOnlyReturnAfterRecvD i a
 instance MayOnlyReturnAfterRecv NextRecv Void where
-  mayOnlyReturnAfterRecvPrf = MayOnlyReturnVoid
+  getMayOnlyReturnAfterRecvPrf = MayOnlyReturnVoid
 instance MayOnlyReturnAfterRecv NextSend a where
-  mayOnlyReturnAfterRecvPrf = MayOnlyReturnType
+  getMayOnlyReturnAfterRecvPrf = MayOnlyReturnType
 
 -- |Given an index in the concatenation of @`Concat` ach ach'@, return the
 -- corresponding element's index either in @ach@ or in @ach'@.
@@ -159,12 +159,12 @@ fork prf l r = case getIndexStartCompPrf @bef @bef' of
       Left i' -> lift (runTillRecv l) >>=: \case
         RrRecv l' -> fork prf (l' $ SomeSndMessage i' m) r
         RrCall contra _ _ -> case contra of {}
-        RrHalt res -> case mayOnlyReturnAfterRecvPrf @aft @a of
+        RrHalt res -> case getMayOnlyReturnAfterRecvPrf @aft @a of
           MayOnlyReturnVoid -> case res of {}
       Right i' -> lift (runTillRecv r) >>=: \case
         RrRecv r' -> fork prf l (r' $ SomeSndMessage i' m)
         RrCall contra _ _ -> case contra of {}
-        RrHalt res -> case mayOnlyReturnAfterRecvPrf @aft' @a' of
+        RrHalt res -> case getMayOnlyReturnAfterRecvPrf @aft' @a' of
           MayOnlyReturnVoid -> case res of {}
   ForkIndexCompFst ->
     lift (runTillSend l) >>=: \case
@@ -172,7 +172,7 @@ fork prf l r = case getIndexStartCompPrf @bef @bef' of
         send (fstToConcat @ach @ach' prf i) m
         fork prf cont r
       SrCall contra _ _ -> case contra of {}
-      SrHalt res -> case mayOnlyReturnAfterRecvPrf @aft @a of
+      SrHalt res -> case getMayOnlyReturnAfterRecvPrf @aft @a of
         MayOnlyReturnVoid -> case res of {}
         MayOnlyReturnType -> case getIndexStartCompPrf @aft @aft' of
           ForkIndexCompFst -> xreturn res
@@ -182,7 +182,7 @@ fork prf l r = case getIndexStartCompPrf @bef @bef' of
         send (sndToConcat @ach @ach' prf i) m
         fork prf l cont
       SrCall contra _ _ -> case contra of {}
-      SrHalt res -> case mayOnlyReturnAfterRecvPrf @aft' @a' of
+      SrHalt res -> case getMayOnlyReturnAfterRecvPrf @aft' @a' of
         MayOnlyReturnVoid -> case res of {}
         MayOnlyReturnType -> case getIndexStartCompPrf @aft @aft' of
           ForkIndexCompSnd -> xreturn res
@@ -245,16 +245,29 @@ swap prf prf' cont = permChans (f prf prf') (f prf' prf) cont
       Here -> Here
       There i -> There $ f p p' i
 
+-- |Proof that an action that's only allowed to return in `NextSend` state will
+-- not do so in `NextRecv` state.
+doesNotReturnInRecvPrf :: forall aft a m ach. MayOnlyReturnAfterRecv aft a
+                       => RecvRes m ach '[] aft a
+                       -- ^Result of running `runTillRecv`
+                       -> (SomeSndMessage ach -> InterT ('InterPars m '[] ach '[]) NextSend aft a)
+                       -- ^The continutation that tells how the process chose to receive the message
+doesNotReturnInRecvPrf = \case
+  RrCall contra _ _ -> case contra of {}
+  RrHalt contra -> case getMayOnlyReturnAfterRecvPrf @aft @a of
+    MayOnlyReturnVoid -> case contra of {}
+  RrRecv cont -> cont
+
 -- |Connect two adjacent free channels with each other. This binds them and
 -- removes from the free list.
-connect :: (KnownIndex bef, Monad m)
+connect :: (Monad m, KnownIndex bef, MayOnlyReturnAfterRecv aft a)
         => ListSplitD l p ('(x, y) : '(y, x) : rest)
         -- ^Proof of @l == p ++ ('(x, y) : '(y, x) : rest)@
         -> ListSplitD l' p rest
         -- ^Proof of @l' == p ++ rest@
-        -> AsyncT m l bef NextSend a
+        -> AsyncT m l bef aft a
         -- ^Exectuion where we want to connect the channels
-        -> AsyncT m l' bef NextSend a
+        -> AsyncT m l' bef aft a
 connect prf prf' cont = getWT >>=: \case
     SNextRecv -> M.do
       lift (runTillRecv cont) >>=: \case
@@ -262,16 +275,17 @@ connect prf prf' cont = getWT >>=: \case
         RrRecv cont' -> M.do
           SomeSndMessage i m <- recvAny
           connect prf prf' $ cont' $ SomeSndMessage (g prf prf' i) m
+        RrHalt res -> xreturn res
     SNextSend -> M.do
       lift (runTillSend cont) >>=: \case
         SrCall contra _ _ -> case contra of {}
         SrHalt res -> xreturn res
         SrSend (SomeFstMessage i m) cont' -> case f prf prf' i of
             SomeValue Here (Refl, Refl) -> M.do
-              cont'' <- mayOnlyRecvWTPrf <$> lift (runTillRecv cont')
+              cont'' <- doesNotReturnInRecvPrf <$> lift (runTillRecv cont')
               connect prf prf' $ cont'' $ SomeSndMessage (snd $ splitToInlistPair prf) m
             SomeValue (There Here) (Refl, Refl) -> M.do
-              cont'' <- mayOnlyRecvWTPrf <$> lift (runTillRecv cont')
+              cont'' <- doesNotReturnInRecvPrf <$> lift (runTillRecv cont')
               connect prf prf' $ cont'' $ SomeSndMessage (fst $ splitToInlistPair prf) m
             SomeValue (There2 Here) i' -> M.do
               send i' m
