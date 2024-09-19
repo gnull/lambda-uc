@@ -1,6 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module UCHS.Monad.InterT.Eval.Async
+module LUCk.Monad.InterT.Eval.Async
   (
   -- * Execution Syntax
   -- $exec
@@ -48,8 +48,8 @@ import Control.XMonad
 import Control.XMonad.XWriter
 import qualified Control.XMonad.Do as M
 
-import UCHS.Monad
-import UCHS.Types
+import LUCk.Monad
+import LUCk.Types
 
 data ForkIndexCompD (befFst :: Index) (befSnd :: Index) where
   ForkIndexCompNone :: ForkIndexCompD NextRecv NextRecv

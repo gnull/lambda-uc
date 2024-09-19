@@ -1,6 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module UCHS.Monad.Class
+module LUCk.Monad.Class
   (
   -- * Local Computations
   -- $local
@@ -38,7 +38,7 @@ import qualified Control.XMonad.Do as M
 
 import Control.XMonad
 import Data.Type.Equality ((:~:)(Refl))
-import UCHS.Types
+import LUCk.Types
 
 import qualified System.Random as Random
 import qualified Control.Monad.Trans.Class as Trans
@@ -48,8 +48,8 @@ import qualified Control.Monad.Trans.Class as Trans
 -- A local (non-interactive) algorithm may perform the following side-effects:
 -- throwing exceptions, sampling random bits, printing debug messages.
 --
--- Implemented by both local `UCHS.Monad.Algo.Algo` and interactive
--- `UCHS.Monad.InterT.InterT`.
+-- Implemented by both local `LUCk.Monad.Algo.Algo` and interactive
+-- `LUCk.Monad.InterT.InterT`.
 
 class Monad m => Print (m :: Type -> Type) where
   -- |Print debug info.

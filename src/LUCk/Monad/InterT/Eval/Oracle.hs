@@ -1,4 +1,4 @@
-module UCHS.Monad.InterT.Eval.Oracle (
+module LUCk.Monad.InterT.Eval.Oracle (
   -- * Execution with Oracle
   -- $eval
     runWithOracles
@@ -20,9 +20,9 @@ import Control.XApplicative
 import Control.XMonad
 import qualified Control.XMonad.Do as M
 
-import UCHS.Types
-import UCHS.Monad.Class
-import UCHS.Monad.InterT
+import LUCk.Types
+import LUCk.Monad.Class
+import LUCk.Monad.InterT
 
 import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Monad (MonadPlus(..))

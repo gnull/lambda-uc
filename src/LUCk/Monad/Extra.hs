@@ -1,6 +1,6 @@
 {-# LANGUAGE QuantifiedConstraints #-}
 
-module UCHS.Monad.Extra
+module LUCk.Monad.Extra
   (
   -- * Relaxing monad type
   --
@@ -15,11 +15,11 @@ import Control.XFreer.Join
 import qualified Control.Monad.Free as F
 import Control.XMonad
 
-import UCHS.Types
-import UCHS.Monad.Class
+import LUCk.Types
+import LUCk.Monad.Class
 
-import qualified UCHS.Monad.Algo as L
-import qualified UCHS.Monad.InterT as S
+import qualified LUCk.Monad.Algo as L
+import qualified LUCk.Monad.InterT as S
 
 import qualified Control.XMonad.Do as M
 

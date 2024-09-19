@@ -1,4 +1,4 @@
-module UCHS.Monad.Algo where
+module LUCk.Monad.Algo where
 
 import Data.Kind (Type)
 import Data.Void
@@ -11,8 +11,8 @@ import Control.Monad.Free
 -- import Control.XApplicative
 -- import Control.XMonad
 
--- import UCHS.Monad.SyncAlgo
-import UCHS.Monad.Class
+-- import LUCk.Monad.SyncAlgo
+import LUCk.Monad.Class
 
 -- |Non-interactive algorithm. May use the following side-effects:
 --

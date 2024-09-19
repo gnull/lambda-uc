@@ -1,8 +1,8 @@
-module UCHS.Monad.InterT.SomeWT where
+module LUCk.Monad.InterT.SomeWT where
 
-import UCHS.Types
-import UCHS.Monad.Class
-import UCHS.Monad.InterT
+import LUCk.Types
+import LUCk.Monad.Class
+import LUCk.Monad.InterT
 
 -- data ContFromAnyWT st bef aft a b
 --   = ContFromAnyWT ((a -> forall i. InterT pr ra l i aft b) -> InterT pr ra l bef aft b)

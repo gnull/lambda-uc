@@ -1,11 +1,11 @@
-module UCHS.Games.SignatureScheme where
+module LUCk.Games.SignatureScheme where
 
-import UCHS.Types
-import UCHS.Monad.Class
-import UCHS.Monad.Algo
-import UCHS.Monad.InterT
-import UCHS.Monad.InterT.Eval.Oracle
-import UCHS.Monad.Extra
+import LUCk.Types
+import LUCk.Monad.Class
+import LUCk.Monad.Algo
+import LUCk.Monad.InterT
+import LUCk.Monad.InterT.Eval.Oracle
+import LUCk.Monad.Extra
 
 import Control.XMonad
 import Control.XFreer.Join
@@ -16,7 +16,7 @@ import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Monad (MonadPlus(..))
 -- import qualified Control.Monad.Trans.Class as Trans
 
-import UCHS.Games.Common
+import LUCk.Games.Common
 
 type SigAlgo :: Bool -> Type -> Type
 type SigAlgo ra = Algo False ra

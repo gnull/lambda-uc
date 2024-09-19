@@ -1,13 +1,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module UCHS.Games.SymEncryption where
+module LUCk.Games.SymEncryption where
 
-import UCHS.Types
-import UCHS.Monad.Class
-import UCHS.Monad.Algo
-import UCHS.Monad.InterT
-import UCHS.Monad.InterT.Eval.Oracle
-import UCHS.Monad.Extra
+import LUCk.Types
+import LUCk.Monad.Class
+import LUCk.Monad.Algo
+import LUCk.Monad.InterT
+import LUCk.Monad.InterT.Eval.Oracle
+import LUCk.Monad.Extra
 
 import Control.XMonad
 import Control.XFreer.Join
@@ -21,7 +21,7 @@ import Control.Monad (MonadPlus(..))
 import Control.Monad.State (MonadState(..))
 -- import qualified Control.Monad.Trans.Class as Trans
 
-import UCHS.Games.Common
+import LUCk.Games.Common
 
 type ProbAlgo :: Type -> Type
 type ProbAlgo = Algo False True

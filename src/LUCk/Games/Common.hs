@@ -1,11 +1,11 @@
-module UCHS.Games.Common where
+module LUCk.Games.Common where
 
-import UCHS.Types
-import UCHS.Monad.Class
-import UCHS.Monad.Algo
-import UCHS.Monad.InterT
-import UCHS.Monad.Extra
-import UCHS.Monad.InterT.Eval.Oracle
+import LUCk.Types
+import LUCk.Monad.Class
+import LUCk.Monad.Algo
+import LUCk.Monad.InterT
+import LUCk.Monad.Extra
+import LUCk.Monad.InterT.Eval.Oracle
 
 import Control.XMonad
 import Control.Monad.Free

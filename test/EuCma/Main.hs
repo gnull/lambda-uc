@@ -6,10 +6,10 @@ import Test.Tasty.HUnit      (testCase, assertEqual, (@?=))
 import Control.XMonad
 import qualified Control.XMonad.Do as M
 
-import UCHS.Monad
-import UCHS.Types
+import LUCk.Monad
+import LUCk.Types
 
-import UCHS.Games.SignatureScheme
+import LUCk.Games.SignatureScheme
 
 alwaysNoSch :: SpSignatureScheme () () Int Int
 alwaysNoSch _ = SignatureScheme

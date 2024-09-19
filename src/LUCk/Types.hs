@@ -1,4 +1,4 @@
-module UCHS.Types
+module LUCk.Types
   ( module Data.HList
   , module Data.Void
   , module Data.Kind
@@ -132,9 +132,9 @@ instance SameLength l l' => SameLength (x:l) (x':l') where
 -- |Next operation of the asyncronous algorithm
 data Index
   = NextSend
-  -- ^Our turn to `UCHS.Monad.Class.Async.send`
+  -- ^Our turn to `LUCk.Monad.Class.Async.send`
   | NextRecv
-  -- ^Our turn to `UCHS.Monad.Class.Async.recvAny`
+  -- ^Our turn to `LUCk.Monad.Class.Async.recvAny`
 
 -- -- |The index of our monad for asynchronous algorithms
 -- data ExtendedIndex
@@ -142,4 +142,4 @@ data Index
 --   -- ^Asynchronous interaction is on, next operation is given by the `NextOp`
 --   | Off
 --   -- ^Asynchronous interaction is off, we're not allowed to call
---   -- `UCHS.Monad.Class.Async.send` or `UCHS.Monad.Class.Async.recvAny`
+--   -- `LUCk.Monad.Class.Async.send` or `LUCk.Monad.Class.Async.recvAny`

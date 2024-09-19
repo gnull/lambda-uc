@@ -6,8 +6,8 @@ import Test.Tasty            (TestTree, defaultMain)
 import Test.Tasty.HUnit      (testCase, assertEqual)
 import Test.ShouldNotTypecheck (shouldNotTypecheck)
 
-import UCHS.Monad
-import UCHS.Types
+import LUCk.Monad
+import LUCk.Types
 
 main :: IO ()
 main = defaultMain tests

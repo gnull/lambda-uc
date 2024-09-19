@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module UCHS.Monad.InterT (
+module LUCk.Monad.InterT (
   -- * Interactive Algorithm Monad
   -- $monad
     InterT(..)
@@ -41,8 +41,8 @@ import qualified Control.XMonad.Do as M
 
 -- import Data.Type.Equality ((:~:)(Refl))
 
-import UCHS.Types
-import UCHS.Monad.Class
+import LUCk.Types
+import LUCk.Monad.Class
 
 import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Monad (MonadPlus(..))
@@ -207,7 +207,7 @@ type AsyncT m ach = AsyncExT m '[] ach
 -- @
 --
 -- To run the code above, implement the oracles and use
--- `UCHS.Monad.InterT.Eval.Oracle.runWithOracles2`.
+-- `LUCk.Monad.InterT.Eval.Oracle.runWithOracles2`.
 type SyncT m sch = InterT ('InterPars m '[] '[] sch) NextSend NextSend
 
 -- $step

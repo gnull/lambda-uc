@@ -1,4 +1,4 @@
-module UCHS.Monad.InterT.Eval.PC2 where
+module LUCk.Monad.InterT.Eval.PC2 where
 
 import Data.Tuple (swap)
 
@@ -8,8 +8,8 @@ import Control.Monad.Trans.Maybe (MaybeT(..))
 import qualified Control.Monad.Trans.Class as Trans
 
 import Data.HList
-import UCHS.Types
-import UCHS.Monad
+import LUCk.Types
+import LUCk.Monad
 
 type Party m iface = AsyncT m '[iface]
 

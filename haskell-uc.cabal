@@ -58,20 +58,20 @@ library
       Control.XFreer.Join
       Control.XMonad.XWriter
       Data.HList
-      UCHS.Types
-      UCHS.Monad
-      UCHS.Monad.Class
-      UCHS.Monad.Algo
-      UCHS.Monad.InterT
-      UCHS.Monad.InterT.Eval.Oracle
-      UCHS.Monad.InterT.Eval.UC
-      -- UCHS.Monad.InterT.Eval.PC2
-      UCHS.Monad.InterT.Eval.Async
-      UCHS.Monad.InterT.SomeWT
-      UCHS.Monad.Extra
-      UCHS.Games.Common
-      UCHS.Games.SignatureScheme
-      UCHS.Games.SymEncryption
+      LUCk.Types
+      LUCk.Monad
+      LUCk.Monad.Class
+      LUCk.Monad.Algo
+      LUCk.Monad.InterT
+      LUCk.Monad.InterT.Eval.Oracle
+      LUCk.Monad.InterT.Eval.UC
+      -- LUCk.Monad.InterT.Eval.PC2
+      LUCk.Monad.InterT.Eval.Async
+      LUCk.Monad.InterT.SomeWT
+      LUCk.Monad.Extra
+      LUCk.Games.Common
+      LUCk.Games.SignatureScheme
+      LUCk.Games.SymEncryption
   other-modules:
   hs-source-dirs:
       src
