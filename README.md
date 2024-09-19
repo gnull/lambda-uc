@@ -1,4 +1,4 @@
-# Universal Composability in Haskell
+# λUCk: Purely Functional EDSL for Universal Composability
 
 [![builds.sr.ht status](https://builds.sr.ht/~ph14nix/haskell-uc.svg)](https://builds.sr.ht/~ph14nix/haskell-uc?)
 —
