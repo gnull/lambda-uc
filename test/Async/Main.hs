@@ -22,6 +22,8 @@ tests = testGroup "async execution tests"
       liftAlgo (runExec $ twoSum 10 1) >>= (@?= 11)
   , testCase "round trip 3 processes" $
       liftAlgo (runExec $ threeSum 100 10 1) >>= (@?= 111)
+  , testCase "round trip 3 processes, monadic notation" $
+      liftAlgo (runExec $ execWriterToExec $ threeSumWriter 100 10 1) >>= (@?= 111)
   ]
 
 type M = Algo False False
@@ -41,7 +43,21 @@ threeSum x y z =
     (ExecProc $ receiver2 y)
     (ExecProc $ receiver2 z)
 
--- threeSum ::
+threeSumWriter :: Int -> Int -> Int -> ExecWriter M ExecIndexInit (ExecIndexSome '[] NextSend Int) ()
+threeSumWriter x y z = M.do
+  procM $ receiver2 x
+  guardM @('[ '(Int, Void), '(Void, Int)])
+  forkLeft getKnownLenPrf $
+    procM $ receiver2 y
+  guardM @('[ '(Int, Void), '(Void, Int), '(Int, Void), '(Void, Int)])
+  connectM Split1 Split1
+  guardM @('[ '(Int, Void), '(Void, Int)])
+  forkLeft getKnownLenPrf $
+    procM $ sender2 z
+  guardM @('[ '(Int, Void), '(Void, Int), '(Int, Void), '(Void, Int)])
+  connectM Split1 Split1
+  guardM @('[ '(Int, Void), '(Void, Int)])
+  connectM Split0 Split0
 
 sender :: Int -> AsyncT M '[ '(Int, Int)] NextSend NextSend Int
 sender x = M.do

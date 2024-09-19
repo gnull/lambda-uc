@@ -7,6 +7,16 @@ module UCHS.Monad.InterT.Eval.Async
   -- $exec
     Exec(..)
   , runExec
+  -- * Writer Monad for Execution
+  , ExecWriter(..)
+  , ExecIndex(..)
+  , execWriterToExec
+  , procM
+  , forkLeft
+  , forkRight
+  , connectM
+  , swapM
+  , guardM
   -- * Execution Implementation
   -- $core
   , fork
@@ -453,6 +463,11 @@ execWriterToExec p = f ()
   where
     (f, ()) = runXWriter $ runExecWriter p
 
+procM :: MayOnlyReturnAfterRecv i res
+      => AsyncT m l i i res
+      -> ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
+procM = ExecWriter . tell . const . ExecProc
+
 forkLeft :: Forkable i i' i i' res res'
          => KnownLenD l
          -> ExecWriter m ExecIndexInit (ExecIndexSome l' i' res') ()
@@ -489,8 +504,8 @@ swapM :: ( KnownIndex i
       -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome l' i res) ()
 swapM prf prf' = ExecWriter $ tell $ ExecSwap prf prf'
 
--- hey :: ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
--- hey = _
+guardM :: forall l i res m. ExecWriter m (ExecIndexSome l i res) (ExecIndexSome l i res) ()
+guardM = xreturn ()
 
 -- |Run an execution.
 --
