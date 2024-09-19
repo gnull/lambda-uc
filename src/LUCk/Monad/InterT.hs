@@ -96,21 +96,38 @@ instance Functor (InterActions st bef aft) where
 -- By instantiating `InterT` with different parameters, you can finely
 -- control what side-effects you allow:
 --
--- - Local computations in Monad @stInner st@.
--- - Syncronous calls to oracle interfaces in @stSync st@.
--- - Asynchronous communcation over interfaces defined in @stAsync st@.
+-- - Local computations in Monad @`stInner` st@.
+-- - Syncronous `call`s to oracle interfaces in @`stSync` st@.
+-- - Asynchronous (`send` and `recvAny`) communcation over
+--   interfaces defined in @`stAsync` st@.
 --
---   Asynchronous communcation depends on the `Index` state of `InterT`. There
---   are three possible index states which are interpreted as follows.
+-- Asynchronous communcation depends on the `Index` state of `InterT`. There
+-- are two possible index states which are interpreted as follows.
 --
---   - `Off` means that asyncronous communcation is disabled.
---   - @`On` `NextSend`@ means that it's our turn to send.
---   - @`On` `NextRecv`@ means that it's our turn to receive (we currently have one
---     message in our inbox).
+-- - `NextSend` means that it's our turn to send.
+-- - `NextRecv` means that it's our turn to receive (we currently have one
+--   message in our inbox).
 --
---   The states `NextSend` and `NextRecv` are toggled with `send` and
---   `recvAny`. Any asyncronous algorithm will alternate between `send` and
---   `recvAny` some number of times, until it terminates.
+-- The states `NextSend` and `NextRecv` are toggled with `send` and
+-- `recvAny`. Any asyncronous algorithm will alternate between `send` and
+-- `recvAny` some number of times, until it terminates. Such algorithm's
+-- indices tell which of the two operations must be first and last (effectively
+-- telling the parity of the number of alternations).
+--
+-- The `InterT` also implements Index-aware exceptions, configured with @`stEx`
+-- st@. Each exception is defined by a type of value thrown and `Index` from
+-- which it is thrown.
+--
+-- All three types of side-effects are optional and can be disabled on-demand
+-- by setting the fields of `InterPars`. We provide type-synonyms for such
+-- monads that allow only part of `InterT`'s full functionality:
+--
+-- - `AsyncExT` provides only asyncronous `send` and `recvAny`, as well as allows thowing excetpions.
+-- - `AsyncT` is a special version of `AsyncExT` where exceptions are disabled.
+-- - `SyncT` provides only synchronous `call`; exceptions in case of `SyncT`
+--   make no sense since `SyncT` does not make use of index.  If you need
+--   exceptions in `SyncT`, feel free to use regular monadic mechanisms such as
+--   `ExceptT` or `MaybeT`.
 newtype InterT (st :: InterPars)
               (bef :: Index) -- ^State before an action
               (aft :: Index) -- ^State after an action
@@ -189,7 +206,7 @@ type AsyncT m ach = AsyncExT m '[] ach
 -- |Non-indexed transformer that adds syncronous `call` (channels given by
 -- @ach@) to monad @m@.
 --
--- `SyncExT` does not handle asynchronous interaction, therefore it does
+-- `SyncT` does not handle asynchronous interaction, therefore it does
 -- not change index state. Consider code below for an example. The function
 -- @reportSum@ has access to to oracles: oracle A with requests of type
 -- `String`, and responses of type `Int`; and oracle B with request of type
@@ -208,6 +225,7 @@ type AsyncT m ach = AsyncExT m '[] ach
 --
 -- To run the code above, implement the oracles and use
 -- `LUCk.Monad.InterT.Eval.Oracle.runWithOracles2`.
+
 type SyncT m sch = InterT ('InterPars m '[] '[] sch) NextSend NextSend
 
 -- $step
