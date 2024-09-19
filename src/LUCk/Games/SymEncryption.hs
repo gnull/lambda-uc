@@ -3,11 +3,11 @@
 module LUCk.Games.SymEncryption where
 
 import LUCk.Types
-import LUCk.Monad.Class
-import LUCk.Monad.Algo
-import LUCk.Monad.Async
-import LUCk.Monad.InterT.Eval.Oracle
-import LUCk.Monad.Extra
+import LUCk.Syntax.Class
+import LUCk.Syntax.Algo
+import LUCk.Syntax.Async
+import LUCk.Syntax.Sync.Eval
+import LUCk.Syntax.Extra
 
 import Control.XMonad
 import Control.XFreer.Join

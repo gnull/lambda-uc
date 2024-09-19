@@ -1,7 +1,7 @@
-module LUCk.Monad.InterT.SomeWT where
+module LUCk.Syntax.Async.SomeWT where
 
 import LUCk.Types
-import LUCk.Monad.Async
+import LUCk.Syntax.Async
 
 -- |A computation that
 --

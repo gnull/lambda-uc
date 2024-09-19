@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module LUCk.Monad.Sync (
+module LUCk.Syntax.Sync (
   -- * Interactive Algorithm Monad
   -- $monad
     SyncT(..)
@@ -10,8 +10,6 @@ module LUCk.Monad.Sync (
   -- * Syntax
   -- $actions
   , SyncActions(..)
-  -- * Derived Definitions
-  , SyncT
   -- * Step-by-step Execution
   -- $step
   , runTillCall
@@ -19,12 +17,11 @@ module LUCk.Monad.Sync (
 ) where
 
 import qualified Control.Monad as Monad
-import Data.Functor
 
 import Control.Monad.Free
 
 import LUCk.Types
-import LUCk.Monad.Class
+import LUCk.Syntax.Class
 
 -- $actions
 --

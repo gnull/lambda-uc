@@ -1,4 +1,4 @@
-module LUCk.Monad.InterT.Eval.UC
+module LUCk.UC
   ( ProtoNode
   , EnvNode
   , SubRespTree(..)
@@ -9,7 +9,7 @@ module LUCk.Monad.InterT.Eval.UC
 -- import Control.XMonad
 -- import qualified Control.XMonad.Do as M
 
-import LUCk.Monad
+import LUCk.Syntax
 import LUCk.Types
 
 -- |A protocol without it subroutine implementations built-in.

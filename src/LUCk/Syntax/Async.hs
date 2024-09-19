@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module LUCk.Monad.Async (
+module LUCk.Syntax.Async (
   -- * Interactive Algorithm Monad
   -- $monad
     AsyncExT(..)
@@ -37,7 +37,7 @@ import qualified Control.XMonad.Do as M
 -- import Data.Type.Equality ((:~:)(Refl))
 
 import LUCk.Types
-import LUCk.Monad.Class
+import LUCk.Syntax.Class
 
 import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Monad (MonadPlus(..))

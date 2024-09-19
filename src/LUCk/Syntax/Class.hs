@@ -1,6 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module LUCk.Monad.Class
+module LUCk.Syntax.Class
   (
   -- * Local Computations
   -- $local

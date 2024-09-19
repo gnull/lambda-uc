@@ -1,6 +1,6 @@
 {-# LANGUAGE QuantifiedConstraints #-}
 
-module LUCk.Monad.Extra
+module LUCk.Syntax.Extra
   (
   -- * Relaxing monad type
   --
@@ -16,10 +16,10 @@ import qualified Control.Monad.Free as F
 import Control.XMonad
 
 import LUCk.Types
-import LUCk.Monad.Class
+import LUCk.Syntax.Class
 
-import qualified LUCk.Monad.Algo as L
-import qualified LUCk.Monad.Async as S
+import qualified LUCk.Syntax.Algo as L
+import qualified LUCk.Syntax.Async as S
 
 import qualified Control.XMonad.Do as M
 

@@ -1,18 +1,10 @@
-module LUCk.Monad.Algo where
+module LUCk.Syntax.Algo where
 
 import Data.Kind (Type)
-import Data.Void
-
-import Data.HList
 
 import Control.Monad.Free
 
--- import Control.XFreer.Join
--- import Control.XApplicative
--- import Control.XMonad
-
--- import LUCk.Monad.SyncAlgo
-import LUCk.Monad.Class
+import LUCk.Syntax.Class
 
 -- |Non-interactive algorithm. May use the following side-effects:
 --

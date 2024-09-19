@@ -59,17 +59,16 @@ library
       Control.XMonad.XWriter
       Data.HList
       LUCk.Types
-      LUCk.Monad
-      LUCk.Monad.Class
-      LUCk.Monad.Algo
-      LUCk.Monad.Async
-      LUCk.Monad.Sync
-      LUCk.Monad.InterT.Eval.Oracle
-      LUCk.Monad.InterT.Eval.UC
-      -- LUCk.Monad.InterT.Eval.PC2
-      LUCk.Monad.InterT.Eval.Async
-      LUCk.Monad.InterT.SomeWT
-      LUCk.Monad.Extra
+      LUCk.Syntax
+      LUCk.Syntax.Class
+      LUCk.Syntax.Algo
+      LUCk.Syntax.Async
+      LUCk.Syntax.Async.Eval
+      LUCk.Syntax.Async.SomeWT
+      LUCk.Syntax.Sync
+      LUCk.Syntax.Sync.Eval
+      LUCk.Syntax.Extra
+      LUCk.UC
       LUCk.Games.Common
       LUCk.Games.SignatureScheme
       LUCk.Games.SymEncryption

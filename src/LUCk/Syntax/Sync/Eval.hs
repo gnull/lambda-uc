@@ -1,4 +1,4 @@
-module LUCk.Monad.InterT.Eval.Oracle (
+module LUCk.Syntax.Sync.Eval (
   -- * Execution with Oracle
   -- $eval
     runWithOracles
@@ -21,9 +21,9 @@ import Control.XMonad
 import qualified Control.XMonad.Do as M
 
 import LUCk.Types
-import LUCk.Monad.Class
-import LUCk.Monad.Sync
-import LUCk.Monad.Async
+import LUCk.Syntax.Class
+import LUCk.Syntax.Sync
+import LUCk.Syntax.Async
 
 import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Monad (MonadPlus(..))

@@ -1,11 +1,11 @@
 module LUCk.Games.SignatureScheme where
 
 import LUCk.Types
-import LUCk.Monad.Class
-import LUCk.Monad.Algo
-import LUCk.Monad.Sync
-import LUCk.Monad.InterT.Eval.Oracle
-import LUCk.Monad.Extra
+import LUCk.Syntax.Class
+import LUCk.Syntax.Algo
+import LUCk.Syntax.Sync
+import LUCk.Syntax.Sync.Eval
+import LUCk.Syntax.Extra
 
 import Control.XMonad
 import Control.XFreer.Join

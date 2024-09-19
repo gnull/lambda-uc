@@ -1,11 +1,11 @@
 module LUCk.Games.Common where
 
 import LUCk.Types
-import LUCk.Monad.Class
-import LUCk.Monad.Algo
-import LUCk.Monad.Async
-import LUCk.Monad.Extra
-import LUCk.Monad.InterT.Eval.Oracle
+import LUCk.Syntax.Class
+import LUCk.Syntax.Algo
+import LUCk.Syntax.Async
+import LUCk.Syntax.Extra
+import LUCk.Syntax.Sync.Eval
 
 import Control.XMonad
 import Control.Monad.Free

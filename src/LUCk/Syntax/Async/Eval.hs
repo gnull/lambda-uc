@@ -1,6 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module LUCk.Monad.InterT.Eval.Async
+module LUCk.Syntax.Async.Eval
   (
   -- * Execution Syntax
   -- $exec
@@ -48,7 +48,7 @@ import Control.XMonad
 import Control.XMonad.XWriter
 import qualified Control.XMonad.Do as M
 
-import LUCk.Monad
+import LUCk.Syntax
 import LUCk.Types
 
 data ForkIndexCompD (befFst :: Index) (befSnd :: Index) where
