@@ -55,6 +55,7 @@ library
   import: deft
   exposed-modules:
       Control.XFreer.Join
+      Control.XMonad.XWriter
       Data.HList
       UCHS.Types
       UCHS.Monad

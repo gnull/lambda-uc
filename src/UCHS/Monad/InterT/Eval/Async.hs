@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DerivingVia #-}
 
 module UCHS.Monad.InterT.Eval.Async
   (
@@ -33,7 +34,9 @@ where
 import Data.Either.Extra (mapLeft)
 
 import Control.Arrow
+import Control.XApplicative
 import Control.XMonad
+import Control.XMonad.XWriter
 import qualified Control.XMonad.Do as M
 
 import UCHS.Monad
@@ -419,6 +422,35 @@ data Exec m ach i a where
            -> Exec m l i a
            -- ^Exectuion where we want to connect the channels
            -> Exec m l' i a
+
+data ExecIndex
+  = ExecIndexInit
+  -- ^We haven't started any executions
+  | ExecIndexSome [(Type, Type)] Index Type
+  -- ^An execution with given @ach@, @i@, and @res@ is started
+
+type MatchExecIndex :: (Type -> Type) -> ExecIndex -> Type
+type family MatchExecIndex m i where
+  MatchExecIndex _ ExecIndexInit = ()
+  MatchExecIndex m (ExecIndexSome l i res) = Exec m l i res
+
+type ExecWriter :: (Type -> Type) -> ExecIndex -> ExecIndex -> Type -> Type
+newtype ExecWriter m i j a = ExecWriter
+  { runExecWriter :: XWriter (MatchExecIndex m i) (MatchExecIndex m j) a
+  }
+  deriving (Functor) via (XWriter (MatchExecIndex m i) (MatchExecIndex m j))
+
+instance XApplicative (ExecWriter m) where
+  xpure = ExecWriter . xpure
+  f <*>: x = ExecWriter $ runExecWriter f <*>: runExecWriter x
+
+instance XMonad (ExecWriter m) where
+  m >>=: f = ExecWriter $ runExecWriter m >>=: (runExecWriter . f)
+
+-- forkLeft ::
+
+-- hey :: ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
+-- hey = _
 
 -- |Run an execution.
 --
