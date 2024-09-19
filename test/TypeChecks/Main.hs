@@ -6,7 +6,7 @@ import Test.Tasty            (TestTree, defaultMain)
 import Test.Tasty.HUnit      (testCase, assertEqual)
 import Test.ShouldNotTypecheck (shouldNotTypecheck)
 
-import LUCk.Monad
+import LUCk.Syntax
 import LUCk.Types
 
 main :: IO ()

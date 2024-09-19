@@ -3,8 +3,8 @@ module Main where
 import Test.Tasty            (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit      (testCase, assertEqual, (@?=))
 
-import LUCk.Monad
-import LUCk.Monad.Sync
+import LUCk.Syntax
+import LUCk.Syntax.Sync
 import LUCk.Types
 
 import LUCk.Games.SignatureScheme

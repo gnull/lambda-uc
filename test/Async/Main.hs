@@ -8,9 +8,9 @@ import qualified Control.XMonad.Do as M
 
 import Data.Type.Equality ((:~:)(Refl))
 
-import LUCk.Monad
-import LUCk.Monad.InterT.Eval.Async
-import LUCk.Monad.InterT.SomeWT
+import LUCk.Syntax
+import LUCk.Syntax.Async.Eval
+import LUCk.Syntax.Async.SomeWT
 import LUCk.Types
 
 main :: IO ()
