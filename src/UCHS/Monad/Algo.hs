@@ -1,5 +1,3 @@
-{-# LANGUAGE DerivingVia #-}
-
 module UCHS.Monad.Algo where
 
 import Data.Kind (Type)
@@ -23,11 +21,15 @@ import UCHS.Monad.Class
 --
 -- Use `Control.Monad.Except.ExceptT` if you want algorithms with exceptions.
 newtype Algo (pr :: Bool) (ra :: Bool) (a :: Type) =
-    Algo { fromAlgo :: Free (AlgoActions pr ra) a }
-  deriving (Functor) via
-    (Free (AlgoActions pr ra))
-  deriving (Applicative, Monad) via
-    (Free (AlgoActions pr ra))
+    Algo { runAlgo :: Free (AlgoActions pr ra) a }
+  deriving (Functor)
+
+instance Applicative (Algo pr ra) where
+  pure = Algo . pure
+  f <*> x = Algo $ runAlgo f <*> runAlgo x
+
+instance Monad (Algo pr ra) where
+  m >>= f = Algo $ runAlgo m >>= (runAlgo . f)
 
 data AlgoActions (pr :: Bool) (ra :: Bool) (a :: Type) where
   PrintAction :: String -> a -> AlgoActions True ra a

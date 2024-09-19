@@ -40,7 +40,7 @@ evalMaybeT v m = fromMaybe v <$> runMaybeT m
 
 -- |Calculate the probability of a random event
 pr :: Algo False True Bool -> Rational
-pr a = case fromAlgo a of
+pr a = case runAlgo a of
   Pure True -> 1
   Pure False -> 0
   Free (RandAction cont) -> (pr (Algo $ cont False) + pr (Algo $ cont True)) / 2

@@ -40,8 +40,6 @@ common deft
     -Werror=incomplete-patterns
   default-language: GHC2021
   default-extensions:
-    -- The only obstacle to declaring this as safe haskell is DerivingVia we use here
-    -- Safe
     DataKinds
     FunctionalDependencies
     GADTs
@@ -50,9 +48,12 @@ common deft
     PatternSynonyms
     QualifiedDo
     TypeFamilies
+    NoGeneralizedNewtypeDeriving
 
 library
   import: deft
+  default-extensions:
+      Safe
   exposed-modules:
       Control.XFreer.Join
       Control.XMonad.XWriter

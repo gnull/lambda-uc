@@ -1,4 +1,3 @@
-{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module UCHS.Monad.InterT (
@@ -116,17 +115,22 @@ newtype InterT (st :: InterPars)
               (bef :: Index) -- ^State before an action
               (aft :: Index) -- ^State after an action
               a -- ^Returned value
-    = InterT { fromSyncAlgo :: XFree (InterActions st) bef aft a }
-
-  deriving (Functor) via (XFree (InterActions st) bef aft)
-  deriving (XApplicative, XMonad) via (XFree (InterActions st))
+    = InterT { runInterT :: XFree (InterActions st) bef aft a }
+  deriving (Functor)
 
 instance Applicative (InterT st bef bef) where
-  f <*> m = InterT $ fromSyncAlgo f <*> fromSyncAlgo m
+  f <*> m = InterT $ runInterT f <*> runInterT m
   pure = InterT . pure
 
 instance Monad (InterT st bef bef) where
-  m >>= f = InterT $ fromSyncAlgo m Monad.>>= (fromSyncAlgo . f)
+  m >>= f = InterT $ runInterT m Monad.>>= (runInterT . f)
+
+instance XApplicative (InterT st) where
+  xpure = InterT . xpure
+  f <*>: x = InterT $ runInterT f <*>: runInterT x
+
+instance XMonad (InterT st) where
+  m >>=: f = InterT $ runInterT m >>=: (runInterT . f)
 
 xfreeSync :: InterActions st bef aft a -> InterT st bef aft a
 xfreeSync = InterT . xfree
@@ -150,7 +154,7 @@ instance XCatch
     ex
     (InterT ('InterPars m ex' up down))
   where
-    xcatch (InterT a) h = InterT $ xcatch' a $ \i e -> fromSyncAlgo (h i e)
+    xcatch (InterT a) h = InterT $ xcatch' a $ \i e -> runInterT (h i e)
       where
         xcatch' :: XFree (InterActions ('InterPars m ex up down)) bef aft a
                 -> (forall e b. InList '(e, b) ex -> e -> XFree (InterActions ('InterPars m ex' up down)) b aft a)

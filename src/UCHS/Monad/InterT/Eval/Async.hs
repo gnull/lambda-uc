@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DerivingVia #-}
 
 module UCHS.Monad.InterT.Eval.Async
   (
@@ -448,7 +447,7 @@ type ExecWriter :: (Type -> Type) -> ExecIndex -> ExecIndex -> Type -> Type
 newtype ExecWriter m i j a = ExecWriter
   { runExecWriter :: XWriter (MatchExecIndex m i) (MatchExecIndex m j) a
   }
-  deriving (Functor) via (XWriter (MatchExecIndex m i) (MatchExecIndex m j))
+  deriving (Functor) -- via (XWriter (MatchExecIndex m i) (MatchExecIndex m j))
 
 instance XApplicative (ExecWriter m) where
   xpure = ExecWriter . xpure
