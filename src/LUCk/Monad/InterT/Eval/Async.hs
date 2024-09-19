@@ -164,12 +164,10 @@ fork prf l r = case getIndexStartCompPrf @bef @bef' of
     case chanFromConcat @ach @ach' prf i of
       Left i' -> lift (runTillRecv l) >>=: \case
         RrRecv l' -> fork prf (l' $ SomeSndMessage i' m) r
-        RrCall contra _ _ -> case contra of {}
         RrHalt res -> case getMayOnlyReturnAfterRecvPrf @aft @a of
           MayOnlyReturnVoid -> case res of {}
       Right i' -> lift (runTillRecv r) >>=: \case
         RrRecv r' -> fork prf l (r' $ SomeSndMessage i' m)
-        RrCall contra _ _ -> case contra of {}
         RrHalt res -> case getMayOnlyReturnAfterRecvPrf @aft' @a' of
           MayOnlyReturnVoid -> case res of {}
   ForkIndexCompFst ->
@@ -177,7 +175,6 @@ fork prf l r = case getIndexStartCompPrf @bef @bef' of
       SrSend (SomeFstMessage i m) cont -> M.do
         send (fstToConcat @ach @ach' prf i) m
         fork prf cont r
-      SrCall contra _ _ -> case contra of {}
       SrHalt res -> case getMayOnlyReturnAfterRecvPrf @aft @a of
         MayOnlyReturnVoid -> case res of {}
         MayOnlyReturnType -> case getIndexStartCompPrf @aft @aft' of
@@ -187,7 +184,6 @@ fork prf l r = case getIndexStartCompPrf @bef @bef' of
       SrSend (SomeFstMessage i m) cont -> M.do
         send (sndToConcat @ach @ach' prf i) m
         fork prf l cont
-      SrCall contra _ _ -> case contra of {}
       SrHalt res -> case getMayOnlyReturnAfterRecvPrf @aft' @a' of
         MayOnlyReturnVoid -> case res of {}
         MayOnlyReturnType -> case getIndexStartCompPrf @aft @aft' of
@@ -208,14 +204,12 @@ permChans :: (KnownIndex bef, Monad m)
 permChans f g cont = getWT >>=: \case
   SNextRecv -> M.do
     lift (runTillRecv cont) >>=: \case
-      RrCall contra _ _ -> case contra of {}
       RrHalt res -> xreturn res
       RrRecv cont' -> M.do
         SomeSndMessage i m <- recvAny
         permChans f g $ cont' $ SomeSndMessage (g i) m
   SNextSend -> M.do
     lift (runTillSend cont) >>=: \case
-      SrCall contra _ _ -> case contra of {}
       SrHalt res -> xreturn res
       SrSend (SomeFstMessage i m) cont' -> M.do
         send (f i) m
@@ -254,12 +248,11 @@ swap prf prf' cont = permChans (f prf prf') (f prf' prf) cont
 -- |Proof that an action that's only allowed to return in `NextSend` state will
 -- not do so in `NextRecv` state.
 doesNotReturnInRecvPrf :: forall aft a m ach. MayOnlyReturnAfterRecv aft a
-                       => RecvRes m ach '[] aft a
+                       => RecvRes m ach aft a
                        -- ^Result of running `runTillRecv`
-                       -> (SomeSndMessage ach -> InterT ('InterPars m '[] ach '[]) NextSend aft a)
+                       -> (SomeSndMessage ach -> AsyncT m ach NextSend aft a)
                        -- ^The continutation that tells how the process chose to receive the message
 doesNotReturnInRecvPrf = \case
-  RrCall contra _ _ -> case contra of {}
   RrHalt contra -> case getMayOnlyReturnAfterRecvPrf @aft @a of
     MayOnlyReturnVoid -> case contra of {}
   RrRecv cont -> cont
@@ -277,14 +270,12 @@ connect :: (Monad m, KnownIndex bef, MayOnlyReturnAfterRecv aft a)
 connect prf prf' cont = getWT >>=: \case
     SNextRecv -> M.do
       lift (runTillRecv cont) >>=: \case
-        RrCall contra _ _ -> case contra of {}
         RrRecv cont' -> M.do
           SomeSndMessage i m <- recvAny
           connect prf prf' $ cont' $ SomeSndMessage (g prf prf' i) m
         RrHalt res -> xreturn res
     SNextSend -> M.do
       lift (runTillSend cont) >>=: \case
-        SrCall contra _ _ -> case contra of {}
         SrHalt res -> xreturn res
         SrSend (SomeFstMessage i m) cont' -> case f prf prf' i of
             SomeValue Here (Refl, Refl) -> M.do
@@ -340,7 +331,6 @@ escapeSyncT :: Monad m
             => AsyncT m '[] NextSend NextSend a
             -> m a
 escapeSyncT cont = runTillSend cont >>= \case
-  SrCall contra _ _ -> case contra of {}
   SrSend (SomeFstMessage contra _) _ -> case contra of {}
   SrHalt res -> pure res
 

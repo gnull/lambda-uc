@@ -22,7 +22,8 @@ import qualified Control.XMonad.Do as M
 
 import LUCk.Types
 import LUCk.Monad.Class
-import LUCk.Monad.InterT
+import LUCk.Monad.Sync
+import LUCk.Monad.Async
 
 import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Monad (MonadPlus(..))
@@ -84,12 +85,11 @@ runWithOracles :: forall m (down :: [(Type, Type)]) (rets :: [Type]) a.
                -- ^The outputs of caller and oracle. Fails with `mzero` if
                -- the oracle terminates before time or doesn't terminate when
                -- requested
-runWithOracles = \top bot -> Trans.lift (runTillSend top) >>= \case
-    SrSend (SomeFstMessage contra _) _ -> case contra of {}
-    SrHalt r -> do
+runWithOracles = \top bot -> Trans.lift (runTillCall top) >>= \case
+    CrHalt r -> do
       s <- haltAll bot
       pure (r, s)
-    SrCall i m cont -> do
+    CrCall i m cont -> do
       (bot', r) <- forIthFst i bot $ oracleCall m
       runWithOracles (cont r) bot'
   where
@@ -97,9 +97,7 @@ runWithOracles = \top bot -> Trans.lift (runTillSend top) >>= \case
                -> OracleWrapper m '(x, y) s
                -> MaybeT m (OracleWrapper m '(x, y) s, y)
     oracleCall m (OracleWrapper bot) = Trans.lift (runTillRecv bot) >>= \case
-      RrCall contra _ _ -> case contra of {}
       RrRecv cont -> Trans.lift (runTillSend $ cont $ SomeSndMessage Here (OracleReq m)) >>= \case
-        SrCall contra _ _ -> case contra of {}
         SrHalt _ -> mzero
         SrSend r bot' -> case r of
             SomeFstMessage Here r' -> pure (OracleWrapper bot', r')
@@ -108,9 +106,7 @@ runWithOracles = \top bot -> Trans.lift (runTillSend top) >>= \case
     halt :: OracleWrapper m up x
          -> MaybeT m x
     halt (OracleWrapper bot) = Trans.lift (runTillRecv bot) >>= \case
-      RrCall contra _ _ -> case contra of {}
       RrRecv cont -> Trans.lift (runTillSend $ cont $ SomeSndMessage Here OracleReqHalt) >>= \case
-        SrCall contra _ _ -> case contra of {}
         SrHalt s -> pure s
         SrSend _ _ -> mzero
 

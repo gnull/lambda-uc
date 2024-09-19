@@ -46,7 +46,6 @@ subRespEval :: forall m (iface :: (Type, Type)) a. Monad m
             -- ^The called protocol with its subroutines composed-in
             -> m a
 subRespEval = \e (SubRespTreeNode p ch) -> runTillSend e >>= \case
-    SrCall contra _ _ -> case contra of {}
     SrHalt x -> pure x
     SrSend (SomeFstMessage (There contra) _) _ -> case contra of {}
     SrSend (SomeFstMessage Here m) cont -> do

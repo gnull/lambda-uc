@@ -3,10 +3,8 @@ module Main where
 import Test.Tasty            (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit      (testCase, assertEqual, (@?=))
 
-import Control.XMonad
-import qualified Control.XMonad.Do as M
-
 import LUCk.Monad
+import LUCk.Monad.Sync
 import LUCk.Types
 
 import LUCk.Games.SignatureScheme
@@ -26,13 +24,13 @@ alwaysYesSch _ = SignatureScheme
   }
 
 advGuess :: SpAdvAlgo () Int Int
-advGuess _ () = M.do
+advGuess _ () = do
   _ <- call Here 1
   _ <- call Here 2
   pure (3, 3)
 
 advRepeats :: SpAdvAlgo () Int Int
-advRepeats _ () = M.do
+advRepeats _ () = do
   _ <- call Here 1
   _ <- call Here 2
   pure (2, 2)

@@ -62,7 +62,8 @@ library
       LUCk.Monad
       LUCk.Monad.Class
       LUCk.Monad.Algo
-      LUCk.Monad.InterT
+      LUCk.Monad.Async
+      LUCk.Monad.Sync
       LUCk.Monad.InterT.Eval.Oracle
       LUCk.Monad.InterT.Eval.UC
       -- LUCk.Monad.InterT.Eval.PC2

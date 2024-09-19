@@ -125,10 +125,10 @@ class (XThrow m ex, XMonad m') => XCatch m ex m' where
 -- `Sync` or both depending on whether it is supposed to provide and/or
 -- call oracle interfaces.
 
-class XMonad m => Sync (m :: Index -> Index -> Type -> Type) (down :: [(Type, Type)]) | m -> down where
+class Monad m => Sync (m :: Type -> Type) (down :: [(Type, Type)]) | m -> down where
   -- |Perform an oracle call to a child. The call waits for the child to
   -- respond (putting caller to sleep until then).
-  call :: Chan x y down -> x -> m b b y
+  call :: Chan x y down -> x -> m y
 
 
 

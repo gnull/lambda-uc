@@ -3,7 +3,7 @@ module LUCk.Games.SignatureScheme where
 import LUCk.Types
 import LUCk.Monad.Class
 import LUCk.Monad.Algo
-import LUCk.Monad.InterT
+import LUCk.Monad.Sync
 import LUCk.Monad.InterT.Eval.Oracle
 import LUCk.Monad.Extra
 

@@ -3,7 +3,7 @@ module LUCk.Games.Common where
 import LUCk.Types
 import LUCk.Monad.Class
 import LUCk.Monad.Algo
-import LUCk.Monad.InterT
+import LUCk.Monad.Async
 import LUCk.Monad.Extra
 import LUCk.Monad.InterT.Eval.Oracle
 

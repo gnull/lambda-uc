@@ -103,10 +103,11 @@ test s = M.do
 --
 -- 2. Inside @SomeWTM@, wrap each branch where your WT state is fixed in
 -- @decided@.
-maybeSends :: Chan Bool Bool l -> SomeWT ('InterPars m e l '[]) NextRecv Bool
-maybeSends chan = ContFromAnyWT $ \cont -> M.do
-  (SomeSndMessage sender msg) <- recvAny
-  case testEquality chan sender of
+maybeSends :: Chan Bool Bool l -> SomeWT m ex l NextRecv Bool
+maybeSends chan =
+  ContFromAnyWT $ \cont -> M.do
+  (SomeSndMessage s msg) <- recvAny
+  case testEquality chan s of
     Just Refl -> M.do
       send chan False
       cont msg
