@@ -447,7 +447,47 @@ instance XApplicative (ExecWriter m) where
 instance XMonad (ExecWriter m) where
   m >>=: f = ExecWriter $ runExecWriter m >>=: (runExecWriter . f)
 
--- forkLeft ::
+execWriterToExec :: ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
+                 -> MatchExecIndex m (ExecIndexSome l i res)
+execWriterToExec p = f ()
+  where
+    (f, ()) = runXWriter $ runExecWriter p
+
+forkLeft :: Forkable i i' i i' res res'
+         => KnownLenD l
+         -> ExecWriter m ExecIndexInit (ExecIndexSome l' i' res') ()
+         -> ExecWriter m (ExecIndexSome l i res)
+                         (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
+                         ()
+forkLeft prf p = ExecWriter $ tell $
+  \e -> ExecFork prf e $ execWriterToExec p
+
+forkRight :: Forkable i i' i i' res res'
+          => KnownLenD l
+          -> ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
+          -> ExecWriter m (ExecIndexSome l' i' res')
+                          (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
+                          ()
+forkRight prf p = ExecWriter $ tell $
+  \e -> ExecFork prf (execWriterToExec p) e
+
+connectM :: (KnownIndex i, MayOnlyReturnAfterRecv i res)
+         => ListSplitD l p ('(x, y) : '(y, x) : rest)
+         -- ^Proof of @l == p ++ ('(x, y) : '(y, x) : rest)@
+         -> ListSplitD l' p rest
+         -- ^Proof of @l' == p ++ rest@
+         -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome l' i res) ()
+connectM prf prf' = ExecWriter $ tell $ ExecConn prf prf'
+
+swapM :: ( KnownIndex i
+         , Monad m
+         )
+      => ListSplitD l p (f:s:rest)
+      -- ^Proof of @l == p ++ (f:s:rest)@
+      -> ListSplitD l' p (s:f:rest)
+      -- ^Proof of @l' == p ++ (s:f:rest)@
+      -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome l' i res) ()
+swapM prf prf' = ExecWriter $ tell $ ExecSwap prf prf'
 
 -- hey :: ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
 -- hey = _
