@@ -5,8 +5,8 @@ module LUCk.Syntax.Extra
   -- * Relaxing monad type
   --
   -- $intro
-    liftAlgo
-  , liftAsyncT
+    generalizeAlgo
+  , generalizeAsyncT
   -- , liftAsyncAlgo
   )
   where
@@ -33,35 +33,44 @@ import Control.XMonad.Trans
 --
 -- @
 -- -- Moving to less restricting version of `L.Algo`
--- `liftAlgo` :: `L.Algo` True False a -> `L.Algo` True True a
+-- `generalizeAlgo` :: `L.Algo` True False a -> `L.Algo` True True a
 --
 -- -- Moving to an interactive monad
--- `liftAlgo` :: `L.Algo` pr ra a -> `S.AsyncExT` ('S.InterPars (`L.Algo` pr ra) ex up down) b b a
+-- `generalizeAlgo` :: `L.Algo` pr ra a -> `S.AsyncExT` ('S.InterPars (`L.Algo` pr ra) ex up down) b b a
 --
 -- -- Moving to IO to actually interpret an `L.Algo`
--- `liftAlgo` :: `L.Algo` pr ra a -> `IO` a
+-- `generalizeAlgo` :: `L.Algo` pr ra a -> `IO` a
 -- @
 --
 --
 -- These functions additionally demonstrate what combination of typeclasses
--- each of `L.Algo`, `S.AsyncExT` and `A.AsyncAlgo` is equivalent to.
--- Conversion in the other direction (from polymorphic monad to concrete
--- syntax) is done automatically.
+-- each of `L.Algo` and `S.AsyncExT` are equivalent to.  Conversion in the
+-- other direction (from polymorphic monad to concrete syntax) is done
+-- automatically.
 
-liftAlgo :: ( IfThenElse pr Print Empty m
+generalizeAlgo :: ( IfThenElse pr Print Empty m
             , IfThenElse ra Rand Empty m
             , Monad m
             -- , Throw m ex
             )
            => L.Algo pr ra a
            -> m a
-liftAlgo (L.Algo (F.Pure v)) = pure v
-liftAlgo (L.Algo (F.Free v)) =
+generalizeAlgo (L.Algo (F.Pure v)) = pure v
+generalizeAlgo (L.Algo (F.Free v)) =
   case v of
-    L.PrintAction s r -> debugPrint s >> (liftAlgo $ L.Algo r)
-    L.RandAction cont -> rand >>= (\b -> liftAlgo $ L.Algo $ cont b)
+    L.PrintAction s r -> debugPrint s >> (generalizeAlgo $ L.Algo r)
+    L.RandAction cont -> rand >>= (\b -> generalizeAlgo $ L.Algo $ cont b)
 
-liftAsyncT :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b))
+-- |Generalizes a concrete action in `@S.AsyncExT@ ex up (@L.Algo@ pr ra)`, to
+-- any monad that implements the same typeclasses.
+--
+-- From practical perspective, this lets you interpret the `S.AsyncT` syntax
+-- in something like `IO`. Or you can use this to move actions to a less
+-- restrictive monad (`S.AsyncT` with more permissive parameters).
+--
+-- From abstract perspective, the signature of this function fully
+-- characterizes the actions that `S.AsyncT` may do with the given parameters.
+generalizeAsyncT :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b))
                 , IfThenElse ra (forall b. Rand (m b b)) (forall b. Empty (m b b))
                 , (forall b. Monad (m b b))
                 , XThrow m ex
@@ -71,19 +80,19 @@ liftAsyncT :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b)
                -- ^An argument that helps GHC evaluate constraints
                -> S.AsyncExT ex up (L.Algo pr ra) bef aft a
                -> m bef aft a
-liftAsyncT _ (S.AsyncExT (Pure v)) = xreturn v
-liftAsyncT h (S.AsyncExT (Join v)) =
+generalizeAsyncT _ (S.AsyncExT (Pure v)) = xreturn v
+generalizeAsyncT h (S.AsyncExT (Join v)) =
     case v of
-      S.SendAction m r -> sendMess m >>: liftAsyncT h (S.AsyncExT r)
-      S.RecvAction cont -> recvAny >>=: liftAsyncT h . S.AsyncExT . cont
+      S.SendAction m r -> sendMess m >>: generalizeAsyncT h (S.AsyncExT r)
+      S.RecvAction cont -> recvAny >>=: generalizeAsyncT h . S.AsyncExT . cont
       S.ThrowAction i e -> xthrow i e
       S.LiftAction (L.Algo m) cont -> case m of
-        F.Pure r -> liftAsyncT h $ S.AsyncExT $ cont r
+        F.Pure r -> generalizeAsyncT h $ S.AsyncExT $ cont r
         F.Free (L.PrintAction s r) -> M.do
           debugPrint s
-          r' <- liftAsyncT h $ xlift $ L.Algo r
-          liftAsyncT h $ S.AsyncExT $ cont r'
+          r' <- generalizeAsyncT h $ xlift $ L.Algo r
+          generalizeAsyncT h $ S.AsyncExT $ cont r'
         F.Free (L.RandAction contInner) -> M.do
           x <- rand
-          r' <- liftAsyncT h $ xlift $ L.Algo $ contInner x
-          liftAsyncT h $ S.AsyncExT $ cont r'
+          r' <- generalizeAsyncT h $ xlift $ L.Algo $ contInner x
+          generalizeAsyncT h $ S.AsyncExT $ cont r'

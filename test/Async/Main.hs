@@ -22,13 +22,13 @@ main = defaultMain tests
 tests :: TestTree
 tests = testGroup "async execution tests"
   [ testCase "round trip 2 processes" $
-      liftAlgo (runExec $ twoSum 10 1) >>= (@?= 11)
+      generalizeAlgo (runExec $ twoSum 10 1) >>= (@?= 11)
   , testCase "round trip 3 processes" $
-      liftAlgo (runExec $ threeSum 100 10 1) >>= (@?= 111)
+      generalizeAlgo (runExec $ threeSum 100 10 1) >>= (@?= 111)
   , testCase "round trip 3 processes, monadic notation" $
-      liftAlgo (runExec $ execWriterToExec $ threeSumWriter 100 10 1) >>= (@?= 111)
+      generalizeAlgo (runExec $ execWriterToExec $ threeSumWriter 100 10 1) >>= (@?= 111)
   , testCase "guessing game" $
-      liftAlgo (fmap (<= 7) $ runExec $ execWriterToExec guessingExec) >>= (@?= True)
+      generalizeAlgo (fmap (<= 7) $ runExec $ execWriterToExec guessingExec) >>= (@?= True)
   ]
 
 type PureM = Algo True False
