@@ -135,14 +135,14 @@ guessingPlayer = M.do
            -> AsyncT '[ '(Integer, Ordering)] m NextSend NextSend Integer
     helper f t
       | f >= t = undefined
-      | f == t - 1 = xreturn f
+      | f == t - 1 = xreturn 0
       | otherwise = M.do
           let mid = (f + t) `div` 2
           debugPrint $ "guessing  " ++ show mid
           sendOne mid
           v <- recvOne >>=: \case
             LT -> helper f mid
-            EQ -> xreturn 1
+            EQ -> xreturn 0
             GT -> helper (mid + 1) t
           xreturn $ v + 1
 
