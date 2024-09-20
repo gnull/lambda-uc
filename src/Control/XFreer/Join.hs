@@ -40,10 +40,10 @@ instance (forall p' q'. Functor (f p' q')) => XMonad (XFree f) where
     -- Free g >>= f = Free $ fmap (>>= f) g
 
 -- | @'XFree' (f p p)@ is a normal Applicative, it supports 'forever', 'traverse', 'sequenceA', etc.
-instance (forall p' q'. Functor (f p' q')) => Applicative (XFree f p p) where
+instance ((forall p' q'. Functor (f p' q')), p ~ q) => Applicative (XFree f p q) where
   pure = xpure
   (<*>) = (<*>:)
 
 -- | @'XFree' (f p p)@ is a normal Monad, it supports 'mapM', 'forM', 'sequence', etc.
-instance (forall p' q'. Functor (f p' q')) => Monad (XFree f p p) where
+instance ((forall p' q'. Functor (f p' q')), p ~ q) => Monad (XFree f p q) where
   (>>=) = (>>=:)

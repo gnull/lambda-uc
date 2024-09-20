@@ -104,11 +104,11 @@ newtype AsyncExT m ex ach bef aft a
     = AsyncExT { runInterT :: XFree (AsyncActions m ex ach) bef aft a }
   deriving (Functor)
 
-instance Applicative (AsyncExT m ex ach bef bef) where
+instance bef ~ aft => Applicative (AsyncExT m ex ach bef aft) where
   f <*> m = AsyncExT $ runInterT f <*> runInterT m
   pure = AsyncExT . pure
 
-instance Monad (AsyncExT m ex ach bef bef) where
+instance bef ~ aft => Monad (AsyncExT m ex ach bef aft) where
   m >>= f = AsyncExT $ runInterT m Monad.>>= (runInterT . f)
 
 instance XApplicative (AsyncExT m ex ach) where
