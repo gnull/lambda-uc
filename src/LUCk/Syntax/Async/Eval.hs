@@ -45,6 +45,7 @@ import Data.Either.Extra (mapLeft)
 import Control.Arrow
 import Control.XApplicative
 import Control.XMonad
+import Control.XMonad.Trans
 import Control.XMonad.XWriter
 import qualified Control.XMonad.Do as M
 
@@ -162,16 +163,16 @@ fork prf l r = case getIndexStartCompPrf @bef @bef' of
   ForkIndexCompNone -> M.do
     SomeSndMessage i m <- recvAny
     case chanFromConcat @ach @ach' prf i of
-      Left i' -> lift (runTillRecv l) >>=: \case
+      Left i' -> xlift (runTillRecv l) >>=: \case
         RrRecv l' -> fork prf (l' $ SomeSndMessage i' m) r
         RrHalt res -> case getMayOnlyReturnAfterRecvPrf @aft @a of
           MayOnlyReturnVoid -> case res of {}
-      Right i' -> lift (runTillRecv r) >>=: \case
+      Right i' -> xlift (runTillRecv r) >>=: \case
         RrRecv r' -> fork prf l (r' $ SomeSndMessage i' m)
         RrHalt res -> case getMayOnlyReturnAfterRecvPrf @aft' @a' of
           MayOnlyReturnVoid -> case res of {}
   ForkIndexCompFst ->
-    lift (runTillSend l) >>=: \case
+    xlift (runTillSend l) >>=: \case
       SrSend (SomeFstMessage i m) cont -> M.do
         send (fstToConcat @ach @ach' prf i) m
         fork prf cont r
@@ -180,7 +181,7 @@ fork prf l r = case getIndexStartCompPrf @bef @bef' of
         MayOnlyReturnType -> case getIndexStartCompPrf @aft @aft' of
           ForkIndexCompFst -> xreturn res
   ForkIndexCompSnd ->
-    lift (runTillSend r) >>=: \case
+    xlift (runTillSend r) >>=: \case
       SrSend (SomeFstMessage i m) cont -> M.do
         send (sndToConcat @ach @ach' prf i) m
         fork prf l cont
@@ -203,13 +204,13 @@ permChans :: (KnownIndex bef, Monad m)
          -> AsyncT l' m bef aft a
 permChans f g cont = getWT >>=: \case
   SNextRecv -> M.do
-    lift (runTillRecv cont) >>=: \case
+    xlift (runTillRecv cont) >>=: \case
       RrHalt res -> xreturn res
       RrRecv cont' -> M.do
         SomeSndMessage i m <- recvAny
         permChans f g $ cont' $ SomeSndMessage (g i) m
   SNextSend -> M.do
-    lift (runTillSend cont) >>=: \case
+    xlift (runTillSend cont) >>=: \case
       SrHalt res -> xreturn res
       SrSend (SomeFstMessage i m) cont' -> M.do
         send (f i) m
@@ -269,20 +270,20 @@ connect :: (Monad m, KnownIndex bef, MayOnlyReturnAfterRecv aft a)
         -> AsyncT l' m bef aft a
 connect prf prf' cont = getWT >>=: \case
     SNextRecv -> M.do
-      lift (runTillRecv cont) >>=: \case
+      xlift (runTillRecv cont) >>=: \case
         RrRecv cont' -> M.do
           SomeSndMessage i m <- recvAny
           connect prf prf' $ cont' $ SomeSndMessage (g prf prf' i) m
         RrHalt res -> xreturn res
     SNextSend -> M.do
-      lift (runTillSend cont) >>=: \case
+      xlift (runTillSend cont) >>=: \case
         SrHalt res -> xreturn res
         SrSend (SomeFstMessage i m) cont' -> case f prf prf' i of
             SomeValue Here (Refl, Refl) -> M.do
-              cont'' <- doesNotReturnInRecvPrf <$> lift (runTillRecv cont')
+              cont'' <- doesNotReturnInRecvPrf <$> xlift (runTillRecv cont')
               connect prf prf' $ cont'' $ SomeSndMessage (snd $ splitToInlistPair prf) m
             SomeValue (There Here) (Refl, Refl) -> M.do
-              cont'' <- doesNotReturnInRecvPrf <$> lift (runTillRecv cont')
+              cont'' <- doesNotReturnInRecvPrf <$> xlift (runTillRecv cont')
               connect prf prf' $ cont'' $ SomeSndMessage (fst $ splitToInlistPair prf) m
             SomeValue (There2 Here) i' -> M.do
               send i' m

@@ -22,6 +22,7 @@ import qualified LUCk.Syntax.Algo as L
 import qualified LUCk.Syntax.Async as S
 
 import qualified Control.XMonad.Do as M
+import Control.XMonad.Trans
 
 -- $intro
 --
@@ -80,9 +81,9 @@ liftAsyncT h (S.AsyncExT (Join v)) =
         F.Pure r -> liftAsyncT h $ S.AsyncExT $ cont r
         F.Free (L.PrintAction s r) -> M.do
           debugPrint s
-          r' <- liftAsyncT h $ S.lift $ L.Algo r
+          r' <- liftAsyncT h $ xlift $ L.Algo r
           liftAsyncT h $ S.AsyncExT $ cont r'
         F.Free (L.RandAction contInner) -> M.do
           x <- rand
-          r' <- liftAsyncT h $ S.lift $ L.Algo $ contInner x
+          r' <- liftAsyncT h $ xlift $ L.Algo $ contInner x
           liftAsyncT h $ S.AsyncExT $ cont r'

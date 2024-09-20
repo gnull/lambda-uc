@@ -7,18 +7,16 @@ import LUCk.Syntax.Class
 import LUCk.Syntax.Algo
 import LUCk.Syntax.Async
 import LUCk.Syntax.Sync.Eval
-import LUCk.Syntax.Extra
 
 import Control.XMonad
+import Control.XMonad.Trans
 import Control.XFreer.Join
 import qualified Control.XMonad.Do as M
 
 import Data.Maybe (isJust, fromMaybe, fromJust)
 import Data.Default (Default(..))
 import Control.Monad.Trans.Maybe (MaybeT(..))
-import Control.Monad.Trans.State (StateT(..), evalStateT)
 import Control.Monad (MonadPlus(..))
-import Control.Monad.State (MonadState(..))
 -- import qualified Control.Monad.Trans.Class as Trans
 
 import LUCk.Games.Common
@@ -110,11 +108,11 @@ oracleEncDec sch' k s = M.do
     OracleReqHalt -> xreturn ()
     OracleReq req -> M.do
       (s', c) <- case req of
-        EncReq m -> lift $ do
+        EncReq m -> xlift $ do
           symEEnc sch' k m s >>= \case
             Nothing -> pure (s, RespError)
             Just (s', x) -> pure $ (s', EncResp x)
-        DecReq c -> lift $ fmap (s,) $ do
+        DecReq c -> xlift $ fmap (s,) $ do
           case symEDec sch' k c of
             Nothing -> pure RespError
             Just x -> pure $ DecResp x
@@ -131,7 +129,7 @@ oracleEncRandNoDec sch' k s = M.do
     OracleReqHalt -> xreturn ()
     OracleReq req -> M.do
       (s', c) <- case req of
-        EncReq _ -> lift $ do
+        EncReq _ -> xlift $ do
           m <- uniformDist
           symEEnc sch' k m s >>= \case
             Nothing -> pure (s, RespError)
@@ -150,12 +148,12 @@ oracleEncRandDec sch' k s = M.do
     OracleReqHalt -> xreturn ()
     OracleReq req -> M.do
       (s', c) <- case req of
-        EncReq _ -> lift $ do
+        EncReq _ -> xlift $ do
           m <- uniformDist
           symEEnc sch' k m s >>= \case
             Nothing -> pure (s, RespError)
             Just (s', x) -> pure $ (s', EncResp x)
-        DecReq c -> lift $ fmap (s,) $ do
+        DecReq c -> xlift $ fmap (s,) $ do
           case symEDec sch' k c of
             Nothing -> pure RespError
             Just x -> pure $ DecResp x

@@ -38,7 +38,9 @@ import Control.XApplicative
 import qualified Control.XMonad.Do as M
 
 import Control.XMonad
+import Control.XMonad.Trans
 -- import Data.Type.Equality ((:~:)(Refl))
+
 import LUCk.Types
 
 import qualified System.Random as Random
@@ -67,12 +69,18 @@ instance Print IO where
 instance (Trans.MonadTrans t, Print m) => Print (t m) where
   debugPrint = Trans.lift . debugPrint
 
+instance (XMonadTrans t, Print m, bef ~ aft) => Print (t m bef aft) where
+  debugPrint = xlift . debugPrint
+
 class Monad m => Rand (m :: Type -> Type) where
   -- |Sample a random value.
   rand :: m Bool
 
 instance (Trans.MonadTrans t, Rand m) => Rand (t m) where
   rand = Trans.lift $ rand
+
+instance (XMonadTrans t, Rand m, bef ~ aft) => Rand (t m bef aft) where
+  rand = xlift $ rand
 
 instance Rand IO where
   rand = Random.randomIO

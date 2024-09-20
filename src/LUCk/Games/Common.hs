@@ -8,6 +8,7 @@ import LUCk.Syntax.Extra
 import LUCk.Syntax.Sync.Eval
 
 import Control.XMonad
+import Control.XMonad.Trans
 import Control.Monad.Free
 -- import Control.XFreer.Join
 import qualified Control.XMonad.Do as M
@@ -26,7 +27,7 @@ oracleMapM f = OracleWrapper $ M.do
   recvOne >>=: \case
     OracleReqHalt -> xreturn []
     OracleReq x -> M.do
-      y <- lift $ f x
+      y <- xlift $ f x
       sendOne y
       rest <- runOracleWrapper $ oracleMapM f
       xreturn $ (x, y) : rest

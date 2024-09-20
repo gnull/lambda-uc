@@ -57,6 +57,7 @@ library
   exposed-modules:
       Control.XFreer.Join
       Control.XMonad.XWriter
+      Control.XMonad.Trans
       Data.HList
       LUCk.Types
       LUCk.Syntax

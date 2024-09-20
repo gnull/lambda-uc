@@ -7,7 +7,6 @@ module LUCk.Syntax.Async (
   , AsyncT
   , Index
   , xfreeAsync
-  , lift
   -- * Syntax
   -- $actions
   , AsyncActions(..)
@@ -29,6 +28,7 @@ import qualified Control.Monad as Monad
 import Control.XFreer.Join
 import Control.XApplicative
 import Control.XMonad
+import Control.XMonad.Trans
 -- import qualified Control.XMonad.Do as M
 
 -- import Data.Type.Equality ((:~:)(Refl))
@@ -116,10 +116,8 @@ instance XMonad (AsyncExT ex ach m) where
 xfreeAsync :: AsyncActions ex ach m bef aft a -> AsyncExT ex ach m bef aft a
 xfreeAsync = AsyncExT . xfree
 
--- Sync
-
-lift :: m a -> AsyncExT ex ach m b b a
-lift m = xfreeAsync $ LiftAction m id
+instance XMonadTrans (AsyncExT ex ach) where
+  xlift m = xfreeAsync $ LiftAction m id
 
 -- Haskell can't derive these for us when there are ambiguous types in M.do notation:
 --
@@ -127,12 +125,6 @@ lift m = xfreeAsync $ LiftAction m id
 --   debugPring "hey"
 --   b <- rand
 -- @
-
-instance (Print m, b ~ b') => Print (AsyncExT ex ach m b b') where
-  debugPrint = lift . debugPrint
-
-instance (Rand m, b ~ b') => Rand (AsyncExT ex ach m b b') where
-  rand = lift $ rand
 
 instance XThrow (AsyncExT ex ach m) ex where
   xthrow i ex = xfreeAsync $ ThrowAction i ex
