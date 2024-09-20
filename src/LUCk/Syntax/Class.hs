@@ -130,20 +130,16 @@ class (XThrow m ex, XMonad m') => XCatch m ex m' where
 
 -- $sync
 --
--- Side-effects of a syncronous interactive algorithm. Such an algorithm can:
+-- Side-effects of a syncronous interactive algorithm. Such an algorithm can
+-- issue oracle calls to its children (`Sync`).
 --
--- 1. issue oracle calls to its children (`Sync`).
---
--- Oracle calls are synchronous: calling algorithm is put to sleep until its
--- child responds to the call. An algorithm may implement one of `Syncp` and
--- `Sync` or both depending on whether it is supposed to provide and/or
--- call oracle interfaces.
+-- Oracle calls are synchronous: calling algorithm is put to sleep until the
+-- oracle responds to the call.
 
 class Monad m => Sync (m :: Type -> Type) (down :: [(Type, Type)]) | m -> down where
   -- |Perform an oracle call to a child. The call waits for the child to
   -- respond (putting caller to sleep until then).
   call :: Chan x y down -> x -> m y
-
 
 
 -- $async
