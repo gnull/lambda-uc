@@ -45,7 +45,7 @@ instance Functor (SyncActions m sch) where
 -- If you need exceptions in `SyncT`, feel free to use regular monadic
 -- mechanisms such as `ExceptT` or `MaybeT`.
 --
--- `SyncT` does not handle asynchronous interaction, therefore (unlike
+-- `SyncT` only adds syntax for synchronous interaction, therefore (unlike
 -- `AsyncT`) it is a regular monad, not an indexed one. Consider code below for
 -- an example. The function @reportSum@ has access to to oracles: oracle A with
 -- requests of type `String`, and responses of type `Int`; and oracle B with
@@ -63,7 +63,7 @@ instance Functor (SyncActions m sch) where
 -- @
 --
 -- To run the code above, implement the oracles and use
--- `LUCk.Monad.SyncT.Eval.Oracle.runWithOracles2`.
+-- `LUCk.Syntax.Sync.Eval.runWithOracles2`.
 newtype SyncT sch m a
     = SyncT { runSyncT :: Free (SyncActions sch m) a }
   deriving (Functor)
@@ -94,22 +94,22 @@ instance Sync (SyncT m sch) sch where
 
 -- $step
 --
--- The following functions let you evaluate an interactive algorithm
+-- The following functions let you evaluate a synchronous algorithm
 -- step-by-step.
 
 -- |The result of `runTillCall`
 data CallRes (m :: Type -> Type) (sch :: [(Type, Type)]) a where
-  -- |Algorithm called `sendFinal`.
+  -- |Algorithm called `call`.
   CrCall :: Chan x y sch
          -> x
          -> (y -> SyncT m sch a)
          -> CallRes m sch a
-  -- |Algorithm halted without sending anything
+  -- |Algorithm halted without a `call`
   CrHalt :: a
          -> CallRes m sch a
 
 -- |Given `SyncT` action starting in `True` state (holding write token), run
--- it until it does `call`, `send` or halts.
+-- it until it does `call` or halts.
 runTillCall :: Monad m
             => SyncT m sch a
             -> m (CallRes m sch a)

@@ -20,28 +20,21 @@ module LUCk.Syntax.Async (
   -- ** Helper lemmas
   -- $lemmas
   , mayOnlyRecvVoidPrf
-  , mayOnlyRecvWTPrf
-  , mayOnlySendWTPrf
+  , mayOnlySendVoidPrf
 ) where
 
 -- import Prelude hiding ((>>=), return)
 import qualified Control.Monad as Monad
-import Data.Functor
-import Data.Functor.Identity
 
 import Control.XFreer.Join
 import Control.XApplicative
 import Control.XMonad
-import qualified Control.XMonad.Do as M
+-- import qualified Control.XMonad.Do as M
 
 -- import Data.Type.Equality ((:~:)(Refl))
 
 import LUCk.Types
 import LUCk.Syntax.Class
-
-import Control.Monad.Trans.Maybe (MaybeT(..))
-import Control.Monad (MonadPlus(..))
-import qualified Control.Monad.Trans.Class as Trans
 
 -- $actions
 --
@@ -173,10 +166,13 @@ type AsyncT m ach = AsyncExT m '[] ach
 -- $step
 --
 -- The following functions let you evaluate an interactive algorithm
--- step-by-step. An algorithm in `True` state can be ran until it sends
+-- step-by-step. An algorithm in `NextSend` state can be ran until it sends
 -- something (or halts, or does an oracle call) via `runTillSend`, and an
--- algorithm in `False` state can be executed until it reqests a message for
+-- algorithm in `NextRecv` state can be executed until it reqests a message for
 -- reception (or halts, or does an oracle call) via `runTillRecv`.
+--
+-- Functions `runTillSend` and `runTillRecv` correspond to activation of an
+-- Interactive Turing Machine.
 
 -- |The result of `runTillSend`
 data SendRes m ach aft a where
@@ -187,8 +183,8 @@ data SendRes m ach aft a where
   -- |Algorithm called `sendFinal`.
   SrHalt :: a -> SendRes m ach NextSend a
 
--- |Given `AsyncExT` action starting in `True` state (holding write token), run
--- it until it does `call`, `send` or halts.
+-- |Given `AsyncExT` action starting in `NextSend` state (holding write token),
+-- run it until it does `send` or halts.
 runTillSend :: Monad m
             => AsyncT m ach NextSend b a
             -> m (SendRes m ach b a)
@@ -203,13 +199,12 @@ data RecvRes m ach aft a where
   -- |Algorithm ran `recvAny`.
   RrRecv :: (SomeSndMessage ach -> AsyncT m ach NextSend aft a)
          -> RecvRes m ach aft a
-  -- |Algorithm has halted without accepting a call
+  -- |Algorithm has halted without accepting a message
   RrHalt :: a
          -> RecvRes m ach NextRecv a
 
--- |Given an action that starts in a `False` state (no write token),
--- runTillRecv the oracle call from its parent (running it until it receives
--- the write token via `recvAny`).
+-- |Given an action that starts in a `NextRecv` state (no write token), run it
+-- until it receives the write token via `recvAny` or halts.
 runTillRecv :: Monad m
         => AsyncT m ach NextRecv b a
         -> m (RecvRes m ach b a)
@@ -232,7 +227,7 @@ runTillRecv (AsyncExT (Join v)) = case v of
 -- @
 -- do
 --   x \<- `mayOnlyRecvVoidPrf` \<$> `runTillRecv` _ _
---   (y, cont) \<- `mayOnlySendWTPrf` \<$> `runTillSend` _
+--   (y, cont) \<- `mayOnlySendVoidPrf` \<$> `runTillSend` _
 --   _
 -- @
 --
@@ -241,36 +236,29 @@ runTillRecv (AsyncExT (Join v)) = case v of
 -- @
 -- do
 --   `runTillRecv` _ _ `>>=` \case
---     `RrCall` contra _ _ -> case contra of {}
 --     `RrHalt` contra -> case contra of {}
 --     `RrRecv` x -> do
 --       `runTillSend` _ `>>=` \case
---         `SrCall` contra _ _ -> case contra of {}
+--         `SrHalt` contra -> case contra of {}
 --         `SrSend` y cont -> do
 --           _
 -- @
 
 -- |Proof: A program with sync channels and return type `Void` may not
--- terminate; if it starts from `On NextRecv` state, it will inevitably request
+-- terminate; if it starts from `NextRecv` state, it will inevitably request
 -- an rx message.
-mayOnlyRecvVoidPrf :: RecvRes m ach NextRecv Void
+mayOnlyRecvVoidPrf :: RecvRes m ach aft Void
                    -> SomeSndMessage ach
-                   -> AsyncT m ach NextSend NextRecv Void
+                   -> AsyncT m ach NextSend aft Void
 mayOnlyRecvVoidPrf = \case
   RrHalt contra -> case contra of {}
   RrRecv x -> x
 
--- |Proof: a program with no sync channels that must terminate in `NextSend`
--- state but starts in `NextRecv` state will inevitably request an rx
--- message.
-mayOnlyRecvWTPrf :: RecvRes m ach NextSend a
-                 -> SomeSndMessage ach
-                 -> AsyncT m ach NextSend NextSend a
-mayOnlyRecvWTPrf (RrRecv x) = x
-
--- |Proof: a program with no sync channels that must terminate in `On NextRecv`
--- state that starts from `On NextSend` state will inevitable produce a tx
--- message.
-mayOnlySendWTPrf :: SendRes m ach NextRecv a
-       -> (SomeFstMessage ach, AsyncT m ach NextRecv NextRecv a)
-mayOnlySendWTPrf (SrSend x cont) = (x, cont)
+-- |Proof: A program with sync channels and return type `Void` may not
+-- terminate; if it starts from `NextSend` state, it will inevitably request to
+-- send a message.
+mayOnlySendVoidPrf :: SendRes m ach aft Void
+                   -> (SomeFstMessage ach, AsyncT m ach NextRecv aft Void)
+mayOnlySendVoidPrf = \case
+  SrHalt contra -> case contra of {}
+  SrSend m cont -> (m, cont)
