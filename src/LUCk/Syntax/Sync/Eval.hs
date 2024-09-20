@@ -50,7 +50,7 @@ type OracleCaller m down = SyncT down m
 -- |An algorithm serving oracle calls from parent, but not having access to
 -- any oracles of its own.
 type Oracle (m :: Type -> Type) (up :: (Type, Type)) =
-  AsyncT m '[ '(Snd up, OracleReq (Fst up))] NextRecv NextSend
+  AsyncT '[ '(Snd up, OracleReq (Fst up))] m NextRecv NextSend
 
 -- |Version of `Oracle` that's wrapped in newtype, convenient for use with `HList2`.
 newtype OracleWrapper (m :: Type -> Type) (up :: (Type, Type)) (ret :: Type) =

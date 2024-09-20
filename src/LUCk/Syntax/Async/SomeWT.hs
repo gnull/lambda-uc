@@ -8,14 +8,14 @@ import LUCk.Syntax.Async
 -- 1. Starts in Write Token state `bef`,
 -- 2. stops in Write Token state `i` with result `a`,
 -- 3. runs the continuation given as first argument from there to finish in Write Token state `aft` with result `b`.
-data ContFromAnyWT m ex ach bef aft a b
-  = ContFromAnyWT ((forall i. KnownIndex i => a -> AsyncExT m ex ach i aft b) -> AsyncExT m ex ach bef aft b)
+data ContFromAnyWT ex ach m bef aft a b
+  = ContFromAnyWT ((forall i. KnownIndex i => a -> AsyncExT ex ach m i aft b) -> AsyncExT ex ach m bef aft b)
 
 -- |A version of `ContFromAnyWT` that hides `aft` and `b` under quantifiers.
 --
 -- Use this if you want to define interactive computations that stop in Write
 -- Token state of its choosing.
-type SomeWT m ex ach bef a = forall aft b. ContFromAnyWT m ex ach bef aft a b
+type SomeWT ex ach m bef a = forall aft b. ContFromAnyWT ex ach m bef aft a b
 
 -- |Given a computation that starts in Write Token state `bef` and stops in
 -- _some_ state of its choosing, and a way to continue from _any_ Write Token
@@ -23,7 +23,7 @@ type SomeWT m ex ach bef a = forall aft b. ContFromAnyWT m ex ach bef aft a b
 --
 -- This effectively composes two computations, taking existential
 -- quantification inside `ContFromAnyWT` into account.
-dispatchSomeWT :: ContFromAnyWT m ex ach bef aft a b
-               -> (forall i. KnownIndex i => a -> AsyncExT m ex ach i aft b)
-               -> AsyncExT m ex ach bef aft b
+dispatchSomeWT :: ContFromAnyWT ex ach m bef aft a b
+               -> (forall i. KnownIndex i => a -> AsyncExT ex ach m i aft b)
+               -> AsyncExT ex ach m bef aft b
 dispatchSomeWT (ContFromAnyWT x) = x

@@ -22,11 +22,11 @@ import LUCk.Types
 --
 -- This type definition ensures that we never terminate, we must continuously
 -- be ready to receive messages and respond to them somehow.
-type ProtoNode m up down bef = AsyncT m ( '(Snd up, Fst up) : down) bef NextRecv Void
+type ProtoNode up down m bef = AsyncT ( '(Snd up, Fst up) : down) m bef NextRecv Void
 
 -- |An enviroment algorithm. The `down` is the interface of the functionality
 -- environment is allowed to call.
-type EnvNode m down a = AsyncT m '[down] NextSend NextSend a
+type EnvNode down m a = AsyncT '[down] m NextSend NextSend a
 
 -- |A tree of subroutine-respecting protocols.
 --
@@ -34,13 +34,13 @@ type EnvNode m down a = AsyncT m '[down] NextSend NextSend a
 -- required subroutine interfaces were filled with actual implementations (and,
 -- therefore, are not required and not exposed by a type parameter anymore).
 data SubRespTree (m :: Type -> Type) (up :: (Type, Type)) where
-  SubRespTreeNode :: ProtoNode m up down NextRecv
+  SubRespTreeNode :: ProtoNode up down m NextRecv
                   -> HList (SubRespTree m) down
                   -> SubRespTree m up
 
 -- |Run environment with a given protocol (no adversary yet).
 subRespEval :: forall m (iface :: (Type, Type)) a. Monad m
-            => EnvNode m iface a
+            => EnvNode iface m a
             -- ^Environment
             -> SubRespTree m iface
             -- ^The called protocol with its subroutines composed-in
@@ -55,7 +55,7 @@ subRespEval = \e (SubRespTreeNode p ch) -> runTillSend e >>= \case
       subRespEval e' t
   where
     subroutineCall :: forall up down.
-                   ProtoNode m up down NextSend
+                   ProtoNode up down m NextSend
                    -> HList (SubRespTree m) down
                    -> m (SubRespTree m up, Snd up)
     subroutineCall p s = do

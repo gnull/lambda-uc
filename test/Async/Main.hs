@@ -34,12 +34,12 @@ tests = testGroup "async execution tests"
 type PureM = Algo True False
 type RandM = Algo True True
 
-twoSum :: Int -> Int -> Exec PureM '[] NextSend Int
+twoSum :: Int -> Int -> Exec '[] PureM NextSend Int
 twoSum x y =
   ExecConn SplitHere SplitHere $
   ExecFork (KnownLenS KnownLenZ) (ExecProc $ sender x) (ExecProc $ receiver y)
 
-threeSum :: Int -> Int -> Int -> Exec PureM '[] NextSend Int
+threeSum :: Int -> Int -> Int -> Exec '[] PureM NextSend Int
 threeSum x y z =
   ExecConn Split0 Split0 $
   ExecConn Split1 Split1 $
@@ -65,18 +65,18 @@ threeSumWriter x y z = M.do
   guardM @('[ '(Int, Void), '(Void, Int)])
   connectM Split0 Split0
 
-sender :: Int -> AsyncT PureM '[ '(Int, Int)] NextSend NextSend Int
+sender :: Int -> AsyncT '[ '(Int, Int)] PureM NextSend NextSend Int
 sender x = M.do
   sendOne x
   recvOne
 
-receiver :: Int -> AsyncT PureM '[ '(Int, Int)] NextRecv NextRecv Void
+receiver :: Int -> AsyncT '[ '(Int, Int)] PureM NextRecv NextRecv Void
 receiver x = M.do
   m <- recvOne
   sendOne $ m + x
   receiver x
 
-sender2 :: Int -> AsyncT PureM '[ '(Int, Void), '(Void, Int)] NextSend NextSend Int
+sender2 :: Int -> AsyncT '[ '(Int, Void), '(Void, Int)] PureM NextSend NextSend Int
 sender2 x = M.do
   send Here x
   recvAny >>=: \case
@@ -84,7 +84,7 @@ sender2 x = M.do
     SomeSndMessage (There Here) m -> xreturn m
     SomeSndMessage (There2 contra) _ -> case contra of {}
 
-receiver2 :: Int -> AsyncT PureM '[ '(Int, Void), '(Void, Int)] NextRecv NextRecv Void
+receiver2 :: Int -> AsyncT '[ '(Int, Void), '(Void, Int)] PureM NextRecv NextRecv Void
 receiver2 x = M.do
   m <- recvAny >>=: \case
     SomeSndMessage Here contra -> case contra of {}
@@ -104,13 +104,13 @@ receiver2 x = M.do
 --
 -- - Polymorphic monad
 guessingChallenger :: (Rand m, Print m)
-                   => AsyncT m '[ '(Ordering, Integer)] NextRecv NextRecv Void
+                   => AsyncT '[ '(Ordering, Integer)] m NextRecv NextRecv Void
 guessingChallenger =  M.do
     secret <- rangeDist 0 100
     debugPrint $ "challenger picked secret " ++ show secret
     helper secret
   where
-    helper :: Print m => Integer -> AsyncT m '[ '(Ordering, Integer)] NextRecv NextRecv Void
+    helper :: Print m => Integer -> AsyncT '[ '(Ordering, Integer)] m NextRecv NextRecv Void
     helper secret = M.do
       guess <- recvOne
       let res = secret `compare` guess
@@ -123,7 +123,7 @@ guessingChallenger =  M.do
 -- - ensuring that player is deterministic
 -- - using undefined to mark conditions that are not considered (assumed to never occur)
 guessingPlayer :: Print m
-               => AsyncT m '[ '(Integer, Ordering)] NextSend NextSend Integer
+               => AsyncT '[ '(Integer, Ordering)] m NextSend NextSend Integer
 guessingPlayer = M.do
     n <- helper 0 100
     debugPrint $ "found result in " ++ show n ++ " attempts"
@@ -132,7 +132,7 @@ guessingPlayer = M.do
     helper :: Print m
            => Integer
            -> Integer
-           -> AsyncT m '[ '(Integer, Ordering)] NextSend NextSend Integer
+           -> AsyncT '[ '(Integer, Ordering)] m NextSend NextSend Integer
     helper f t
       | f >= t = undefined
       | f == t - 1 = xreturn f
@@ -154,7 +154,7 @@ guessingExec = M.do
   connectM Split0 Split0
 
 -- |Sends String s to the given channel, waits for the other side to repond with
-test :: String -> AsyncExT m e '[ '(String, Int)] NextSend NextSend Int
+test :: String -> AsyncExT e '[ '(String, Int)] m NextSend NextSend Int
 test s = M.do
   send Here s
   recvAny >>=: \case
@@ -168,7 +168,7 @@ test s = M.do
 --
 -- 2. Inside @SomeWTM@, wrap each branch where your WT state is fixed in
 -- @decided@.
-maybeSends :: Chan Bool Bool l -> SomeWT m ex l NextRecv Bool
+maybeSends :: Chan Bool Bool l -> SomeWT ex l m NextRecv Bool
 maybeSends chan =
   ContFromAnyWT $ \cont -> M.do
   (SomeSndMessage s msg) <- recvAny
@@ -180,7 +180,7 @@ maybeSends chan =
 
 useMaybeSends :: InList '(ExBadSender, NextSend) ex
               -> Chan Bool Bool ach
-              -> AsyncExT m ex ach NextRecv NextSend Bool
+              -> AsyncExT ex ach m NextRecv NextSend Bool
 useMaybeSends e chan = M.do
   -- Step #1: pass @maybeSends@ to dispatchSomeWT
   -- Step #2: pass it a continuation that starts from unknown WT state

@@ -153,11 +153,11 @@ fork :: forall m ach ach' bef bef' aft aft' a a'.
         (Monad m, Forkable bef bef' aft aft' a a')
      => KnownLenD ach
      -- ^Depdendent length of free channels list in left branch
-     -> AsyncT m ach bef aft a
+     -> AsyncT ach m bef aft a
      -- ^Left branch of the fork
-     -> AsyncT m ach' bef' aft' a'
+     -> AsyncT ach' m bef' aft' a'
      -- ^Right branch of the fork
-     -> AsyncT m (Concat ach ach') (ForkIndexOr bef bef') (ForkIndexOr aft aft') (ChooseRet aft aft' a a')
+     -> AsyncT (Concat ach ach') m (ForkIndexOr bef bef') (ForkIndexOr aft aft') (ChooseRet aft aft' a a')
 fork prf l r = case getIndexStartCompPrf @bef @bef' of
   ForkIndexCompNone -> M.do
     SomeSndMessage i m <- recvAny
@@ -199,8 +199,8 @@ fork prf l r = case getIndexStartCompPrf @bef @bef' of
 permChans :: (KnownIndex bef, Monad m)
          => (forall x y. Chan x y l -> Chan x y l')
          -> (forall x y. Chan x y l' -> Chan x y l)
-         -> AsyncT m l bef aft a
-         -> AsyncT m l' bef aft a
+         -> AsyncT l m bef aft a
+         -> AsyncT l' m bef aft a
 permChans f g cont = getWT >>=: \case
   SNextRecv -> M.do
     lift (runTillRecv cont) >>=: \case
@@ -229,8 +229,8 @@ swap :: ( KnownIndex bef
      -- ^Proof of @l == p ++ (f:s:rest)@
      -> ListSplitD l' p (s:f:rest)
      -- ^Proof of @l' == p ++ (s:f:rest)@
-     -> AsyncT m l bef aft a
-     -> AsyncT m l' bef aft a
+     -> AsyncT l m bef aft a
+     -> AsyncT l' m bef aft a
 swap prf prf' cont = permChans (f prf prf') (f prf' prf) cont
   where
     f :: ListSplitD l p (f:s:rest)
@@ -248,9 +248,9 @@ swap prf prf' cont = permChans (f prf prf') (f prf' prf) cont
 -- |Proof that an action that's only allowed to return in `NextSend` state will
 -- not do so in `NextRecv` state.
 doesNotReturnInRecvPrf :: forall aft a m ach. MayOnlyReturnAfterRecv aft a
-                       => RecvRes m ach aft a
+                       => RecvRes ach m aft a
                        -- ^Result of running `runTillRecv`
-                       -> (SomeSndMessage ach -> AsyncT m ach NextSend aft a)
+                       -> (SomeSndMessage ach -> AsyncT ach m NextSend aft a)
                        -- ^The continutation that tells how the process chose to receive the message
 doesNotReturnInRecvPrf = \case
   RrHalt contra -> case getMayOnlyReturnAfterRecvPrf @aft @a of
@@ -264,9 +264,9 @@ connect :: (Monad m, KnownIndex bef, MayOnlyReturnAfterRecv aft a)
         -- ^Proof of @l == p ++ ('(x, y) : '(y, x) : rest)@
         -> ListSplitD l' p rest
         -- ^Proof of @l' == p ++ rest@
-        -> AsyncT m l bef aft a
+        -> AsyncT l m bef aft a
         -- ^Exectuion where we want to connect the channels
-        -> AsyncT m l' bef aft a
+        -> AsyncT l' m bef aft a
 connect prf prf' cont = getWT >>=: \case
     SNextRecv -> M.do
       lift (runTillRecv cont) >>=: \case
@@ -328,7 +328,7 @@ connect prf prf' cont = getWT >>=: \case
 --
 -- Apply this function once you've bound all the free channels to run the execution.
 escapeSyncT :: Monad m
-            => AsyncT m '[] NextSend NextSend a
+            => AsyncT '[] m NextSend NextSend a
             -> m a
 escapeSyncT cont = runTillSend cont >>= \case
   SrSend (SomeFstMessage contra _) _ -> case contra of {}
@@ -339,16 +339,16 @@ escapeSyncT cont = runTillSend cont >>= \case
 --
 -- This is not a basic combinator and is derived using `fork` and `connect`.
 connectSelf :: forall bef m x rest a . (Monad m, KnownIndex bef)
-            => AsyncT m ('(x, x) : rest) bef NextSend a
+            => AsyncT ('(x, x) : rest) m bef NextSend a
             -- ^An execution where the first free channel is its own dual
-            -> AsyncT m rest bef NextSend a
+            -> AsyncT rest m bef NextSend a
 connectSelf p = getWT >>=: \case
     SNextRecv -> connect SplitHere SplitHere $ fork getKnownLenPrf idProc p
     SNextSend -> connect SplitHere SplitHere $ fork getKnownLenPrf idProc p
 
 -- |Process that sends back everything it gets
 idProc :: Monad m
-       => AsyncT m '[ '(x, x)] NextRecv NextRecv Void
+       => AsyncT '[ '(x, x)] m NextRecv NextRecv Void
 idProc = M.do
   recvOne >>=: sendOne
   idProc
@@ -357,7 +357,7 @@ idProc = M.do
 --
 -- Any message that arrives on the merged channels is passed as is with no
 -- marking to tell what channel it came from.
-mergeProc :: AsyncT m '[ '(a, Void), '(Void, a), '(Void, a)] NextRecv NextRecv Void
+mergeProc :: AsyncT '[ '(a, Void), '(Void, a), '(Void, a)] m NextRecv NextRecv Void
 mergeProc = M.do
   () <- recvAny >>=: \case
     SomeSndMessage Here contra -> case contra of {}
@@ -388,7 +388,7 @@ mergeProc = M.do
 -- Function `runExec` returns the result of the process that termiates in
 -- `NextSend`.
 
-data Exec m ach i a where
+data Exec ach m i a where
   -- |An execution consisting of one process.
   ExecProc :: (MayOnlyReturnAfterRecv i a)
            => AsyncT m ach i i a
@@ -397,11 +397,11 @@ data Exec m ach i a where
   -- |Combine two executions.
   ExecFork :: (Forkable i i' i i' a a')
            => KnownLenD ach
-           -> Exec m ach i a
+           -> Exec ach m i a
            -- ^First forked process
-           -> Exec m ach' i' a'
+           -> Exec ach' m i' a'
            -- ^Second forked process
-           -> Exec m (Concat ach ach') (ForkIndexOr i i') (ChooseRet i i' a a')
+           -> Exec (Concat ach ach') m (ForkIndexOr i i') (ChooseRet i i' a a')
   -- |Swap positions of two adjacent free channels.
   ExecSwap :: ( KnownIndex i
               , Monad m
@@ -410,17 +410,17 @@ data Exec m ach i a where
            -- ^Proof of @l == p ++ (f:s:rest)@
            -> ListSplitD l' p (s:f:rest)
            -- ^Proof of @l' == p ++ (s:f:rest)@
-           -> Exec m l i a
-           -> Exec m l' i a
+           -> Exec l m i a
+           -> Exec l' m i a
   -- |Connect two adjacent free channels of a given execution (making them bound).
   ExecConn :: (KnownIndex i, MayOnlyReturnAfterRecv i a)
            => ListSplitD l p ('(x, y) : '(y, x) : rest)
            -- ^Proof of @l == p ++ ('(x, y) : '(y, x) : rest)@
            -> ListSplitD l' p rest
            -- ^Proof of @l' == p ++ rest@
-           -> Exec m l i a
+           -> Exec l m i a
            -- ^Exectuion where we want to connect the channels
-           -> Exec m l' i a
+           -> Exec l' m i a
 
 data ExecIndex
   = ExecIndexInit
@@ -431,7 +431,7 @@ data ExecIndex
 type MatchExecIndex :: (Type -> Type) -> ExecIndex -> Type
 type family MatchExecIndex m i where
   MatchExecIndex _ ExecIndexInit = ()
-  MatchExecIndex m (ExecIndexSome l i res) = Exec m l i res
+  MatchExecIndex m (ExecIndexSome l i res) = Exec l m i res
 
 type ExecWriter :: (Type -> Type) -> ExecIndex -> ExecIndex -> Type -> Type
 newtype ExecWriter m i j a = ExecWriter
@@ -453,7 +453,7 @@ execWriterToExec p = f ()
     (f, ()) = runXWriter $ runExecWriter p
 
 procM :: MayOnlyReturnAfterRecv i res
-      => AsyncT m l i i res
+      => AsyncT l m i i res
       -> ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
 procM = ExecWriter . tell . const . ExecProc
 
@@ -501,13 +501,13 @@ guardM = xreturn ()
 -- Note that the list of free channels must be empty, i.e. all channels must be
 -- bound for an execution to be defined.
 runExec :: Monad m
-        => Exec m '[] NextSend a
+        => Exec '[] m NextSend a
         -> m a
 runExec = escapeSyncT . f
   where
     f :: Monad m
-      => Exec m ach i a
-      -> AsyncT m ach i i a
+      => Exec ach m i a
+      -> AsyncT ach m i i a
     f = \case
       ExecProc p -> p
       ExecFork prf l r -> fork prf (f l) (f r)

@@ -43,24 +43,24 @@ import LUCk.Syntax.Class
 
 -- |@bef@ and @aft@ are the states before and after the given action. The
 -- meaning of possible states is as follows:
-data AsyncActions (m :: Type -> Type) (ex :: [(Type, Index)]) (ach :: [(Type, Type)])
+data AsyncActions (ex :: [(Type, Index)]) (ach :: [(Type, Type)]) (m :: Type -> Type)
                   (bef :: Index) (aft :: Index) (a :: Type) where
   RecvAction :: (SomeSndMessage ach -> a)
-             -> AsyncActions m ex ach NextRecv NextSend a
+             -> AsyncActions ex ach m NextRecv NextSend a
   SendAction :: SomeFstMessage ach
              -> a
-             -> AsyncActions m ex ach NextSend NextRecv a
+             -> AsyncActions ex ach m NextSend NextRecv a
   -- |Throw an exception.
   ThrowAction :: InList '(e, b) ex
               -> e
-              -> AsyncActions m ex ach b b' a
+              -> AsyncActions ex ach m b b' a
 
   -- |Run a local action in the inner monad.
   LiftAction :: m x
              -> (x -> a)
-             -> AsyncActions m ex ach b b a
+             -> AsyncActions ex ach m b b a
 
-instance Functor (AsyncActions m ex ach bef aft) where
+instance Functor (AsyncActions ex ach m bef aft) where
   fmap f (RecvAction cont) = RecvAction $ f . cont
   fmap f (SendAction m r) = SendAction m $ f r
   fmap _ (ThrowAction i e) = ThrowAction i e
@@ -95,30 +95,30 @@ instance Functor (AsyncActions m ex ach bef aft) where
 -- which it is thrown.
 --
 -- `AsyncT` is a special version of `AsyncExT` where exceptions are disabled.
-newtype AsyncExT m ex ach bef aft a
-    = AsyncExT { runInterT :: XFree (AsyncActions m ex ach) bef aft a }
+newtype AsyncExT ex ach m bef aft a
+    = AsyncExT { runInterT :: XFree (AsyncActions ex ach m) bef aft a }
   deriving (Functor)
 
-instance bef ~ aft => Applicative (AsyncExT m ex ach bef aft) where
+instance bef ~ aft => Applicative (AsyncExT ex ach m bef aft) where
   f <*> m = AsyncExT $ runInterT f <*> runInterT m
   pure = AsyncExT . pure
 
-instance bef ~ aft => Monad (AsyncExT m ex ach bef aft) where
+instance bef ~ aft => Monad (AsyncExT ex ach m bef aft) where
   m >>= f = AsyncExT $ runInterT m Monad.>>= (runInterT . f)
 
-instance XApplicative (AsyncExT m ex ach) where
+instance XApplicative (AsyncExT ex ach m) where
   xpure = AsyncExT . xpure
   f <*>: x = AsyncExT $ runInterT f <*>: runInterT x
 
-instance XMonad (AsyncExT m ex ach) where
+instance XMonad (AsyncExT ex ach m) where
   m >>=: f = AsyncExT $ runInterT m >>=: (runInterT . f)
 
-xfreeAsync :: AsyncActions m ex ach bef aft a -> AsyncExT m ex ach bef aft a
+xfreeAsync :: AsyncActions ex ach m bef aft a -> AsyncExT ex ach m bef aft a
 xfreeAsync = AsyncExT . xfree
 
 -- Sync
 
-lift :: m a -> AsyncExT m ex ach b b a
+lift :: m a -> AsyncExT ex ach m b b a
 lift m = xfreeAsync $ LiftAction m id
 
 -- Haskell can't derive these for us when there are ambiguous types in M.do notation:
@@ -128,25 +128,25 @@ lift m = xfreeAsync $ LiftAction m id
 --   b <- rand
 -- @
 
-instance (Print m, b ~ b') => Print (AsyncExT m ex ach b b') where
+instance (Print m, b ~ b') => Print (AsyncExT ex ach m b b') where
   debugPrint = lift . debugPrint
 
-instance (Rand m, b ~ b') => Rand (AsyncExT m ex ach b b') where
+instance (Rand m, b ~ b') => Rand (AsyncExT ex ach m b b') where
   rand = lift $ rand
 
-instance XThrow (AsyncExT m ex ach) ex where
+instance XThrow (AsyncExT ex ach m) ex where
   xthrow i ex = xfreeAsync $ ThrowAction i ex
 
 instance XCatch
-    (AsyncExT m ex ach)
+    (AsyncExT ex ach m)
     ex
-    (AsyncExT m ex' ach)
+    (AsyncExT ex' ach m)
   where
     xcatch (AsyncExT a) h = AsyncExT $ xcatch' a $ \i e -> runInterT (h i e)
       where
-        xcatch' :: XFree (AsyncActions m ex ach) bef aft a
-                -> (forall e b. InList '(e, b) ex -> e -> XFree (AsyncActions m ex' ach) b aft a)
-                -> XFree (AsyncActions m ex' ach) bef aft a
+        xcatch' :: XFree (AsyncActions ex ach m) bef aft a
+                -> (forall e b. InList '(e, b) ex -> e -> XFree (AsyncActions ex' ach m) b aft a)
+                -> XFree (AsyncActions ex' ach m) bef aft a
         xcatch' (Pure x) _ = xreturn x
         xcatch' (Join a') h' = case a' of
             RecvAction cont -> Join $ RecvAction $ (`xcatch'` h') . cont
@@ -154,7 +154,7 @@ instance XCatch
             ThrowAction i e -> h' i e
             LiftAction m cont -> Join $ LiftAction m $ (`xcatch'` h') . cont
 
-instance Async (AsyncExT m ex ach) ach where
+instance Async (AsyncExT ex ach m) ach where
   sendMess m = xfreeAsync $ SendAction m ()
   recvAny = xfreeAsync $ RecvAction id
 
@@ -163,7 +163,7 @@ instance Async (AsyncExT m ex ach) ach where
 -- definitions should suffice for most of the programs you'd want to write.
 
 -- |Same as `AsyncExT`, but with exceptions off.
-type AsyncT m ach = AsyncExT m '[] ach
+type AsyncT = AsyncExT '[]
 
 -- $step
 --
@@ -177,19 +177,19 @@ type AsyncT m ach = AsyncExT m '[] ach
 -- Interactive Turing Machine.
 
 -- |The result of `runTillSend`
-data SendRes m ach aft a where
+data SendRes ach m aft a where
   -- |Algorithm called `send`.
   SrSend :: SomeFstMessage ach
-         -> AsyncT m ach NextRecv aft a
-         -> SendRes m ach aft a
+         -> AsyncT ach m NextRecv aft a
+         -> SendRes ach m aft a
   -- |Algorithm called `sendFinal`.
-  SrHalt :: a -> SendRes m ach NextSend a
+  SrHalt :: a -> SendRes ach m NextSend a
 
 -- |Given `AsyncExT` action starting in `NextSend` state (holding write token),
 -- run it until it does `send` or halts.
 runTillSend :: Monad m
-            => AsyncT m ach NextSend b a
-            -> m (SendRes m ach b a)
+            => AsyncT ach m NextSend b a
+            -> m (SendRes ach m b a)
 runTillSend (AsyncExT (Pure v)) = pure $ SrHalt v
 runTillSend (AsyncExT (Join v)) = case v of
   SendAction x r -> pure $ SrSend x $ AsyncExT r
@@ -197,19 +197,19 @@ runTillSend (AsyncExT (Join v)) = case v of
   LiftAction m cont -> m >>= runTillSend . AsyncExT . cont
 
 -- |The result of `runTillRecv`.
-data RecvRes m ach aft a where
+data RecvRes ach m aft a where
   -- |Algorithm ran `recvAny`.
-  RrRecv :: (SomeSndMessage ach -> AsyncT m ach NextSend aft a)
-         -> RecvRes m ach aft a
+  RrRecv :: (SomeSndMessage ach -> AsyncT ach m NextSend aft a)
+         -> RecvRes ach m aft a
   -- |Algorithm has halted without accepting a message
   RrHalt :: a
-         -> RecvRes m ach NextRecv a
+         -> RecvRes ach m NextRecv a
 
 -- |Given an action that starts in a `NextRecv` state (no write token), run it
 -- until it receives the write token via `recvAny` or halts.
 runTillRecv :: Monad m
-        => AsyncT m ach NextRecv b a
-        -> m (RecvRes m ach b a)
+        => AsyncT ach m NextRecv b a
+        -> m (RecvRes ach m b a)
 runTillRecv (AsyncExT (Pure v)) = pure $ RrHalt v
 runTillRecv (AsyncExT (Join v)) = case v of
   RecvAction cont -> pure $ RrRecv $ AsyncExT . cont
@@ -249,9 +249,9 @@ runTillRecv (AsyncExT (Join v)) = case v of
 -- |Proof: A program with sync channels and return type `Void` may not
 -- terminate; if it starts from `NextRecv` state, it will inevitably request
 -- an rx message.
-mayOnlyRecvVoidPrf :: RecvRes m ach aft Void
+mayOnlyRecvVoidPrf :: RecvRes ach m aft Void
                    -> SomeSndMessage ach
-                   -> AsyncT m ach NextSend aft Void
+                   -> AsyncT ach m NextSend aft Void
 mayOnlyRecvVoidPrf = \case
   RrHalt contra -> case contra of {}
   RrRecv x -> x
@@ -259,8 +259,8 @@ mayOnlyRecvVoidPrf = \case
 -- |Proof: A program with sync channels and return type `Void` may not
 -- terminate; if it starts from `NextSend` state, it will inevitably request to
 -- send a message.
-mayOnlySendVoidPrf :: SendRes m ach aft Void
-                   -> (SomeFstMessage ach, AsyncT m ach NextRecv aft Void)
+mayOnlySendVoidPrf :: SendRes ach m aft Void
+                   -> (SomeFstMessage ach, AsyncT ach m NextRecv aft Void)
 mayOnlySendVoidPrf = \case
   SrHalt contra -> case contra of {}
   SrSend m cont -> (m, cont)

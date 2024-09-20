@@ -68,7 +68,7 @@ liftAsyncT :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b)
                 )
                => (SBool pr, SBool ra)
                -- ^An argument that helps GHC evaluate constraints
-               -> S.AsyncExT (L.Algo pr ra) ex up bef aft a
+               -> S.AsyncExT ex up (L.Algo pr ra) bef aft a
                -> m bef aft a
 liftAsyncT _ (S.AsyncExT (Pure v)) = xreturn v
 liftAsyncT h (S.AsyncExT (Join v)) =

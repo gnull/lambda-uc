@@ -16,5 +16,5 @@ tests :: TestTree
 tests = testCase "split" $ do
     shouldNotTypecheck $ sendWithoutWt
   where
-    sendWithoutWt :: Chan String String ach -> AsyncT (Algo pr ra) ach NextRecv NextRecv ()
+    sendWithoutWt :: Chan String String ach -> AsyncT ach (Algo pr ra) NextRecv NextRecv ()
     sendWithoutWt ch = send ch "hey"
