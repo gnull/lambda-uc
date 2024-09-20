@@ -94,12 +94,7 @@ instance Functor (AsyncActions m ex ach bef aft) where
 -- st@. Each exception is defined by a type of value thrown and `Index` from
 -- which it is thrown.
 --
--- All three types of side-effects are optional and can be disabled on-demand
--- by setting the fields of `InterPars`. We provide type-synonyms for such
--- monads that allow only part of `AsyncExT`'s full functionality:
---
--- - `AsyncExT` provides only asyncronous `send` and `recvAny`, as well as allows thowing excetpions.
--- - `AsyncT` is a special version of `AsyncExT` where exceptions are disabled.
+-- `AsyncT` is a special version of `AsyncExT` where exceptions are disabled.
 newtype AsyncExT m ex ach bef aft a
     = AsyncExT { runInterT :: XFree (AsyncActions m ex ach) bef aft a }
   deriving (Functor)
