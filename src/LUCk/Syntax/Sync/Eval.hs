@@ -45,7 +45,7 @@ import qualified Control.Monad.Trans.Class as Trans
 
 -- |An algorithm with no parent and with access to child oracles given by
 -- `down`.
-type OracleCaller m down = SyncT m down
+type OracleCaller m down = SyncT down m
 
 -- |An algorithm serving oracle calls from parent, but not having access to
 -- any oracles of its own.
