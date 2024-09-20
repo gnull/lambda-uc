@@ -8,8 +8,6 @@ module LUCk.Syntax.Class
   , Rand(..)
   , UniformDist(..)
   , rangeDist
-  , Throw(..)
-  , Catch(..)
   -- * Interactive Computations
   -- $interactive
   , getWT
@@ -103,14 +101,6 @@ rangeDist = \f t -> (f +) <$> rangeDist0 (t - f)
         return nb
       else
         rangeDist0 n
-
-class Monad m => Throw (m :: Type -> Type) (e :: Type) | m -> e where
-  -- |Throw an exception.
-  throw :: e -> m a
-
-class (Throw m e, Monad m') => Catch m e m' | m -> e where
-  -- |Catch an exception.
-  catch :: m a -> (e -> m' a) -> m' a
 
 -- $interactive
 --
