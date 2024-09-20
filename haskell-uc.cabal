@@ -84,6 +84,7 @@ common deft-test
                      , tasty
                      , tasty-hunit
                      , HUnit
+                     , fin
   ghc-options:
     -Wno-unused-imports
     -Wno-missing-export-lists

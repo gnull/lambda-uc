@@ -7,6 +7,9 @@ import Control.XMonad
 import qualified Control.XMonad.Do as M
 
 import Data.Type.Equality ((:~:)(Refl))
+import Data.Fin (Fin(..))
+import Data.Nat (Nat(..))
+import Data.Type.Nat
 
 import LUCk.Syntax
 import LUCk.Syntax.Async.Eval
@@ -24,16 +27,19 @@ tests = testGroup "async execution tests"
       liftAlgo (runExec $ threeSum 100 10 1) >>= (@?= 111)
   , testCase "round trip 3 processes, monadic notation" $
       liftAlgo (runExec $ execWriterToExec $ threeSumWriter 100 10 1) >>= (@?= 111)
+  , testCase "guessing game" $
+      liftAlgo (fmap (<= 7) $ runExec $ execWriterToExec guessingExec) >>= (@?= True)
   ]
 
-type M = Algo False False
+type PureM = Algo True False
+type RandM = Algo True True
 
-twoSum :: Int -> Int -> Exec M '[] NextSend Int
+twoSum :: Int -> Int -> Exec PureM '[] NextSend Int
 twoSum x y =
   ExecConn SplitHere SplitHere $
   ExecFork (KnownLenS KnownLenZ) (ExecProc $ sender x) (ExecProc $ receiver y)
 
-threeSum :: Int -> Int -> Int -> Exec M '[] NextSend Int
+threeSum :: Int -> Int -> Int -> Exec PureM '[] NextSend Int
 threeSum x y z =
   ExecConn Split0 Split0 $
   ExecConn Split1 Split1 $
@@ -43,7 +49,7 @@ threeSum x y z =
     (ExecProc $ receiver2 y)
     (ExecProc $ receiver2 z)
 
-threeSumWriter :: Int -> Int -> Int -> ExecWriter M ExecIndexInit (ExecIndexSome '[] NextSend Int) ()
+threeSumWriter :: Int -> Int -> Int -> ExecWriter PureM ExecIndexInit (ExecIndexSome '[] NextSend Int) ()
 threeSumWriter x y z = M.do
   procM $ receiver2 x
   guardM @('[ '(Int, Void), '(Void, Int)])
@@ -59,18 +65,18 @@ threeSumWriter x y z = M.do
   guardM @('[ '(Int, Void), '(Void, Int)])
   connectM Split0 Split0
 
-sender :: Int -> AsyncT M '[ '(Int, Int)] NextSend NextSend Int
+sender :: Int -> AsyncT PureM '[ '(Int, Int)] NextSend NextSend Int
 sender x = M.do
   sendOne x
   recvOne
 
-receiver :: Int -> AsyncT M '[ '(Int, Int)] NextRecv NextRecv Void
+receiver :: Int -> AsyncT PureM '[ '(Int, Int)] NextRecv NextRecv Void
 receiver x = M.do
   m <- recvOne
   sendOne $ m + x
   receiver x
 
-sender2 :: Int -> AsyncT M '[ '(Int, Void), '(Void, Int)] NextSend NextSend Int
+sender2 :: Int -> AsyncT PureM '[ '(Int, Void), '(Void, Int)] NextSend NextSend Int
 sender2 x = M.do
   send Here x
   recvAny >>=: \case
@@ -78,7 +84,7 @@ sender2 x = M.do
     SomeSndMessage (There Here) m -> xreturn m
     SomeSndMessage (There2 contra) _ -> case contra of {}
 
-receiver2 :: Int -> AsyncT M '[ '(Int, Void), '(Void, Int)] NextRecv NextRecv Void
+receiver2 :: Int -> AsyncT PureM '[ '(Int, Void), '(Void, Int)] NextRecv NextRecv Void
 receiver2 x = M.do
   m <- recvAny >>=: \case
     SomeSndMessage Here contra -> case contra of {}
@@ -87,6 +93,65 @@ receiver2 x = M.do
   send Here $ m + x
   receiver2 x
 
+-- |Showcases properties:
+--
+-- - Directly using rangeDist local computation in AsyncT monad, due to its
+--   polymorphic signatures. One could as well use an explicit `lift` call to
+--   make types less ambiguous for constraint resolver.
+--
+-- - Recursive action helper, with type system ensuring that recursion preserves
+--   alternation of `send` and `recvAny`.
+--
+-- - Polymorphic monad
+guessingChallenger :: (Rand m, Print m)
+                   => AsyncT m '[ '(Ordering, Integer)] NextRecv NextRecv Void
+guessingChallenger =  M.do
+    secret <- rangeDist 0 100
+    debugPrint $ "challenger picked secret " ++ show secret
+    helper secret
+  where
+    helper :: Print m => Integer -> AsyncT m '[ '(Ordering, Integer)] NextRecv NextRecv Void
+    helper secret = M.do
+      guess <- recvOne
+      let res = secret `compare` guess
+      debugPrint $ "challenger response " ++ show res
+      sendOne res
+      helper secret
+
+-- |Showcases:
+--
+-- - ensuring that player is deterministic
+-- - using undefined to mark conditions that are not considered (assumed to never occur)
+guessingPlayer :: Print m
+               => AsyncT m '[ '(Integer, Ordering)] NextSend NextSend Integer
+guessingPlayer = M.do
+    n <- helper 0 100
+    debugPrint $ "found result in " ++ show n ++ " attempts"
+    xreturn n
+  where
+    helper :: Print m
+           => Integer
+           -> Integer
+           -> AsyncT m '[ '(Integer, Ordering)] NextSend NextSend Integer
+    helper f t
+      | f >= t = undefined
+      | f == t - 1 = xreturn f
+      | otherwise = M.do
+          let mid = (f + t) `div` 2
+          debugPrint $ "guessing  " ++ show mid
+          sendOne mid
+          v <- recvOne >>=: \case
+            LT -> helper f mid
+            EQ -> xreturn 1
+            GT -> helper (mid + 1) t
+          xreturn $ v + 1
+
+guessingExec :: ExecWriter RandM ExecIndexInit (ExecIndexSome '[] NextSend Integer) ()
+guessingExec = M.do
+  procM $ guessingChallenger
+  forkLeft getKnownLenPrf $
+    procM guessingPlayer
+  connectM Split0 Split0
 
 -- |Sends String s to the given channel, waits for the other side to repond with
 test :: String -> AsyncExT m e '[ '(String, Int)] NextSend NextSend Int

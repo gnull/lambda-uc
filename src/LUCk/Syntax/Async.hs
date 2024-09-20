@@ -126,10 +126,17 @@ xfreeAsync = AsyncExT . xfree
 lift :: m a -> AsyncExT m ex ach b b a
 lift m = xfreeAsync $ LiftAction m id
 
-instance Print m => Print (AsyncExT m ex ach b b) where
+-- Haskell can't derive these for us when there are ambiguous types in M.do notation:
+--
+-- @
+--   debugPring "hey"
+--   b <- rand
+-- @
+
+instance (Print m, b ~ b') => Print (AsyncExT m ex ach b b') where
   debugPrint = lift . debugPrint
 
-instance Rand m => Rand (AsyncExT m ex ach b b) where
+instance (Rand m, b ~ b') => Rand (AsyncExT m ex ach b b') where
   rand = lift $ rand
 
 instance XThrow (AsyncExT m ex ach) ex where

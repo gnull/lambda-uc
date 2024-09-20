@@ -7,6 +7,7 @@ module LUCk.Syntax.Class
     Print(..)
   , Rand(..)
   , UniformDist(..)
+  , rangeDist
   , Throw(..)
   , Catch(..)
   -- * Interactive Computations
@@ -32,12 +33,14 @@ module LUCk.Syntax.Class
 import Data.Kind
 import Data.HList
 
+import Control.Monad
+
 import Control.XMonad
 import Control.XApplicative
 import qualified Control.XMonad.Do as M
 
 import Control.XMonad
-import Data.Type.Equality ((:~:)(Refl))
+-- import Data.Type.Equality ((:~:)(Refl))
 import LUCk.Types
 
 import qualified System.Random as Random
@@ -80,6 +83,27 @@ class UniformDist s where
   -- |Sample a uniformly random value from `s`
   uniformDist :: forall m. Rand m => m s
 
+instance UniformDist Bool where
+  uniformDist = rand
+
+-- |Sample a random value from the given range of `Integer`
+rangeDist :: Rand m => Integer -> Integer -> m Integer
+rangeDist = \f t -> (f +) <$> rangeDist0 (t - f)
+  where
+    integerLog2Ceil x | x == 1 = 1
+                      | x `mod` 2 == 0 = 1 + integerLog2Ceil (x `div` 2)
+                      | otherwise = integerLog2Ceil $ x + 1
+
+    fromBase2 l = sum $ zipWith (*) l $ map (2^) [0..]
+
+    rangeDist0 n = do
+      let p = integerLog2Ceil n
+      nb <- fmap fromBase2 $ fmap (map $ toInteger . fromEnum) $ replicateM p $ uniformDist @Bool
+      if nb < n then
+        return nb
+      else
+        rangeDist0 n
+
 class Monad m => Throw (m :: Type -> Type) (e :: Type) | m -> e where
   -- |Throw an exception.
   throw :: e -> m a
@@ -94,7 +118,7 @@ class (Throw m e, Monad m') => Catch m e m' | m -> e where
 -- algorithms: reading the current state of the write token, throwing
 -- write-token-aware exceptions.
 
--- |Wrapper around `getSMaybeBool` that tells you what context you're in.
+-- |Wrapper around `getSIndex` that tells you what context you're in.
 getWT :: (XMonad m, KnownIndex b) => m b b (SIndex b)
 getWT = xreturn getSIndex
 
