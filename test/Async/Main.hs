@@ -51,19 +51,19 @@ threeSum x y z =
 
 threeSumWriter :: Int -> Int -> Int -> ExecWriter PureM ExecIndexInit (ExecIndexSome '[] NextSend Int) ()
 threeSumWriter x y z = M.do
-  procM $ receiver2 x
-  guardM @('[ '(Int, Void), '(Void, Int)])
+  process $ receiver2 x
+  guard @('[ '(Int, Void), '(Void, Int)])
   forkLeft getKnownLenPrf $
-    procM $ receiver2 y
-  guardM @('[ '(Int, Void), '(Void, Int), '(Int, Void), '(Void, Int)])
-  connectM Split1 Split1
-  guardM @('[ '(Int, Void), '(Void, Int)])
+    process $ receiver2 y
+  guard @('[ '(Int, Void), '(Void, Int), '(Int, Void), '(Void, Int)])
+  connect Split1 Split1
+  guard @('[ '(Int, Void), '(Void, Int)])
   forkLeft getKnownLenPrf $
-    procM $ sender2 z
-  guardM @('[ '(Int, Void), '(Void, Int), '(Int, Void), '(Void, Int)])
-  connectM Split1 Split1
-  guardM @('[ '(Int, Void), '(Void, Int)])
-  connectM Split0 Split0
+    process $ sender2 z
+  guard @('[ '(Int, Void), '(Void, Int), '(Int, Void), '(Void, Int)])
+  connect Split1 Split1
+  guard @('[ '(Int, Void), '(Void, Int)])
+  connect Split0 Split0
 
 sender :: Int -> AsyncT '[ '(Int, Int)] PureM NextSend NextSend Int
 sender x = M.do
@@ -148,10 +148,10 @@ guessingPlayer = M.do
 
 guessingExec :: ExecWriter RandM ExecIndexInit (ExecIndexSome '[] NextSend Integer) ()
 guessingExec = M.do
-  procM $ guessingChallenger
+  process $ guessingChallenger
   forkLeft getKnownLenPrf $
-    procM guessingPlayer
-  connectM Split0 Split0
+    process guessingPlayer
+  connect Split0 Split0
 
 -- |Sends String s to the given channel, waits for the other side to repond with
 test :: String -> AsyncExT e '[ '(String, Int)] m NextSend NextSend Int

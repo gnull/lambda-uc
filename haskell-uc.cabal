@@ -65,6 +65,7 @@ library
       LUCk.Syntax.Algo
       LUCk.Syntax.Async
       LUCk.Syntax.Async.Eval
+      LUCk.Syntax.Async.Eval.Internal
       LUCk.Syntax.Async.SomeWT
       LUCk.Syntax.Sync
       LUCk.Syntax.Sync.Eval
