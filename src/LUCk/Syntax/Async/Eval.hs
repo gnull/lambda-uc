@@ -1,3 +1,5 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
 module LUCk.Syntax.Async.Eval
   (
   -- * Execution Syntax
@@ -12,11 +14,16 @@ module LUCk.Syntax.Async.Eval
   , execWriterToExec
   -- ** Actions
   -- $actions
+  , process'
+  , forkLeft'
+  , forkRight'
+  , connect'
+  , swap'
   , process
   , forkLeft
   , forkRight
   , connect
-  , swap
+  -- , swap
   , guard
   )
 where
@@ -55,13 +62,13 @@ import LUCk.Types
 
 data Exec ach m i a where
   -- |An execution consisting of one process.
-  ExecProc :: (MayOnlyReturnAfterRecv i a)
-           => AsyncT m ach i i a
+  ExecProc :: MayOnlyReturnAfterRecvD i a
+           -> AsyncT m ach i i a
            -- ^The code that the process will run
            -> Exec m ach i a
   -- |Combine two executions.
-  ExecFork :: (Forkable i i' a a')
-           => KnownLenD ach
+  ExecFork :: ForkPremiseD i i' i i' a a'
+           -> KnownLenD ach
            -> Exec ach m i a
            -- ^First forked process
            -> Exec ach' m i' a'
@@ -78,8 +85,9 @@ data Exec ach m i a where
            -> Exec l m i a
            -> Exec l' m i a
   -- |Connect two adjacent free channels of a given execution (making them bound).
-  ExecConn :: (KnownIndex i, MayOnlyReturnAfterRecv i a)
-           => ListSplitD l p ('(x, y) : '(y, x) : rest)
+  ExecConn :: KnownIndex i
+           => MayOnlyReturnAfterRecvD i a
+           -> ListSplitD l p ('(x, y) : '(y, x) : rest)
            -- ^Proof of @l == p ++ ('(x, y) : '(y, x) : rest)@
            -> ListSplitD l' p rest
            -- ^Proof of @l' == p ++ rest@
@@ -170,46 +178,82 @@ execWriterToExec p = f ()
 -- verify that the annotation is correct. In some rare cases, `guard` can also
 -- be used to resolve ambiguous types.
 
-process :: MayOnlyReturnAfterRecv i res
-      => AsyncT l m i i res
-      -> ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
-process = ExecWriter . tell . const . ExecProc
+process' :: MayOnlyReturnAfterRecvD i res
+         -> AsyncT l m i i res
+         -> ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
+process' retPrf = ExecWriter . tell . const . ExecProc retPrf
 
-forkLeft :: Forkable i i' res res'
-         => KnownLenD l
+process :: MayOnlyReturnAfterRecv i res
+        => AsyncT l m i i res
+        -> ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
+process = process' getMayOnlyReturnAfterRecvPrf
+
+forkLeft' :: ForkPremiseD i i' i i' res res'
+         -> KnownLenD l
          -> ExecWriter m ExecIndexInit (ExecIndexSome l' i' res') ()
          -> ExecWriter m (ExecIndexSome l i res)
                          (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
                          ()
-forkLeft prf p = ExecWriter $ tell $
-  \e -> ExecFork prf e $ execWriterToExec p
+forkLeft' fPrf prf p = ExecWriter $ tell $
+  \e -> ExecFork fPrf prf e $ execWriterToExec p
 
-forkRight :: Forkable i i' res res'
-          => KnownLenD l
-          -> ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
+forkLeft :: ( ForkIndexComp i i'
+            , MayOnlyReturnAfterRecv i res
+            , MayOnlyReturnAfterRecv i' res'
+            , KnownLen l
+            )
+         => ExecWriter m ExecIndexInit (ExecIndexSome l' i' res') ()
+         -> ExecWriter m (ExecIndexSome l i res)
+                         (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
+                         ()
+forkLeft = forkLeft' getForkPremiseD getKnownLenPrf
+
+forkRight' :: ForkPremiseD i i' i i' res res'
+           -> KnownLenD l
+           -> ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
+           -> ExecWriter m (ExecIndexSome l' i' res')
+                           (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
+                           ()
+forkRight' fPrf prf p = ExecWriter $ tell $
+  \e -> ExecFork fPrf prf (execWriterToExec p) e
+
+forkRight :: ( ForkIndexComp i i'
+             , MayOnlyReturnAfterRecv i res
+             , MayOnlyReturnAfterRecv i' res'
+             , KnownLen l
+             )
+          => ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
           -> ExecWriter m (ExecIndexSome l' i' res')
-                          (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
-                          ()
-forkRight prf p = ExecWriter $ tell $
-  \e -> ExecFork prf (execWriterToExec p) e
+                           (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
+                           ()
+forkRight = forkRight' getForkPremiseD getKnownLenPrf
 
-connect :: (KnownIndex i, MayOnlyReturnAfterRecv i res)
-         => ListSplitD l p ('(x, y) : '(y, x) : rest)
+connect' :: KnownIndex i
+         => MayOnlyReturnAfterRecvD i res
+         -> ListSplitD l p ('(x, y) : '(y, x) : rest)
          -- ^Proof of @l == p ++ ('(x, y) : '(y, x) : rest)@
-         -> ListSplitD l' p rest
-         -- ^Proof of @l' == p ++ rest@
-         -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome l' i res) ()
-connect prf prf' = ExecWriter $ tell $ ExecConn prf prf'
+         -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome (Concat p rest) i res) ()
+connect' retPrf prf = ExecWriter $ tell $ ExecConn retPrf prf $
+  case listSplitConcat prf of
+    Refl -> listSplitPopSuffix $ listSplitPopSuffix prf
 
-swap :: ( KnownIndex i
+connect :: -- forall l p i res x y rest m.
+           ( KnownIndex i
+           , MayOnlyReturnAfterRecv i res
+           )
+        => ListSplitD l p ('(x, y) : '(y, x) : rest)
+        -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome (Concat p rest) i res) ()
+connect p = connect' getMayOnlyReturnAfterRecvPrf p
+
+swap' :: ( KnownIndex i
          , Monad m
          )
       => ListSplitD l p (f:s:rest)
       -- ^Proof of @l == p ++ (f:s:rest)@
-      -> ListSplitD l' p (s:f:rest)
-      -- ^Proof of @l' == p ++ (s:f:rest)@
-      -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome l' i res) ()
-swap prf prf' = ExecWriter $ tell $ ExecSwap prf prf'
+      -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome (Concat p (s:f:rest)) i res) ()
+swap' prf = ExecWriter $ tell $ ExecSwap prf $
+  case listSplitConcat prf of
+    Refl -> listSplitSwap prf
 
 guard :: forall l i res m. ExecWriter m (ExecIndexSome l i res) (ExecIndexSome l i res) ()
 guard = xreturn ()
@@ -227,10 +271,10 @@ runExec = escapeSyncT . f
       => Exec ach m i a
       -> AsyncT ach m i i a
     f = \case
-      ExecProc p -> p
-      ExecFork prf l r -> fork_ prf (f l) (f r)
+      ExecProc _ p -> p
+      ExecFork fPrf prf l r -> fork_ fPrf prf (f l) (f r)
       ExecSwap k k' p -> swap_ k k' $ f p
-      ExecConn k k' p -> connect_ k k' $ f p
+      ExecConn retPrf k k' p -> connect_ retPrf k k' $ f p
 
 -- |Interactive action with no free channels can be interpreted as local.
 --

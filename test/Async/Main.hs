@@ -37,34 +37,37 @@ type RandM = Algo True True
 
 twoSum :: Int -> Int -> Exec '[] PureM NextSend Int
 twoSum x y =
-  ExecConn SplitHere SplitHere $
-  ExecFork (KnownLenS KnownLenZ) (ExecProc $ sender x) (ExecProc $ receiver y)
+  ExecConn getMayOnlyReturnAfterRecvPrf SplitHere SplitHere $
+  ExecFork getForkPremiseD
+           (KnownLenS KnownLenZ)
+           (ExecProc getMayOnlyReturnAfterRecvPrf $ sender x)
+           (ExecProc getMayOnlyReturnAfterRecvPrf $ receiver y)
 
 threeSum :: Int -> Int -> Int -> Exec '[] PureM NextSend Int
 threeSum x y z =
-  ExecConn Split0 Split0 $
-  ExecConn Split1 Split1 $
-  ExecFork getKnownLenPrf (ExecProc $ sender2 x) $
-  ExecConn Split1 Split1 $
-  ExecFork getKnownLenPrf
-    (ExecProc $ receiver2 y)
-    (ExecProc $ receiver2 z)
+  ExecConn getMayOnlyReturnAfterRecvPrf Split0 Split0 $
+  ExecConn getMayOnlyReturnAfterRecvPrf Split1 Split1 $
+  ExecFork getForkPremiseD getKnownLenPrf (ExecProc getMayOnlyReturnAfterRecvPrf $ sender2 x) $
+  ExecConn getMayOnlyReturnAfterRecvPrf Split1 Split1 $
+  ExecFork getForkPremiseD getKnownLenPrf
+    (ExecProc getMayOnlyReturnAfterRecvPrf $ receiver2 y)
+    (ExecProc getMayOnlyReturnAfterRecvPrf $ receiver2 z)
 
 threeSumWriter :: Int -> Int -> Int -> ExecWriter PureM ExecIndexInit (ExecIndexSome '[] NextSend Int) ()
 threeSumWriter x y z = M.do
   process $ receiver2 x
   guard @('[ '(Int, Void), '(Void, Int)])
-  forkLeft getKnownLenPrf $
+  forkLeft $
     process $ receiver2 y
   guard @('[ '(Int, Void), '(Void, Int), '(Int, Void), '(Void, Int)])
-  connect Split1 Split1
+  connect Split1 
   guard @('[ '(Int, Void), '(Void, Int)])
-  forkLeft getKnownLenPrf $
+  forkLeft  $
     process $ sender2 z
   guard @('[ '(Int, Void), '(Void, Int), '(Int, Void), '(Void, Int)])
-  connect Split1 Split1
+  connect Split1
   guard @('[ '(Int, Void), '(Void, Int)])
-  connect Split0 Split0
+  connect Split0 
 
 sender :: Int -> AsyncT '[ '(Int, Int)] PureM NextSend NextSend Int
 sender x = M.do
@@ -150,9 +153,9 @@ guessingPlayer = M.do
 guessingExec :: ExecWriter RandM ExecIndexInit (ExecIndexSome '[] NextSend Integer) ()
 guessingExec = M.do
   process $ guessingChallenger
-  forkLeft getKnownLenPrf $
+  forkLeft $
     process guessingPlayer
-  connect Split0 Split0
+  connect Split0
 
 -- |Sends String s to the given channel, waits for the other side to repond with
 test :: String -> AsyncExT e '[ '(String, Int)] m NextSend NextSend Int
@@ -200,19 +203,23 @@ useMaybeSends e chan = M.do
 -- |Connect the first channel to itself.
 --
 -- This is not a basic combinator and is derived using `fork` and `connect`.
-connectSelf :: (Monad m, KnownIndex i, MayOnlyReturnAfterRecv i a)
+connectSelf :: forall i a m x rest.
+               (Monad m, KnownIndex i, MayOnlyReturnAfterRecv i a)
             => ExecWriter m (ExecIndexSome ('(x, x) : rest) i a) (ExecIndexSome rest i a) ()
-            -- => AsyncT ('(x, x) : rest) m bef NextSend a
-            -- -- ^An execution where the first free channel is its own dual
-            -- -> AsyncT rest m bef NextSend a
-connectSelf = M.do
-  forkRight getKnownLenPrf $ process idProc
-  undefined
-  -- connect SplitHere SplitHere
-  -- _
--- p = getWT >>=: \case
---     SNextRecv -> connect_ SplitHere SplitHere $ fork_ getKnownLenPrf idProc p
---     SNextSend -> connect_ SplitHere SplitHere $ fork_ getKnownLenPrf idProc p
+connectSelf = case lemma (getMayOnlyReturnAfterRecvPrf @i @a) getSIndex of
+    (Refl, Refl) -> M.do
+      forkRight $ process idProc
+      connect SplitHere
+  where
+    lemma :: forall i a.
+             MayOnlyReturnAfterRecvD i a
+          -> SIndex i
+          -> (ChooseRet NextRecv i Void a :~: a, ForkIndexOr NextRecv i :~: i)
+    lemma = \case
+      MayOnlyReturnType -> \_ -> (Refl, Refl)
+      MayOnlyReturnVoid -> \case
+        SNextRecv -> (Refl, Refl)
+        SNextSend -> (Refl, Refl)
 
 -- |Process that sends back everything it gets
 idProc :: Monad m

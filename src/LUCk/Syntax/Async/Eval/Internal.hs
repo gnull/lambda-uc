@@ -11,7 +11,8 @@ module LUCk.Syntax.Async.Eval.Internal
   , permChans
   -- *Helper functions and types
   -- $helpers
-  , Forkable
+  , ForkPremiseD(..)
+  , getForkPremiseD
   , ForkIndexComp(..)
   , ForkIndexCompD(..)
   , ForkIndexOr
@@ -37,14 +38,14 @@ data ForkIndexCompD (befFst :: Index) (befSnd :: Index) where
 
 type ForkIndexComp :: Index -> Index -> Constraint
 class ForkIndexComp befFst befSnd where
-  getIndexStartCompPrf :: ForkIndexCompD befFst befSnd
+  getForkIndexComp :: ForkIndexCompD befFst befSnd
 
 instance KnownIndex i => ForkIndexComp NextRecv i where
-  getIndexStartCompPrf = case getSIndex @i of
+  getForkIndexComp = case getSIndex @i of
     SNextRecv -> ForkIndexCompNone
     SNextSend -> ForkIndexCompSnd
 instance (i ~ NextRecv) => ForkIndexComp NextSend i where
-  getIndexStartCompPrf = ForkIndexCompFst
+  getForkIndexComp = ForkIndexCompFst
 
 type ForkIndexOr :: Index -> Index -> Index
 type family ForkIndexOr bef bef' where
@@ -105,11 +106,24 @@ sndToConcat (KnownLenS n) = There . sndToConcat n
 -- of `Exec`. And `escapeSyncT` evaluates a concurrent algorithm that has all
 -- of its channels bound as a local algorithm.
 
-type Forkable aft aft' a a' =
-  ( ForkIndexComp aft aft'
-  , MayOnlyReturnAfterRecv aft a
-  , MayOnlyReturnAfterRecv aft' a'
-  )
+data ForkPremiseD bef bef' aft aft' a a' = ForkPremiseD
+  { forkPremiseIndexCompBef :: ForkIndexCompD bef bef'
+  , forkPremiseIndexCompAft :: ForkIndexCompD aft aft'
+  , forkPremiseRet :: MayOnlyReturnAfterRecvD aft a
+  , forkPremiseRet' :: MayOnlyReturnAfterRecvD aft' a'
+  }
+
+getForkPremiseD :: ( ForkIndexComp bef bef'
+                   , ForkIndexComp aft aft'
+                   , MayOnlyReturnAfterRecv aft a
+                   , MayOnlyReturnAfterRecv aft' a'
+                   )
+                => ForkPremiseD bef bef' aft aft' a a'
+getForkPremiseD =
+  ForkPremiseD getForkIndexComp
+               getForkIndexComp
+               getMayOnlyReturnAfterRecvPrf
+               getMayOnlyReturnAfterRecvPrf
 
 -- |Run two processes in parallel exposing the free channels of both of them.
 --
@@ -127,43 +141,50 @@ type Forkable aft aft' a a' =
 -- finishes in `NextSend`. If both finish in `NextRecv`, then fork_'s return
 -- value is `Void`.
 fork_ :: forall m ach ach' bef bef' aft aft' a a'.
-        (Monad m, ForkIndexComp bef bef', Forkable aft aft' a a')
-     => KnownLenD ach
+        (Monad m)
+     => ForkPremiseD bef bef' aft aft' a a'
+     -> KnownLenD ach
      -- ^Depdendent length of free channels list in left branch
      -> AsyncT ach m bef aft a
      -- ^Left branch of the fork_
      -> AsyncT ach' m bef' aft' a'
      -- ^Right branch of the fork_
      -> AsyncT (Concat ach ach') m (ForkIndexOr bef bef') (ForkIndexOr aft aft') (ChooseRet aft aft' a a')
-fork_ prf l r = case getIndexStartCompPrf @bef @bef' of
+fork_ fPrf lPrf l r = case forkPremiseIndexCompBef fPrf of
   ForkIndexCompNone -> M.do
     SomeSndMessage i m <- recvAny
-    case chanFromConcat @ach @ach' prf i of
+    case chanFromConcat @ach @ach' lPrf i of
       Left i' -> xlift (runTillRecv l) >>=: \case
-        RrRecv l' -> fork_ prf (l' $ SomeSndMessage i' m) r
-        RrHalt res -> case getMayOnlyReturnAfterRecvPrf @aft @a of
+        RrRecv l' -> M.do
+          let fPrf' = fPrf {forkPremiseIndexCompBef = getForkIndexComp}
+          fork_ fPrf' lPrf (l' $ SomeSndMessage i' m) r
+        RrHalt res -> case forkPremiseRet fPrf of
           MayOnlyReturnVoid -> case res of {}
       Right i' -> xlift (runTillRecv r) >>=: \case
-        RrRecv r' -> fork_ prf l (r' $ SomeSndMessage i' m)
-        RrHalt res -> case getMayOnlyReturnAfterRecvPrf @aft' @a' of
+        RrRecv r' -> M.do
+          let fPrf' = fPrf {forkPremiseIndexCompBef = getForkIndexComp}
+          fork_ fPrf' lPrf l (r' $ SomeSndMessage i' m)
+        RrHalt res -> case forkPremiseRet' fPrf of
           MayOnlyReturnVoid -> case res of {}
   ForkIndexCompFst ->
     xlift (runTillSend l) >>=: \case
       SrSend (SomeFstMessage i m) cont -> M.do
-        send (fstToConcat @ach @ach' prf i) m
-        fork_ prf cont r
-      SrHalt res -> case getMayOnlyReturnAfterRecvPrf @aft @a of
+        send (fstToConcat @ach @ach' lPrf i) m
+        let fPrf' = fPrf {forkPremiseIndexCompBef = getForkIndexComp}
+        fork_ fPrf' lPrf cont r
+      SrHalt res -> case forkPremiseRet fPrf of
         MayOnlyReturnVoid -> case res of {}
-        MayOnlyReturnType -> case getIndexStartCompPrf @aft @aft' of
+        MayOnlyReturnType -> case forkPremiseIndexCompAft fPrf of
           ForkIndexCompFst -> xreturn res
   ForkIndexCompSnd ->
     xlift (runTillSend r) >>=: \case
       SrSend (SomeFstMessage i m) cont -> M.do
-        send (sndToConcat @ach @ach' prf i) m
-        fork_ prf l cont
-      SrHalt res -> case getMayOnlyReturnAfterRecvPrf @aft' @a' of
+        send (sndToConcat @ach @ach' lPrf i) m
+        let fPrf' = fPrf {forkPremiseIndexCompBef = getForkIndexComp}
+        fork_ fPrf' lPrf l cont
+      SrHalt res -> case forkPremiseRet' fPrf of
         MayOnlyReturnVoid -> case res of {}
-        MayOnlyReturnType -> case getIndexStartCompPrf @aft @aft' of
+        MayOnlyReturnType -> case forkPremiseIndexCompAft fPrf of
           ForkIndexCompSnd -> xreturn res
 
 -- |Reorders the open the free channels.
@@ -224,46 +245,47 @@ swap_ prf prf' cont = permChans (f prf prf') (f prf' prf) cont
 
 -- |Proof that an action that's only allowed to return in `NextSend` state will
 -- not do so in `NextRecv` state.
-doesNotReturnInRecvPrf :: forall aft a m ach. MayOnlyReturnAfterRecv aft a
-                       => RecvRes ach m aft a
+doesNotReturnInRecvPrf :: MayOnlyReturnAfterRecvD aft a
+                       -> RecvRes ach m aft a
                        -- ^Result of running `runTillRecv`
                        -> (SomeSndMessage ach -> AsyncT ach m NextSend aft a)
                        -- ^The continutation that tells how the process chose to receive the message
-doesNotReturnInRecvPrf = \case
-  RrHalt contra -> case getMayOnlyReturnAfterRecvPrf @aft @a of
+doesNotReturnInRecvPrf retPrf = \case
+  RrHalt contra -> case retPrf of
     MayOnlyReturnVoid -> case contra of {}
   RrRecv cont -> cont
 
 -- |Connect two adjacent free channels with each other. This binds them and
 -- removes from the free list.
-connect_ :: (Monad m, KnownIndex bef, MayOnlyReturnAfterRecv aft a)
-        => ListSplitD l p ('(x, y) : '(y, x) : rest)
+connect_ :: (Monad m, KnownIndex bef)
+        => MayOnlyReturnAfterRecvD aft a
+        -> ListSplitD l p ('(x, y) : '(y, x) : rest)
         -- ^Proof of @l == p ++ ('(x, y) : '(y, x) : rest)@
         -> ListSplitD l' p rest
         -- ^Proof of @l' == p ++ rest@
         -> AsyncT l m bef aft a
         -- ^Exectuion where we want to connect_ the channels
         -> AsyncT l' m bef aft a
-connect_ prf prf' cont = getWT >>=: \case
+connect_ retPrf prf prf' cont = getWT >>=: \case
     SNextRecv -> M.do
       xlift (runTillRecv cont) >>=: \case
         RrRecv cont' -> M.do
           SomeSndMessage i m <- recvAny
-          connect_ prf prf' $ cont' $ SomeSndMessage (g prf prf' i) m
+          connect_ retPrf prf prf' $ cont' $ SomeSndMessage (g prf prf' i) m
         RrHalt res -> xreturn res
     SNextSend -> M.do
       xlift (runTillSend cont) >>=: \case
         SrHalt res -> xreturn res
         SrSend (SomeFstMessage i m) cont' -> case f prf prf' i of
             SomeValue Here (Refl, Refl) -> M.do
-              cont'' <- doesNotReturnInRecvPrf <$> xlift (runTillRecv cont')
-              connect_ prf prf' $ cont'' $ SomeSndMessage (snd $ splitToInlistPair prf) m
+              cont'' <- doesNotReturnInRecvPrf retPrf <$> xlift (runTillRecv cont')
+              connect_ retPrf prf prf' $ cont'' $ SomeSndMessage (snd $ splitToInlistPair prf) m
             SomeValue (There Here) (Refl, Refl) -> M.do
-              cont'' <- doesNotReturnInRecvPrf <$> xlift (runTillRecv cont')
-              connect_ prf prf' $ cont'' $ SomeSndMessage (fst $ splitToInlistPair prf) m
+              cont'' <- doesNotReturnInRecvPrf retPrf <$> xlift (runTillRecv cont')
+              connect_ retPrf prf prf' $ cont'' $ SomeSndMessage (fst $ splitToInlistPair prf) m
             SomeValue (There2 Here) i' -> M.do
               send i' m
-              connect_ prf prf' cont'
+              connect_ retPrf prf prf' cont'
             SomeValue (There3 contra) _ -> case contra of {}
 
   where
