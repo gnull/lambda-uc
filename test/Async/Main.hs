@@ -13,6 +13,7 @@ import Data.Type.Nat
 
 import LUCk.Syntax
 import LUCk.Syntax.Async.Eval
+import LUCk.Syntax.Async.Eval.Internal
 import LUCk.Syntax.Async.SomeWT
 import LUCk.Types
 
@@ -194,3 +195,41 @@ useMaybeSends e chan = M.do
         xreturn m
   -- _ -- in this context, the state of WT is fixed
   xreturn $ not res
+
+
+-- |Connect the first channel to itself.
+--
+-- This is not a basic combinator and is derived using `fork` and `connect`.
+connectSelf :: (Monad m, KnownIndex i, MayOnlyReturnAfterRecv i a)
+            => ExecWriter m (ExecIndexSome ('(x, x) : rest) i a) (ExecIndexSome rest i a) ()
+            -- => AsyncT ('(x, x) : rest) m bef NextSend a
+            -- -- ^An execution where the first free channel is its own dual
+            -- -> AsyncT rest m bef NextSend a
+connectSelf = M.do
+  forkRight getKnownLenPrf $ process idProc
+  undefined
+  -- connect SplitHere SplitHere
+  -- _
+-- p = getWT >>=: \case
+--     SNextRecv -> connect_ SplitHere SplitHere $ fork_ getKnownLenPrf idProc p
+--     SNextSend -> connect_ SplitHere SplitHere $ fork_ getKnownLenPrf idProc p
+
+-- |Process that sends back everything it gets
+idProc :: Monad m
+       => AsyncT '[ '(x, x)] m NextRecv NextRecv Void
+idProc = M.do
+  recvOne >>=: sendOne
+  idProc
+
+-- |Merge two single-directional channels into one.
+--
+-- Any message that arrives on the merged channels is passed as is with no
+-- marking to tell what channel it came from.
+mergeProc :: AsyncT '[ '(a, Void), '(Void, a), '(Void, a)] m NextRecv NextRecv Void
+mergeProc = M.do
+  () <- recvAny >>=: \case
+    SomeSndMessage Here contra -> case contra of {}
+    SomeSndMessage (There Here) x -> send Here x
+    SomeSndMessage (There2 Here) x -> send Here x
+    SomeSndMessage (There3 contra) _ -> case contra of {}
+  mergeProc

@@ -39,12 +39,12 @@ type ForkIndexComp :: Index -> Index -> Constraint
 class ForkIndexComp befFst befSnd where
   getIndexStartCompPrf :: ForkIndexCompD befFst befSnd
 
-instance ForkIndexComp NextRecv NextRecv where
-  getIndexStartCompPrf = ForkIndexCompNone
-instance ForkIndexComp NextSend NextRecv where
+instance KnownIndex i => ForkIndexComp NextRecv i where
+  getIndexStartCompPrf = case getSIndex @i of
+    SNextRecv -> ForkIndexCompNone
+    SNextSend -> ForkIndexCompSnd
+instance (i ~ NextRecv) => ForkIndexComp NextSend i where
   getIndexStartCompPrf = ForkIndexCompFst
-instance ForkIndexComp NextRecv NextSend where
-  getIndexStartCompPrf = ForkIndexCompSnd
 
 type ForkIndexOr :: Index -> Index -> Index
 type family ForkIndexOr bef bef' where

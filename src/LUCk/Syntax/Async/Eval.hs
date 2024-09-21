@@ -18,10 +18,6 @@ module LUCk.Syntax.Async.Eval
   , connect
   , swap
   , guard
-  -- * Derived Gadgets
-  , connectSelf
-  , idProc
-  , mergeProc
   )
 where
 
@@ -34,37 +30,6 @@ import LUCk.Syntax.Async.Eval.Internal
 import LUCk.Syntax.Async
 import LUCk.Syntax.Class
 import LUCk.Types
-
--- |Connect the first channel to itself.
---
--- This is not a basic combinator and is derived using `fork` and `connect`.
-connectSelf :: forall bef m x rest a . (Monad m, KnownIndex bef)
-            => AsyncT ('(x, x) : rest) m bef NextSend a
-            -- ^An execution where the first free channel is its own dual
-            -> AsyncT rest m bef NextSend a
-connectSelf p = getWT >>=: \case
-    SNextRecv -> connect_ SplitHere SplitHere $ fork_ getKnownLenPrf idProc p
-    SNextSend -> connect_ SplitHere SplitHere $ fork_ getKnownLenPrf idProc p
-
--- |Process that sends back everything it gets
-idProc :: Monad m
-       => AsyncT '[ '(x, x)] m NextRecv NextRecv Void
-idProc = M.do
-  recvOne >>=: sendOne
-  idProc
-
--- |Merge two single-directional channels into one.
---
--- Any message that arrives on the merged channels is passed as is with no
--- marking to tell what channel it came from.
-mergeProc :: AsyncT '[ '(a, Void), '(Void, a), '(Void, a)] m NextRecv NextRecv Void
-mergeProc = M.do
-  () <- recvAny >>=: \case
-    SomeSndMessage Here contra -> case contra of {}
-    SomeSndMessage (There Here) x -> send Here x
-    SomeSndMessage (There2 Here) x -> send Here x
-    SomeSndMessage (There3 contra) _ -> case contra of {}
-  mergeProc
 
 -- $exec
 --
@@ -156,7 +121,7 @@ data ExecIndex
   -- ^An execution with given @ach@, @i@, and @res@ is started
 
 -- |Mapping from the indices of `ExecWriter` to the indices of internal indexed
--- monoid.
+-- monoid @(->)@.
 type MatchExecIndex :: (Type -> Type) -> ExecIndex -> Type
 type family MatchExecIndex m i where
   MatchExecIndex _ ExecIndexInit = ()
