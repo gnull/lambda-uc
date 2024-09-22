@@ -37,21 +37,21 @@ type RandM = Algo True True
 
 twoSum :: Int -> Int -> Exec '[] PureM NextSend Int
 twoSum x y =
-  ExecConn getMayOnlyReturnAfterRecvPrf SplitHere $
-  ExecFork getForkPremiseD
+  ExecConn SplitHere $
+  ExecFork getForkIndexComp
            (KnownLenS KnownLenZ)
-           (ExecProc getMayOnlyReturnAfterRecvPrf $ sender x)
-           (ExecProc getMayOnlyReturnAfterRecvPrf $ receiver y)
+           (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ sender x)
+           (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ receiver y)
 
 threeSum :: Int -> Int -> Int -> Exec '[] PureM NextSend Int
 threeSum x y z =
-  ExecConn getMayOnlyReturnAfterRecvPrf Split0 $
-  ExecConn getMayOnlyReturnAfterRecvPrf Split1 $
-  ExecFork getForkPremiseD getKnownLenPrf (ExecProc getMayOnlyReturnAfterRecvPrf $ sender2 x) $
-  ExecConn getMayOnlyReturnAfterRecvPrf Split1 $
-  ExecFork getForkPremiseD getKnownLenPrf
-    (ExecProc getMayOnlyReturnAfterRecvPrf $ receiver2 y)
-    (ExecProc getMayOnlyReturnAfterRecvPrf $ receiver2 z)
+  ExecConn Split0 $
+  ExecConn Split1 $
+  ExecFork getForkIndexComp getKnownLenPrf (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ sender2 x) $
+  ExecConn Split1 $
+  ExecFork getForkIndexComp getKnownLenPrf
+    (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ receiver2 y)
+    (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ receiver2 z)
 
 threeSumWriter :: Int -> Int -> Int -> ExecWriter PureM ExecIndexInit (ExecIndexSome '[] NextSend Int) ()
 threeSumWriter x y z = M.do
