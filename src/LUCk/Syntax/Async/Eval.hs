@@ -14,15 +14,16 @@ module LUCk.Syntax.Async.Eval
   , execWriterToExec
   -- ** Actions
   -- $actions
-  , process'
-  , forkLeft'
-  , forkRight'
-  , connect'
-  , swap'
   , process
   , forkLeft
   , forkRight
   , connect
+  , swap
+  -- $explicit
+  , process'
+  , forkLeft'
+  , forkRight'
+  , connect'
   -- , swap
   , guard
   )
@@ -80,20 +81,16 @@ data Exec ach m i a where
               )
            => ListSplitD l p (f:s:rest)
            -- ^Proof of @l == p ++ (f:s:rest)@
-           -> ListSplitD l' p (s:f:rest)
-           -- ^Proof of @l' == p ++ (s:f:rest)@
            -> Exec l m i a
-           -> Exec l' m i a
+           -> Exec (Concat p (s:f:rest)) m i a
   -- |Connect two adjacent free channels of a given execution (making them bound).
   ExecConn :: KnownIndex i
            => MayOnlyReturnAfterRecvD i a
            -> ListSplitD l p ('(x, y) : '(y, x) : rest)
            -- ^Proof of @l == p ++ ('(x, y) : '(y, x) : rest)@
-           -> ListSplitD l' p rest
-           -- ^Proof of @l' == p ++ rest@
            -> Exec l m i a
            -- ^Exectuion where we want to connect the channels
-           -> Exec l' m i a
+           -> Exec (Concat p rest) m i a
 
 -- $writer
 --
@@ -178,6 +175,12 @@ execWriterToExec p = f ()
 -- verify that the annotation is correct. In some rare cases, `guard` can also
 -- be used to resolve ambiguous types.
 
+-- $explicit
+--
+-- Following are the versions of `process`, `forkLeft`, `forkRight` and
+-- `connect` that take the proofs as explicit arguments instead of implicit
+-- typeclass constraints.
+
 process' :: MayOnlyReturnAfterRecvD i res
          -> AsyncT l m i i res
          -> ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
@@ -233,9 +236,7 @@ connect' :: KnownIndex i
          -> ListSplitD l p ('(x, y) : '(y, x) : rest)
          -- ^Proof of @l == p ++ ('(x, y) : '(y, x) : rest)@
          -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome (Concat p rest) i res) ()
-connect' retPrf prf = ExecWriter $ tell $ ExecConn retPrf prf $
-  case listSplitConcat prf of
-    Refl -> listSplitPopSuffix $ listSplitPopSuffix prf
+connect' retPrf prf = ExecWriter $ tell $ ExecConn retPrf prf
 
 connect :: -- forall l p i res x y rest m.
            ( KnownIndex i
@@ -245,15 +246,13 @@ connect :: -- forall l p i res x y rest m.
         -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome (Concat p rest) i res) ()
 connect p = connect' getMayOnlyReturnAfterRecvPrf p
 
-swap' :: ( KnownIndex i
-         , Monad m
-         )
+swap :: ( KnownIndex i
+        , Monad m
+        )
       => ListSplitD l p (f:s:rest)
       -- ^Proof of @l == p ++ (f:s:rest)@
       -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome (Concat p (s:f:rest)) i res) ()
-swap' prf = ExecWriter $ tell $ ExecSwap prf $
-  case listSplitConcat prf of
-    Refl -> listSplitSwap prf
+swap prf = ExecWriter $ tell $ ExecSwap prf
 
 guard :: forall l i res m. ExecWriter m (ExecIndexSome l i res) (ExecIndexSome l i res) ()
 guard = xreturn ()
@@ -273,8 +272,8 @@ runExec = escapeSyncT . f
     f = \case
       ExecProc _ p -> p
       ExecFork fPrf prf l r -> fork_ fPrf prf (f l) (f r)
-      ExecSwap k k' p -> swap_ k k' $ f p
-      ExecConn retPrf k k' p -> connect_ retPrf k k' $ f p
+      ExecSwap k p -> swap_ k $ f p
+      ExecConn retPrf k p -> connect_ retPrf k $ f p
 
 -- |Interactive action with no free channels can be interpreted as local.
 --

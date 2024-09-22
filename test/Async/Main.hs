@@ -37,7 +37,7 @@ type RandM = Algo True True
 
 twoSum :: Int -> Int -> Exec '[] PureM NextSend Int
 twoSum x y =
-  ExecConn getMayOnlyReturnAfterRecvPrf SplitHere SplitHere $
+  ExecConn getMayOnlyReturnAfterRecvPrf SplitHere $
   ExecFork getForkPremiseD
            (KnownLenS KnownLenZ)
            (ExecProc getMayOnlyReturnAfterRecvPrf $ sender x)
@@ -45,10 +45,10 @@ twoSum x y =
 
 threeSum :: Int -> Int -> Int -> Exec '[] PureM NextSend Int
 threeSum x y z =
-  ExecConn getMayOnlyReturnAfterRecvPrf Split0 Split0 $
-  ExecConn getMayOnlyReturnAfterRecvPrf Split1 Split1 $
+  ExecConn getMayOnlyReturnAfterRecvPrf Split0 $
+  ExecConn getMayOnlyReturnAfterRecvPrf Split1 $
   ExecFork getForkPremiseD getKnownLenPrf (ExecProc getMayOnlyReturnAfterRecvPrf $ sender2 x) $
-  ExecConn getMayOnlyReturnAfterRecvPrf Split1 Split1 $
+  ExecConn getMayOnlyReturnAfterRecvPrf Split1 $
   ExecFork getForkPremiseD getKnownLenPrf
     (ExecProc getMayOnlyReturnAfterRecvPrf $ receiver2 y)
     (ExecProc getMayOnlyReturnAfterRecvPrf $ receiver2 z)
@@ -56,17 +56,17 @@ threeSum x y z =
 threeSumWriter :: Int -> Int -> Int -> ExecWriter PureM ExecIndexInit (ExecIndexSome '[] NextSend Int) ()
 threeSumWriter x y z = M.do
   process $ receiver2 x
-  guard @('[ '(Int, Void), '(Void, Int)])
+  -- guard @('[ '(Int, Void), '(Void, Int)])
   forkLeft $
     process $ receiver2 y
-  guard @('[ '(Int, Void), '(Void, Int), '(Int, Void), '(Void, Int)])
+  -- guard @('[ '(Int, Void), '(Void, Int), '(Int, Void), '(Void, Int)])
   connect Split1 
-  guard @('[ '(Int, Void), '(Void, Int)])
+  -- guard @('[ '(Int, Void), '(Void, Int)])
   forkLeft  $
     process $ sender2 z
-  guard @('[ '(Int, Void), '(Void, Int), '(Int, Void), '(Void, Int)])
+  -- guard @('[ '(Int, Void), '(Void, Int), '(Int, Void), '(Void, Int)])
   connect Split1
-  guard @('[ '(Int, Void), '(Void, Int)])
+  -- guard @('[ '(Int, Void), '(Void, Int)])
   connect Split0 
 
 sender :: Int -> AsyncT '[ '(Int, Int)] PureM NextSend NextSend Int

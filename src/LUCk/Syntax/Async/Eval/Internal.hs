@@ -143,6 +143,7 @@ getForkPremiseD =
 fork_ :: forall m ach ach' bef bef' aft aft' a a'.
         (Monad m)
      => ForkPremiseD bef bef' aft aft' a a'
+     -- ^Proof that this combination of indices and return values is valid
      -> KnownLenD ach
      -- ^Depdendent length of free channels list in left branch
      -> AsyncT ach m bef aft a
@@ -225,11 +226,10 @@ swap_ :: ( KnownIndex bef
         )
      => ListSplitD l p (f:s:rest)
      -- ^Proof of @l == p ++ (f:s:rest)@
-     -> ListSplitD l' p (s:f:rest)
-     -- ^Proof of @l' == p ++ (s:f:rest)@
      -> AsyncT l m bef aft a
-     -> AsyncT l' m bef aft a
-swap_ prf prf' cont = permChans (f prf prf') (f prf' prf) cont
+     -> AsyncT (Concat p (s:f:rest)) m bef aft a
+swap_ prf cont = case listSplitConcat prf of
+    Refl -> permChans (f prf $ listSplitSwap prf) (f (listSplitSwap prf) prf) cont
   where
     f :: ListSplitD l p (f:s:rest)
       -> ListSplitD l' p (s:f:rest)
@@ -261,32 +261,32 @@ connect_ :: (Monad m, KnownIndex bef)
         => MayOnlyReturnAfterRecvD aft a
         -> ListSplitD l p ('(x, y) : '(y, x) : rest)
         -- ^Proof of @l == p ++ ('(x, y) : '(y, x) : rest)@
-        -> ListSplitD l' p rest
-        -- ^Proof of @l' == p ++ rest@
         -> AsyncT l m bef aft a
         -- ^Exectuion where we want to connect_ the channels
-        -> AsyncT l' m bef aft a
-connect_ retPrf prf prf' cont = getWT >>=: \case
-    SNextRecv -> M.do
-      xlift (runTillRecv cont) >>=: \case
-        RrRecv cont' -> M.do
-          SomeSndMessage i m <- recvAny
-          connect_ retPrf prf prf' $ cont' $ SomeSndMessage (g prf prf' i) m
-        RrHalt res -> xreturn res
-    SNextSend -> M.do
-      xlift (runTillSend cont) >>=: \case
-        SrHalt res -> xreturn res
-        SrSend (SomeFstMessage i m) cont' -> case f prf prf' i of
-            SomeValue Here (Refl, Refl) -> M.do
-              cont'' <- doesNotReturnInRecvPrf retPrf <$> xlift (runTillRecv cont')
-              connect_ retPrf prf prf' $ cont'' $ SomeSndMessage (snd $ splitToInlistPair prf) m
-            SomeValue (There Here) (Refl, Refl) -> M.do
-              cont'' <- doesNotReturnInRecvPrf retPrf <$> xlift (runTillRecv cont')
-              connect_ retPrf prf prf' $ cont'' $ SomeSndMessage (fst $ splitToInlistPair prf) m
-            SomeValue (There2 Here) i' -> M.do
-              send i' m
-              connect_ retPrf prf prf' cont'
-            SomeValue (There3 contra) _ -> case contra of {}
+        -> AsyncT (Concat p rest) m bef aft a
+connect_ retPrf prf cont = case listSplitConcat prf of
+  Refl -> let prf' = listSplitPopSuffix $ listSplitPopSuffix prf in
+    getWT >>=: \case
+      SNextRecv -> M.do
+        xlift (runTillRecv cont) >>=: \case
+          RrRecv cont' -> M.do
+            SomeSndMessage i m <- recvAny
+            connect_ retPrf prf $ cont' $ SomeSndMessage (g prf prf' i) m
+          RrHalt res -> xreturn res
+      SNextSend -> M.do
+        xlift (runTillSend cont) >>=: \case
+          SrHalt res -> xreturn res
+          SrSend (SomeFstMessage i m) cont' -> case f prf prf' i of
+              SomeValue Here (Refl, Refl) -> M.do
+                cont'' <- doesNotReturnInRecvPrf retPrf <$> xlift (runTillRecv cont')
+                connect_ retPrf prf $ cont'' $ SomeSndMessage (snd $ splitToInlistPair prf) m
+              SomeValue (There Here) (Refl, Refl) -> M.do
+                cont'' <- doesNotReturnInRecvPrf retPrf <$> xlift (runTillRecv cont')
+                connect_ retPrf prf $ cont'' $ SomeSndMessage (fst $ splitToInlistPair prf) m
+              SomeValue (There2 Here) i' -> M.do
+                send i' m
+                connect_ retPrf prf cont'
+              SomeValue (There3 contra) _ -> case contra of {}
 
   where
     f :: ListSplitD l p ( '(x', y') : '(y', x') : rest)
