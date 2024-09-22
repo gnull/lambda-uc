@@ -19,20 +19,19 @@ module LUCk.Syntax.Async.Eval
   , forkRight
   , connect
   , swap
+  , guard
   -- $explicit
   , process'
   , forkLeft'
   , forkRight'
   , connect'
   -- , swap
-  , guard
   )
 where
 
 import Control.XApplicative
 import Control.XMonad
 import Control.XMonad.XWriter
-import qualified Control.XMonad.Do as M
 
 import LUCk.Syntax.Async.Eval.Internal
 import LUCk.Syntax.Async
@@ -182,18 +181,23 @@ execWriterToExec p = f ()
 -- typeclass constraints.
 
 process' :: MayOnlyReturnAfterRecvD i res
+        -- ^Proof of @res@ not being `Void` only if @i == `NextSend`@
          -> AsyncT l m i i res
+        -- ^The program that the created process will run
          -> ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
 process' retPrf = ExecWriter . tell . const . ExecProc retPrf
 
 process :: MayOnlyReturnAfterRecv i res
         => AsyncT l m i i res
+        -- ^The program that the created process will run
         -> ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
 process = process' getMayOnlyReturnAfterRecvPrf
 
 forkLeft' :: ForkPremiseD i i' i i' res res'
          -> KnownLenD l
+         -- ^Length of list `l` (left branch)
          -> ExecWriter m ExecIndexInit (ExecIndexSome l' i' res') ()
+         -- ^Right branch of the fork
          -> ExecWriter m (ExecIndexSome l i res)
                          (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
                          ()
@@ -206,14 +210,18 @@ forkLeft :: ( ForkIndexComp i i'
             , KnownLen l
             )
          => ExecWriter m ExecIndexInit (ExecIndexSome l' i' res') ()
+         -- ^Right branch of the fork
          -> ExecWriter m (ExecIndexSome l i res)
                          (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
                          ()
 forkLeft = forkLeft' getForkPremiseD getKnownLenPrf
 
 forkRight' :: ForkPremiseD i i' i i' res res'
+           -- ^Proof of indices and return types of forked processes being compatible
            -> KnownLenD l
+           -- ^Length of list `l` (left branch)
            -> ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
+           -- ^Left branch of the fork
            -> ExecWriter m (ExecIndexSome l' i' res')
                            (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
                            ()
@@ -226,6 +234,7 @@ forkRight :: ( ForkIndexComp i i'
              , KnownLen l
              )
           => ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
+          -- ^Left branch of the fork
           -> ExecWriter m (ExecIndexSome l' i' res')
                            (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
                            ()
@@ -233,6 +242,7 @@ forkRight = forkRight' getForkPremiseD getKnownLenPrf
 
 connect' :: KnownIndex i
          => MayOnlyReturnAfterRecvD i res
+         -- ^Proof of res not being `Void` only if @i == `NextSend`@
          -> ListSplitD l p ('(x, y) : '(y, x) : rest)
          -- ^Proof of @l == p ++ ('(x, y) : '(y, x) : rest)@
          -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome (Concat p rest) i res) ()
@@ -243,6 +253,7 @@ connect :: -- forall l p i res x y rest m.
            , MayOnlyReturnAfterRecv i res
            )
         => ListSplitD l p ('(x, y) : '(y, x) : rest)
+        -- ^Proof of @l == p ++ ('(x, y) : '(y, x) : rest)@
         -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome (Concat p rest) i res) ()
 connect p = connect' getMayOnlyReturnAfterRecvPrf p
 
