@@ -200,7 +200,7 @@ permChans :: (KnownIndex bef, Monad m)
          -> (forall x y. Chan x y l' -> Chan x y l)
          -> AsyncT l m bef aft a
          -> AsyncT l' m bef aft a
-permChans f g cont = getWT >>=: \case
+permChans f g cont = asyncGetIndex >>=: \case
   SNextRecv -> M.do
     xlift (runTillRecv cont) >>=: \case
       RrHalt res -> xreturn res
@@ -266,7 +266,7 @@ connect_ :: (Monad m, KnownIndex bef)
         -> AsyncT (Concat p rest) m bef aft a
 connect_ retPrf prf cont = case listSplitConcat prf of
   Refl -> let prf' = listSplitPopSuffix $ listSplitPopSuffix prf in
-    getWT >>=: \case
+    asyncGetIndex >>=: \case
       SNextRecv -> M.do
         xlift (runTillRecv cont) >>=: \case
           RrRecv cont' -> M.do

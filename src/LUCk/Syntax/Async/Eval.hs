@@ -19,7 +19,7 @@ module LUCk.Syntax.Async.Eval
   , forkRight
   , connect
   , swap
-  , guard
+  , execGuard
   -- $explicit
   , process'
   , forkLeft'
@@ -176,10 +176,10 @@ execWriterToExec p = f ()
 -- constructors of `Exec`. The difference between `forkLeft` and `forkRight` is
 -- merely in the order of composing the child nodes.
 --
--- The @`guard` = xreturn ()@ has no effect in the monad, but can be inserted
+-- The @`execGuard` = xreturn ()@ has no effect in the monad, but can be inserted
 -- in-between other operations in `ExecWriter` to annotate the current
 -- context. This can be used to document the code, while having the compiler
--- verify that the annotation is correct. In some rare cases, `guard` can also
+-- verify that the annotation is correct. In some rare cases, `execGuard` can also
 -- be used to resolve ambiguous types.
 
 -- $explicit
@@ -256,8 +256,8 @@ swap :: ListSplitD l p (f:s:rest)
      -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome (Concat p (s:f:rest)) i res) ()
 swap prf = ExecWriter $ tell $ ExecSwap prf
 
-guard :: forall l i res m. ExecWriter m (ExecIndexSome l i res) (ExecIndexSome l i res) ()
-guard = xreturn ()
+execGuard :: forall l i res m. ExecWriter m (ExecIndexSome l i res) (ExecIndexSome l i res) ()
+execGuard = xreturn ()
 
 -- |Run an execution.
 --

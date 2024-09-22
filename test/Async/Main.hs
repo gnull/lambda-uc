@@ -191,7 +191,7 @@ useMaybeSends e chan = M.do
   res <- dispatchSomeWT (maybeSends chan) $ \b -> M.do
     -- _ -- in this context, the state of WT is unknown
     -- Step #3: match on the current WT and provide actions for every branch
-    getWT >>=: \case
+    asyncGetIndex >>=: \case
       SNextSend -> xreturn b
       SNextRecv -> M.do
         m <- recv e chan

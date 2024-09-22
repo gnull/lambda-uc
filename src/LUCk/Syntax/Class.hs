@@ -10,7 +10,6 @@ module LUCk.Syntax.Class
   , rangeDist
   -- * Interactive Computations
   -- $interactive
-  , getWT
   , Index
   , XThrow(..)
   , XCatch(..)
@@ -20,6 +19,8 @@ module LUCk.Syntax.Class
   -- ** Asynchronous Interaction
   -- $async
   , Async(..)
+  , asyncGetIndex
+  , asyncGuard
   -- $derived
   , recvOne
   , sendOne
@@ -117,8 +118,13 @@ rangeDist = \f t -> (f +) <$> rangeDist0 (t - f)
 -- write-token-aware exceptions.
 
 -- |Wrapper around `getSIndex` that tells you what context you're in.
-getWT :: (XMonad m, KnownIndex b) => m b b (SIndex b)
-getWT = xreturn getSIndex
+asyncGetIndex :: (XMonad m, KnownIndex b) => m b b (SIndex b)
+asyncGetIndex = xreturn getSIndex
+
+asyncGuard :: XMonad m
+           => SIndex b
+           -> m b b ()
+asyncGuard _ = xreturn ()
 
 class XMonad m => XThrow (m :: Index -> Index -> Type -> Type) (ex :: [(Type, Index)]) | m -> ex where
   -- |Throw a context-aware exception. The list of possible exceptions `ex`
