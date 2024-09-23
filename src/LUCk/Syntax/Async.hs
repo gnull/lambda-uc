@@ -51,7 +51,7 @@ data AsyncActions (ex :: [(Type, Index)]) (ach :: [(Type, Type)]) (m :: Type -> 
              -> a
              -> AsyncActions ex ach m NextSend NextRecv a
   -- |Throw an exception.
-  ThrowAction :: InList '(e, b) ex
+  ThrowAction :: InList ex '(e, b)
               -> e
               -> AsyncActions ex ach m b b' a
 
@@ -137,7 +137,7 @@ instance XCatch
     xcatch (AsyncExT a) h = AsyncExT $ xcatch' a $ \i e -> runInterT (h i e)
       where
         xcatch' :: XFree (AsyncActions ex ach m) bef aft a
-                -> (forall e b. InList '(e, b) ex -> e -> XFree (AsyncActions ex' ach m) b aft a)
+                -> (forall e b. InList ex '(e, b) -> e -> XFree (AsyncActions ex' ach m) b aft a)
                 -> XFree (AsyncActions ex' ach m) bef aft a
         xcatch' (Pure x) _ = xreturn x
         xcatch' (Join a') h' = case a' of

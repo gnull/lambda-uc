@@ -3,7 +3,7 @@ module Data.HList where
 import Prelude hiding ((!!))
 
 import Data.Kind (Type)
-import Data.Type.Equality ((:~:)(Refl))
+import Data.Type.Equality ((:~:)(Refl), TestEquality(..))
 
 import Data.Functor.Identity
 
@@ -15,30 +15,31 @@ import Data.Functor.Identity
 -- as well heterogenous lists @HList@ that occur during interpretation of our
 -- algorithms. And this type serves as a pointer into one of such channels in
 -- the list.
-type InList :: forall a. a -> [a] -> Type
-data InList x xs where
-    Here :: InList x (x : xs)
-    There :: InList x xs -> InList x (y : xs)
+type InList :: forall a. [a] -> a -> Type
+data InList xs x where
+    Here :: InList (x : xs) x
+    There :: InList xs x -> InList (y : xs) x
 
-pattern There2 :: InList x xs -> InList x (y0 : y1 : xs)
+pattern There2 :: InList xs x -> InList (y0 : y1 : xs) x
 pattern There2 i = There (There i)
 {-# COMPLETE There2 #-}
 
-pattern There3 :: InList x xs -> InList x (y0 : y1 : y2 : xs)
+pattern There3 :: InList xs x -> InList (y0 : y1 : y2 : xs) x
 pattern There3 i = There (There2 i)
 {-# COMPLETE There3 #-}
 
 data SomeIndex xs where
-    SomeIndex :: InList x xs -> SomeIndex xs
+    SomeIndex :: InList xs x -> SomeIndex xs
 
 data SomeValue xs where
-  SomeValue :: InList x xs -> x -> SomeValue xs
+  SomeValue :: InList xs x -> x -> SomeValue xs
 
 -- |Compare two indices for equality
-testEquality :: InList x xs -> InList y xs -> Maybe (x :~: y)
-testEquality Here Here = Just Refl
-testEquality (There a) (There b) = testEquality a b
-testEquality _ _ = Nothing
+instance TestEquality (InList xs) where
+  -- testEquality :: InList x xs -> InList y xs -> Maybe (x :~: y)
+  testEquality Here Here = Just Refl
+  testEquality (There a) (There b) = testEquality a b
+  testEquality _ _ = Nothing
 
 -- |Pad the index to make it valid after applying @(::)@ to the list.
 padMessageIndex :: SomeValue ts -> SomeValue (t : ts)
@@ -51,7 +52,7 @@ padMessageIndex (SomeValue i' x') = SomeValue (There i') x'
 -- The @Chan x y xs@ is a bi-directional channel where you can send values of
 -- type $x$ and receive type $y$.
 type Chan :: forall a b. a -> b -> [(a, b)] -> Type
-type Chan x y xs = InList '(x, y) xs
+type Chan x y xs = InList xs '(x, y)
 
 -- Mixing this with `Fst` and `Snd` is hard at this point, since haskell fails
 -- to automatically derive `(Snd up, Fst up) ~ ChanSwap up`.
@@ -134,14 +135,14 @@ pattern HList2Match3 a a' a'' = HCons2 a (HList2Match2 a' a'')
 {-# COMPLETE HList2Match3 #-}
 
 -- |Fetch the value under given index. Statically checked version of @Prelude.(!!)@.
-(!!) :: HList f types -> InList x types -> f x
+(!!) :: HList f types -> InList types x -> f x
 (!!) (HCons x _) Here = x
 (!!) (HCons _ xs) (There t) = xs !! t
 (!!) HNil contra = case contra of
 
 -- |Applies given mutating action to one of the elements in the list
 forIthFst :: Monad m
-       => InList x xs
+       => InList xs x
        -- ^Element index
        -> HList2 f xs ys
        -- ^List
@@ -157,7 +158,7 @@ forIthFst (There i) (HCons2 x xs) f = do
 
 -- |Applies given mutating action to one of the elements in the list
 forIth :: Monad m
-            => InList x types
+            => InList types x
             -- ^Action
             -> HList f types
             -- ^Element index
@@ -172,7 +173,7 @@ forIth (There i) (HCons x xs) f = do
   pure (HCons x xs', z)
 
 -- |Like `map`, but for `HList`.
-hMap :: (forall a. InList a types -> f a -> g a) -> HList f types -> HList g types
+hMap :: (forall a. InList types a -> f a -> g a) -> HList f types -> HList g types
 hMap f = \case
   HNil -> HNil
   HCons x xs -> HCons (f Here x) $ hMap (\i-> f $ There i) xs
@@ -180,7 +181,7 @@ hMap f = \case
 -- |Convert @HList@ to a regular list.
 homogenize
   :: forall t (types :: [t]) (f :: t -> Type) a.
-     (forall x. InList x types -> f x -> a)
+     (forall x. InList types x -> f x -> a)
   -> HList f types
   -> [a]
 homogenize _ HNil = []

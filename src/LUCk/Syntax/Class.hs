@@ -40,7 +40,7 @@ import qualified Control.XMonad.Do as M
 
 import Control.XMonad
 import Control.XMonad.Trans
--- import Data.Type.Equality ((:~:)(Refl))
+import Data.Type.Equality
 
 import LUCk.Types
 
@@ -130,7 +130,7 @@ class XMonad m => XThrow (m :: Index -> Index -> Type -> Type) (ex :: [(Type, In
   -- |Throw a context-aware exception. The list of possible exceptions `ex`
   -- contains types annotated with the write-token state from which they can be
   -- thrown.
-  xthrow :: InList '(e, b) ex -> e -> m b b' a
+  xthrow :: InList ex '(e, b) -> e -> m b b' a
 
 class (XThrow m ex, XMonad m') => XCatch m ex m' where
   -- |Can an exception (like one ones thrown by `xthrow`). The handler
@@ -138,7 +138,7 @@ class (XThrow m ex, XMonad m') => XCatch m ex m' where
   -- computation would end up if no exception occurred.
   xcatch :: m bef aft a
         -- ^The computation that may throw an exception
-        -> (forall e b. InList '(e, b) ex -> e -> m' b aft a)
+        -> (forall e b. InList ex '(e, b) -> e -> m' b aft a)
         -- ^How to handle the exception
         -> m' bef aft a
 
@@ -200,7 +200,7 @@ data ExBadSender = ExBadSender
 -- |Receive from a specific channel. If an unexpected message arrives from
 -- another channel, throw the `ExBadSender` exception.
 recv :: (XThrow m ex, Async m l)
-     => InList '(ExBadSender, NextSend) ex
+     => InList ex '(ExBadSender, NextSend)
      -> Chan x y l
      -> m NextRecv NextSend y
 recv e i = M.do
@@ -214,7 +214,7 @@ recv e i = M.do
 -- message arrives before the expected response, throw the `ExBadSender`
 -- exception.
 sendSync :: (XThrow m ex, Async m l)
-         => InList '(ExBadSender, NextSend) ex
+         => InList ex '(ExBadSender, NextSend)
          -> x
          -> Chan x y l -> m NextSend NextSend y
 sendSync e m chan = M.do

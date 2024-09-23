@@ -6,7 +6,7 @@ import Test.Tasty.HUnit      (testCase, assertEqual, (@?=))
 import Control.XMonad
 import qualified Control.XMonad.Do as M
 
-import Data.Type.Equality ((:~:)(Refl))
+import Data.Type.Equality
 import Data.Fin (Fin(..))
 import Data.Nat (Nat(..))
 import Data.Type.Nat
@@ -182,7 +182,7 @@ maybeSends chan =
       cont msg
     Nothing -> cont False
 
-useMaybeSends :: InList '(ExBadSender, NextSend) ex
+useMaybeSends :: InList ex '(ExBadSender, NextSend)
               -> Chan Bool Bool ach
               -> AsyncExT ex ach m NextRecv NextSend Bool
 useMaybeSends e chan = M.do
