@@ -214,34 +214,82 @@ permChans f g cont = asyncGetIndex >>=: \case
         send (f i) m
         permChans f g cont'
 
--- |Swap the two adjacent free channels.
+-- |Swap two free channels.
 --
--- `p` is the prefix of free channels list that is skipped and left untouched
--- before swapping the two channels that follow.
+-- We go from an action where free channels are 
+--   @p ++ [f] ++ p' ++ [s] ++ rest@
+--   to
+--   @p ++ [s] ++ p' ++ [f] ++ rest@.
+-- In other words, the elemens `f` and `s` are swapped.
 --
--- The first two arguments can often be derived automatically using
--- `getListSplit`, when @p@ and @s@ are fully known.
+-- The `ListSplitD` arguments can often be derived automatically if `p` `p'`
+-- and `rest` are fully known.
 swap_ :: ( KnownIndex bef
-        , Monad m
-        )
-     => ListSplitD l p (f:s:rest)
-     -- ^Proof of @l == p ++ (f:s:rest)@
+         , Monad m
+         )
+     => ListSplitD l p (f:l')
+     -- ^Proof of @l == p ++ (f:l')@
+     -> ListSplitD l' p' (s:rest)
+     -- ^Proof of @l' == p' ++ (s:rest)@
      -> AsyncT l m bef aft a
-     -> AsyncT (Concat p (s:f:rest)) m bef aft a
-swap_ prf cont = case listSplitConcat prf of
-    Refl -> permChans (f prf $ listSplitSwap prf) (f (listSplitSwap prf) prf) cont
+     -> AsyncT (Concat p (s : Concat p' (f:rest))) m bef aft a
+swap_ prfF prfS cont = case (listSplitConcat prfF, listSplitConcat prfS) of
+    (Refl, Refl) -> permChans (f prfF prfS)
+                              (uncurry f $ listSplitSwap prfF prfS)
+                              cont
   where
-    f :: ListSplitD l p (f:s:rest)
-      -> ListSplitD l' p (s:f:rest)
+    f :: ListSplitD l p (f:l')
+      -> ListSplitD l' p' (s:rest)
       -> Chan x y l
-      -> Chan x y l'
-    f SplitHere SplitHere = \case
-      Here -> There Here
-      There Here -> Here
-      There2 i -> There2 i
-    f (SplitThere p) (SplitThere p') = \case
-      Here -> Here
-      There i -> There $ f p p' i
+      -> Chan x y (Concat p (s : Concat p' (f:rest)))
+    f p p' i = let
+        (pInv, pInv') = listSplitSwap p p'
+      in case (listSplitConcat p, listSplitConcat p') of
+        (Refl, Refl) -> case findIndex p i of
+          Left i' -> padRightIndexSameSuff pInv i'
+          Right Here -> padLeftIndexSameSuff pInv $ There $ padLeftIndexSameSuff pInv' Here
+          Right (There i') -> case findIndex p' i' of
+            Left i'' -> padLeftIndexSameSuff pInv $ There $ padRightIndexSameSuff pInv' i''
+            Right Here -> padLeftIndexSameSuff pInv Here
+            Right (There i'') -> padLeftIndexSameSuff pInv $ There $ padLeftIndexSameSuff pInv' $ There i''
+
+padRightIndex :: forall s' s p l x.
+                 ListSplitD l p s
+              -> InList p x
+              -> InList (Concat p s') x
+padRightIndex SplitHere = \contra -> case contra of {}
+padRightIndex (SplitThere i) = \case
+  Here -> Here
+  There j -> There $ padRightIndex @s' i j
+
+padRightIndexSameSuff :: forall s p l x. ListSplitD l p s
+                      -> InList p x
+                      -> InList (Concat p s) x
+padRightIndexSameSuff = padRightIndex @s
+
+padLeftIndex :: forall s' s l p x.
+                ListSplitD l p s
+             -> InList s' x
+             -> InList (Concat p s') x
+padLeftIndex SplitHere = id
+padLeftIndex (SplitThere i) = There . padLeftIndex i
+
+padLeftIndexSameSuff :: forall s l p x.
+                        ListSplitD l p s
+                     -> InList s x
+                     -> InList (Concat p s) x
+padLeftIndexSameSuff = padLeftIndex @s
+
+findIndex :: ListSplitD l p s
+          -> InList l z
+          -> Either (InList p z) (InList s z)
+findIndex SplitHere Here = Right Here
+findIndex SplitHere (There i) = Right $ There i
+findIndex (SplitThere _) Here = Left Here
+findIndex (SplitThere j) (There i) = case findIndex j i of
+  Left k -> Left $ There k
+  Right k -> Right k
+
 
 -- |Proof that an action that's only allowed to return in `NextSend` state will
 -- not do so in `NextRecv` state.
@@ -259,19 +307,22 @@ doesNotReturnInRecvPrf retPrf = \case
 -- removes from the free list.
 connect_ :: (Monad m, KnownIndex bef)
         => MayOnlyReturnAfterRecvD aft a
-        -> ListSplitD l p ('(x, y) : '(y, x) : rest)
-        -- ^Proof of @l == p ++ ('(x, y) : '(y, x) : rest)@
+        -> ListSplitD l p ('(x, y) : l')
+        -- ^ Proof of @l == p ++ [(x, y)] ++ l'@
+        -> ListSplitD l' p' ('(y, x) : rest)
+        -- ^ Proof of @l' == p' ++ [(y, x)] ++ rest@
         -> AsyncT l m bef aft a
         -- ^Exectuion where we want to connect_ the channels
-        -> AsyncT (Concat p rest) m bef aft a
-connect_ retPrf prf cont = case listSplitConcat prf of
-  Refl -> let prf' = listSplitPopSuffix $ listSplitPopSuffix prf in
+        -> AsyncT (Concat p (Concat p' rest)) m bef aft a
+connect_ retPrf prf prf' cont = case (listSplitConcat prf, listSplitConcat prf') of
+  (Refl, Refl) -> let
+    in
     asyncGetIndex >>=: \case
       SNextRecv -> M.do
         xlift (runTillRecv cont) >>=: \case
           RrRecv cont' -> M.do
             SomeSndMessage i m <- recvAny
-            connect_ retPrf prf $ cont' $ SomeSndMessage (g prf prf' i) m
+            connect_ retPrf prf prf' $ cont' $ SomeSndMessage (g prf prf' i) m
           RrHalt res -> xreturn res
       SNextSend -> M.do
         xlift (runTillSend cont) >>=: \case
@@ -279,45 +330,45 @@ connect_ retPrf prf cont = case listSplitConcat prf of
           SrSend (SomeFstMessage i m) cont' -> case f prf prf' i of
               SomeValue Here (Refl, Refl) -> M.do
                 cont'' <- doesNotReturnInRecvPrf retPrf <$> xlift (runTillRecv cont')
-                connect_ retPrf prf $ cont'' $ SomeSndMessage (snd $ splitToInlistPair prf) m
+                let i' = padLeftIndexSameSuff prf $ There $ padLeftIndexSameSuff prf' Here
+                connect_ retPrf prf prf' $ cont'' $ SomeSndMessage i' m
               SomeValue (There Here) (Refl, Refl) -> M.do
                 cont'' <- doesNotReturnInRecvPrf retPrf <$> xlift (runTillRecv cont')
-                connect_ retPrf prf $ cont'' $ SomeSndMessage (fst $ splitToInlistPair prf) m
+                let i' = padLeftIndexSameSuff prf Here
+                connect_ retPrf prf prf' $ cont'' $ SomeSndMessage i' m
               SomeValue (There2 Here) i' -> M.do
                 send i' m
-                connect_ retPrf prf cont'
+                connect_ retPrf prf prf' cont'
               SomeValue (There3 contra) _ -> case contra of {}
 
   where
-    f :: ListSplitD l p ( '(x', y') : '(y', x') : rest)
-      -> ListSplitD l' p rest
+    f :: ListSplitD l p ('(x', y') : l')
+      -> ListSplitD l' p' ('(y', x') : rest)
       -> Chan x y l
       -> SomeValue '[ (x :~: x', y :~: y')
                     , (x :~: y', y :~: x')
-                    , Chan x y l'
+                    , Chan x y (Concat p (Concat p' rest))
                     ]
-    f SplitHere SplitHere = \case
-      Here -> SomeValue Here (Refl, Refl)
-      There Here -> SomeValue (There Here) (Refl, Refl)
-      There2 i -> SomeValue (There2 Here) i
-    f (SplitThere p) (SplitThere p') = \case
-      Here -> SomeValue (There2 Here) Here
-      There i -> case f p p' i of
-        SomeValue Here v -> SomeValue Here v
-        SomeValue (There Here) v -> SomeValue (There Here) v
-        SomeValue (There2 Here) v -> SomeValue (There2 Here) $ There v
-        SomeValue (There3 contra) _ -> case contra of {}
+    f p p' c = case (listSplitConcat p, listSplitConcat p') of
+        (Refl, Refl) -> let
+          (pInv, pInv') = listSplitSuff2 p p'
+           in case findIndex p c of
+          Left i -> SomeValue (There2 Here) $ padRightIndexSameSuff pInv i
+          Right Here -> SomeValue Here (Refl, Refl)
+          Right (There i) -> case findIndex p' i of
+            Left i' -> SomeValue (There2 Here) $ padLeftIndex p $ padRightIndexSameSuff pInv' i'
+            Right Here -> SomeValue (There Here) (Refl, Refl)
+            Right (There i') -> SomeValue (There2 Here) $ padLeftIndex p $ padLeftIndex p' i'
 
-    g :: ListSplitD l p ( '(x', y') : '(y', x') : rest)
-      -> ListSplitD l' p rest
-      -> Chan x y l'
+    g :: ListSplitD l p ('(x', y') : l')
+      -> ListSplitD l' p' ('(y', x') : rest)
+      -> Chan x y (Concat p (Concat p' rest))
       -> Chan x y l
-    g SplitHere SplitHere = \i -> There2 i
-    g (SplitThere p) (SplitThere p') = \case
-      Here -> Here
-      There i -> There $ g p p' i
-
-    splitToInlistPair :: ListSplitD l p ( '(x, y) : '(x', y') : rest)
-                      -> (Chan x y l, Chan x' y' l)
-    splitToInlistPair SplitHere = (Here, There Here)
-    splitToInlistPair (SplitThere i) = There *** There $ splitToInlistPair i
+    g p p' c = case (listSplitConcat p, listSplitConcat p') of
+        (Refl, Refl) -> let
+          (pInv, pInv') = listSplitSuff2 p p'
+         in case findIndex pInv c of
+            Left i -> padRightIndexSameSuff p i
+            Right i -> case findIndex pInv' i of
+              Left i' -> padLeftIndexSameSuff p $ There $ padRightIndexSameSuff p' i'
+              Right i' -> padLeftIndexSameSuff p $ There $ padLeftIndexSameSuff p' $ There i'

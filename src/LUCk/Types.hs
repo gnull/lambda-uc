@@ -15,6 +15,7 @@ module LUCk.Types
   , Concat
   , concatInjPrf
   , ListSplitD(..)
+  , ListSplitConcat
   , ListSplit(..)
   , pattern Split0
   , pattern Split1
@@ -23,9 +24,11 @@ module LUCk.Types
   , pattern Split4
   , pattern Split5
   , getListSplit'
+  , listConcatSplit
   , listSplitConcat
   , listSplitPopSuffix
   , listSplitSwap
+  , listSplitSuff2
   , KnownIndex(..)
   , KnownLenD(..)
   , KnownLen(..)
@@ -36,6 +39,7 @@ module LUCk.Types
 where
 
 import Data.Void (Void)
+import Control.Arrow
 
 import Data.Kind (Type, Constraint)
 import Data.HList
@@ -102,6 +106,8 @@ data ListSplitD :: forall a. [a] -> [a] -> [a] -> Type where
   SplitHere :: ListSplitD l '[] l
   SplitThere :: ListSplitD l p s -> ListSplitD (x:l) (x:p) s
 
+type ListSplitConcat p s = ListSplitD (Concat p s) p s
+
 class ListSplit l p s where
   getListSplit :: ListSplitD l p s
 
@@ -121,17 +127,42 @@ listSplitConcat = \case
   SplitThere i -> case listSplitConcat i of
     Refl -> Refl
 
+listConcatSplit :: ListSplitD l p s
+                -> ListSplitD (Concat p s') p s'
+listConcatSplit SplitHere = SplitHere
+listConcatSplit (SplitThere i) = SplitThere $ listConcatSplit i
+
 listSplitPopSuffix :: ListSplitD (Concat p (x:s)) p (x:s)
                    -> ListSplitD (Concat p s) p s
 listSplitPopSuffix = \case
   SplitHere -> SplitHere
   SplitThere i -> SplitThere $ listSplitPopSuffix i
 
-listSplitSwap :: ListSplitD (Concat p (f:s:rest)) p (f:s:rest)
-                   -> ListSplitD (Concat p (s:f:rest)) p (s:f:rest)
-listSplitSwap = \case
+listSplitSubst :: ListSplitD l' p' (s:rest)
+               -> ListSplitConcat p' (f:rest)
+listSplitSubst = \case
   SplitHere -> SplitHere
-  SplitThere i -> SplitThere $ listSplitSwap i
+  SplitThere i -> SplitThere $ listSplitSubst i
+
+listSplitSwap :: ListSplitD l p (f:l')
+              -> ListSplitD l' p' (s:rest)
+              -> ( ListSplitConcat p (s:(Concat p' (f:rest)))
+                 , ListSplitConcat p' (f:rest)
+                 )
+listSplitSwap = \case
+  SplitHere -> \p -> (SplitHere, listSplitSubst p)
+  SplitThere i -> \p -> first SplitThere $ listSplitSwap i p
+
+listSplitSuff2 :: ListSplitD l p (f:l')
+               -> ListSplitD l' p' (s:rest)
+               -> ( ListSplitConcat p (Concat p' rest)
+                  , ListSplitConcat p' rest
+                  )
+listSplitSuff2 = \case
+  SplitHere -> \p -> case listSplitConcat p of
+    Refl -> (SplitHere, listSplitPopSuffix p)
+  SplitThere i -> \p -> first SplitThere $ listSplitSuff2 i p
+
 
 -- instance ListSplit l '[] l where
 --   getListSplit = SplitHere
