@@ -77,27 +77,31 @@ data Exec ach m i a where
            -- ^Second forked process
            -> Exec (Concat ach ach') m (ForkIndexOr i i') (ChooseRet i i' a a')
   -- |Swap positions of two adjacent free channels.
-  ExecSwap :: ListSplitD l p (f:s:rest)
-           -- ^Proof of @l == p ++ (f:s:rest)@
+  ExecSwap :: ListSplitD l p (f:l')
+           -- ^Proof of @l == p ++ (f:l')@
+           -> ListSplitD l' p' (s:rest)
+           -- ^Proof of @l' == p' ++ (s:rest)@
            -> Exec l m i a
-           -> Exec (Concat p (s:f:rest)) m i a
+           -> Exec (Concat p (s : Concat p' (f:rest))) m i a
   -- |Connect two adjacent free channels of a given execution (making them bound).
-  ExecConn :: ListSplitD l p ('(x, y) : '(y, x) : rest)
-           -- ^Proof of @l == p ++ ('(x, y) : '(y, x) : rest)@
+  ExecConn :: ListSplitD l p ('(x, y) : l')
+           -- ^ Proof of @l == p ++ [(x, y)] ++ l'@
+           -> ListSplitD l' p' ('(y, x) : rest)
+           -- ^ Proof of @l' == p' ++ [(y, x)] ++ rest@
            -> Exec l m i a
            -- ^Exectuion where we want to connect the channels
-           -> Exec (Concat p rest) m i a
+           -> Exec (Concat p (Concat p' rest)) m i a
 
 execInvariant :: Exec ach m i a
               -> (SIndex i, MayOnlyReturnAfterRecvD i a)
 execInvariant = \case
   ExecProc i prf _ -> (i, prf)
-  ExecFork iPrf _ pL pR -> case iPrf of
+  ExecFork iPrf _ _ _ -> case iPrf of
     ForkIndexCompNone -> (getSIndex, getMayOnlyReturnAfterRecvPrf)
     ForkIndexCompFst -> (getSIndex, getMayOnlyReturnAfterRecvPrf)
     ForkIndexCompSnd -> (getSIndex, getMayOnlyReturnAfterRecvPrf)
-  ExecSwap _ p -> execInvariant p
-  ExecConn _ p -> execInvariant p
+  ExecSwap _ _ p -> execInvariant p
+  ExecConn _ _ p -> execInvariant p
 
 -- $writer
 --
@@ -246,15 +250,19 @@ forkRight :: ( ForkIndexComp i i'
                            ()
 forkRight = forkRight' getForkIndexComp getKnownLenPrf
 
-connect :: ListSplitD l p ('(x, y) : '(y, x) : rest)
-         -- ^Proof of @l == p ++ ('(x, y) : '(y, x) : rest)@
-         -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome (Concat p rest) i res) ()
-connect prf = ExecWriter $ tell $ ExecConn prf
+connect :: ListSplitD l p ('(x, y) : l')
+        -- ^ Proof of @l == p ++ [(x, y)] ++ l'@
+        -> ListSplitD l' p' ('(y, x) : rest)
+        -- ^ Proof of @l' == p' ++ [(y, x)] ++ rest@
+        -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome (Concat p (Concat p' rest)) i res) ()
+connect prf prf' = ExecWriter $ tell $ ExecConn prf prf'
 
-swap :: ListSplitD l p (f:s:rest)
-     -- ^Proof of @l == p ++ (f:s:rest)@
-     -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome (Concat p (s:f:rest)) i res) ()
-swap prf = ExecWriter $ tell $ ExecSwap prf
+swap :: ListSplitD l p (f:l')
+     -- ^Proof of @l == p ++ (f:l')@
+     -> ListSplitD l' p' (s:rest)
+     -- ^Proof of @l' == p' ++ (s:rest)@
+     -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome (Concat p (s : Concat p' (f:rest))) i res) ()
+swap prf prf' = ExecWriter $ tell $ ExecSwap prf prf'
 
 execGuard :: forall l i res m. ExecWriter m (ExecIndexSome l i res) (ExecIndexSome l i res) ()
 execGuard = xreturn ()
@@ -277,12 +285,12 @@ runExec = escapeSyncT . f
           (_, lPrf) = execInvariant l
           (_, rPrf) = execInvariant r
         in fork_ (ForkPremiseD fPrf fPrf lPrf rPrf) prf (f l) (f r)
-      ExecSwap k p -> case execInvariant e of
-        (SNextRecv, _) -> swap_ k $ f p
-        (SNextSend, _) -> swap_ k $ f p
-      ExecConn k p -> case execInvariant e of
-        (SNextRecv, prf) -> connect_ prf k $ f p
-        (SNextSend, prf) -> connect_ prf k $ f p
+      ExecSwap k k' p -> case execInvariant e of
+        (SNextRecv, _) -> swap_ k k' $ f p
+        (SNextSend, _) -> swap_ k k' $ f p
+      ExecConn k k' p -> case execInvariant e of
+        (SNextRecv, prf) -> connect_ prf k k' $ f p
+        (SNextSend, prf) -> connect_ prf k k' $ f p
 
 -- |Interactive action with no free channels can be interpreted as local.
 --

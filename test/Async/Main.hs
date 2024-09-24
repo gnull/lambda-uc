@@ -37,7 +37,7 @@ type RandM = Algo True True
 
 twoSum :: Int -> Int -> Exec '[] PureM NextSend Int
 twoSum x y =
-  ExecConn SplitHere $
+  ExecConn Split0 Split0 $
   ExecFork getForkIndexComp
            (KnownLenS KnownLenZ)
            (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ sender x)
@@ -45,10 +45,10 @@ twoSum x y =
 
 threeSum :: Int -> Int -> Int -> Exec '[] PureM NextSend Int
 threeSum x y z =
-  ExecConn Split0 $
-  ExecConn Split1 $
+  ExecConn Split0 Split0 $
+  ExecConn Split1 Split0 $
   ExecFork getForkIndexComp getKnownLenPrf (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ sender2 x) $
-  ExecConn Split1 $
+  ExecConn Split1 Split0 $
   ExecFork getForkIndexComp getKnownLenPrf
     (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ receiver2 y)
     (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ receiver2 z)
@@ -60,14 +60,14 @@ threeSumWriter x y z = M.do
   forkLeft $
     process $ receiver2 y
   -- guard @('[ '(Int, Void), '(Void, Int), '(Int, Void), '(Void, Int)])
-  connect Split1 
+  connect Split1 Split0
   -- guard @('[ '(Int, Void), '(Void, Int)])
   forkLeft  $
     process $ sender2 z
   -- guard @('[ '(Int, Void), '(Void, Int), '(Int, Void), '(Void, Int)])
-  connect Split1
+  connect Split1 Split0
   -- guard @('[ '(Int, Void), '(Void, Int)])
-  connect Split0 
+  connect Split0 Split0
 
 sender :: Int -> AsyncT '[ '(Int, Int)] PureM NextSend NextSend Int
 sender x = M.do
@@ -155,7 +155,7 @@ guessingExec = M.do
   process $ guessingChallenger
   forkLeft $
     process guessingPlayer
-  connect Split0
+  connect Split0 Split0
 
 -- |Sends String s to the given channel, waits for the other side to repond with
 test :: String -> AsyncExT e '[ '(String, Int)] m NextSend NextSend Int
@@ -209,7 +209,7 @@ connectSelf :: forall i a m x rest.
 connectSelf = case lemma (getMayOnlyReturnAfterRecvPrf @i @a) getSIndex of
     (Refl, Refl) -> M.do
       forkRight $ process idProc
-      connect SplitHere
+      connect Split0 Split0
   where
     lemma :: forall i a.
              MayOnlyReturnAfterRecvD i a
