@@ -6,7 +6,6 @@ module LUCk.Syntax.Async.Eval
   -- $exec
     Exec(..)
   , runExec
-  , escapeSyncT
   -- * Writer Monad for Execution
   -- $writer
   , ExecWriter(..)
@@ -274,7 +273,7 @@ execGuard = xreturn ()
 runExec :: Monad m
         => Exec '[] m NextSend a
         -> m a
-runExec = escapeSyncT . f
+runExec = escapeAsyncT . f
   where
     f :: Monad m
       => Exec ach m i a
@@ -291,13 +290,3 @@ runExec = escapeSyncT . f
       ExecConn k k' p -> case execInvariant e of
         (SNextRecv, prf) -> connect_ prf k k' $ f p
         (SNextSend, prf) -> connect_ prf k k' $ f p
-
--- |Interactive action with no free channels can be interpreted as local.
---
--- Apply this function once you've bound all the free channels to run the execution.
-escapeSyncT :: Monad m
-            => AsyncT '[] m NextSend NextSend a
-            -> m a
-escapeSyncT cont = runTillSend cont >>= \case
-  SrSend (SomeFstMessage contra _) _ -> case contra of {}
-  SrHalt res -> pure res

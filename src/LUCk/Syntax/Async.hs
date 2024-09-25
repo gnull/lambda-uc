@@ -6,6 +6,7 @@ module LUCk.Syntax.Async (
     AsyncExT(..)
   , AsyncT
   , Index
+  , escapeAsyncT
   , xfreeAsync
   -- * Syntax
   -- $actions
@@ -112,6 +113,16 @@ instance XApplicative (AsyncExT ex ach m) where
 
 instance XMonad (AsyncExT ex ach m) where
   m >>=: f = AsyncExT $ runInterT m >>=: (runInterT . f)
+
+-- |Interactive action with no free channels can be interpreted as local.
+--
+-- Apply this function once you've bound all the free channels to run the execution.
+escapeAsyncT :: Monad m
+            => AsyncT '[] m NextSend NextSend a
+            -> m a
+escapeAsyncT cont = runTillSend cont >>= \case
+  SrSend (SomeFstMessage contra _) _ -> case contra of {}
+  SrHalt res -> pure res
 
 xfreeAsync :: AsyncActions ex ach m bef aft a -> AsyncExT ex ach m bef aft a
 xfreeAsync = AsyncExT . xfree
