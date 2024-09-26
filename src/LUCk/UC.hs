@@ -1,16 +1,18 @@
 module LUCk.UC
   ( ProtoNode
-  , EnvNode
   , SubRespTree(..)
   , subRespEval
   )
  where
 
--- import Control.XMonad
--- import qualified Control.XMonad.Do as M
+import Control.XMonad
+import qualified Control.XMonad.Do as M
 
 import LUCk.Syntax
 import LUCk.Types
+
+import LUCk.Syntax.Async
+import LUCk.Syntax.Async.Eval
 
 -- |A protocol without it subroutine implementations built-in.
 --
@@ -22,49 +24,49 @@ import LUCk.Types
 --
 -- This type definition ensures that we never terminate, we must continuously
 -- be ready to receive messages and respond to them somehow.
-type ProtoNode up down m bef = AsyncT ( '(Snd up, Fst up) : down) m bef NextRecv Void
+data ProtoNode up down m where
+  MkIdealNode :: AsyncT ('(x, y):down) m NextRecv NextRecv Void
+              -> ProtoNode '(y, x) down m
 
--- |An enviroment algorithm. The `down` is the interface of the functionality
--- environment is allowed to call.
-type EnvNode down m a = AsyncT '[down] m NextSend NextSend a
+data EnvProcess down m a where
+  MkEnvProcess :: AsyncT '[down] m NextSend NextSend a
+               -> EnvProcess down m a
+
+data KnownPairD p where
+  KnownPairD :: KnownPairD '(x, y)
 
 -- |A tree of subroutine-respecting protocols.
 --
--- A `SubRespTree m up` is simply `ProtoNode m up down False` where the
+-- A `SubRespTree m up` is simply @ProtoNode up down m@ where the
 -- required subroutine interfaces were filled with actual implementations (and,
 -- therefore, are not required and not exposed by a type parameter anymore).
 data SubRespTree (m :: Type -> Type) (up :: (Type, Type)) where
-  SubRespTreeNode :: ProtoNode up down m NextRecv
-                  -> HList (SubRespTree m) down
-                  -> SubRespTree m up
+  MkSubRespTree :: ProtoNode '(x, y) down m
+                -> KnownPairD '(x, y)
+                -> HList (SubRespTree m) down
+                -> SubRespTree m '(x, y)
 
 -- |Run environment with a given protocol (no adversary yet).
-subRespEval :: forall m (iface :: (Type, Type)) a. Monad m
-            => EnvNode iface m a
-            -- ^Environment
-            -> SubRespTree m iface
+subRespEval :: SubRespTree m iface
             -- ^The called protocol with its subroutines composed-in
-            -> m a
-subRespEval = \e (SubRespTreeNode p ch) -> runTillSend e >>= \case
-    SrHalt x -> pure x
-    SrSend (SomeFstMessage (There contra) _) _ -> case contra of {}
-    SrSend (SomeFstMessage Here m) cont -> do
-      p' <- ($ SomeSndMessage Here m) <$> mayOnlyRecvVoidPrf <$> runTillRecv p
-      (t, resp) <- subroutineCall @iface p' ch
-      e' <- (\(RrRecv cont') -> cont' $ SomeSndMessage Here resp) <$> runTillRecv cont
-      subRespEval e' t
+            -> ExecWriter m ExecIndexInit (ExecIndexSome '[ChanSwap iface] NextRecv Void) ()
+subRespEval (MkSubRespTree (MkIdealNode p) _ c) = M.do
+    process p
+    forEliminateHlist c $ \_ z -> M.do
+      forkRight $ subRespEval z
+      case z of
+        MkSubRespTree _ KnownPairD _ -> connect Split0 Split1
   where
-    subroutineCall :: forall up down.
-                   ProtoNode up down m NextSend
-                   -> HList (SubRespTree m) down
-                   -> m (SubRespTree m up, Snd up)
-    subroutineCall p s = do
-      runTillSend p >>= \case
-        SrSend (SomeFstMessage Here m') cont' ->
-          pure (SubRespTreeNode cont' s, m')
-        SrSend (SomeFstMessage (There i) m') cont' -> do
-          (s', m'') <- forIth i s $ \(SubRespTreeNode ch chchs) -> do
-            cont <- ($ SomeSndMessage Here m') <$> mayOnlyRecvVoidPrf <$> runTillRecv ch
-            subroutineCall cont chchs
-          cont'' <- ($ SomeSndMessage (There i) m'') <$> mayOnlyRecvVoidPrf <$> runTillRecv cont'
-          subroutineCall cont'' s'
+    forEliminateHlist :: HList (SubRespTree m) down
+                      -> ( forall p z s.
+                             ListSplitD down p (z:s)
+                          -> SubRespTree m z
+                          -> ExecWriter m (ExecIndexSome (w:z:s) NextRecv Void)
+                                          (ExecIndexSome (w:s) NextRecv Void) ()
+                         )
+                      -> ExecWriter m (ExecIndexSome (w:down) NextRecv Void)
+                                      (ExecIndexSome '[w] NextRecv Void) ()
+    forEliminateHlist HNil _ = xreturn ()
+    forEliminateHlist (HCons z zs) f = M.do
+      f SplitHere z
+      forEliminateHlist zs $ f . SplitThere
