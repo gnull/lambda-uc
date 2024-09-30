@@ -19,6 +19,7 @@ module LUCk.Syntax.Async.Eval
   , connect
   , swap
   , execGuard
+  , execInvariantM
   -- $explicit
   , process'
   , forkLeft'
@@ -266,6 +267,10 @@ swap prf prf' = ExecBuilder $ add $ ExecSwap prf prf'
 execGuard :: forall l i res m. ExecBuilder m (ExecIndexSome l i res) (ExecIndexSome l i res) ()
 execGuard = xreturn ()
 
+execInvariantM :: ExecBuilder m (ExecIndexSome ach i a) (ExecIndexSome ach i a)
+                                (SIndex i, MayOnlyReturnAfterRecvD i a)
+execInvariantM = execInvariant <$> ExecBuilder look
+
 -- |Run an execution.
 --
 -- Note that the list of free channels must be empty, i.e. all channels must be
@@ -290,11 +295,3 @@ runExec = escapeAsyncT . f
       ExecConn k k' p -> case execInvariant e of
         (SNextRecv, prf) -> connect_ prf k k' $ f p
         (SNextSend, prf) -> connect_ prf k k' $ f p
-
-
-getForkIndexSwap :: ForkIndexCompD i i'
-                 -> ForkIndexCompD i' i
-getForkIndexSwap = \case
-  ForkIndexCompNone -> ForkIndexCompNone
-  ForkIndexCompFst -> ForkIndexCompSnd
-  ForkIndexCompSnd -> ForkIndexCompFst

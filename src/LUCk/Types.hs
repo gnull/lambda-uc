@@ -1,3 +1,5 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
 module LUCk.Types
   ( module Data.HList
   , module Data.Void
@@ -13,6 +15,7 @@ module LUCk.Types
   , KnownBool(..)
   , lemmaBoolNegInv
   , Concat
+  , concatAssocPrf
   , concatInjPrf
   , ListSplitD(..)
   , ListSplitConcat
@@ -26,6 +29,7 @@ module LUCk.Types
   , getListSplit'
   , listConcatSplit
   , listSplitConcat
+  , listSplitAdd
   , listSplitPopSuffix
   , listSplitSwap
   , listSplitSuff2
@@ -88,6 +92,15 @@ type Concat :: forall a. [a] -> [a] -> [a]
 type family Concat xs ys where
   Concat '[] ys = ys
   Concat (x:xs) ys = x:Concat xs ys
+
+-- |Proof of `p ++ (p' ++ s') == (p ++ p') ++ s'`.
+concatAssocPrf :: forall p p' s' l s.
+                  ListSplitD l p s
+               -> (Concat p (Concat p' s')) :~: (Concat (Concat p p') s')
+concatAssocPrf = \case
+  SplitHere -> Refl
+  SplitThere i -> case concatAssocPrf @_ @p' @s' i of
+    Refl -> Refl
 
 concatInjPrf :: forall xs ys ys'.
              Concat xs ys :~: Concat xs ys'

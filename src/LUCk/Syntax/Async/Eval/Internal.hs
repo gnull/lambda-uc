@@ -14,6 +14,8 @@ module LUCk.Syntax.Async.Eval.Internal
   , ForkPremiseD(..)
   , getForkPremiseD
   , ForkIndexComp(..)
+  , getForkIndexSwap
+  , getForkIndexRecv
   , ForkIndexCompD(..)
   , ForkIndexOr
   , MayOnlyReturnAfterRecv(..)
@@ -47,11 +49,22 @@ instance KnownIndex i => ForkIndexComp NextRecv i where
 instance (i ~ NextRecv) => ForkIndexComp NextSend i where
   getForkIndexComp = ForkIndexCompFst
 
+getForkIndexRecv :: SIndex i -> ForkIndexCompD NextRecv i
+getForkIndexRecv = \case
+  SNextRecv -> getForkIndexComp
+  SNextSend -> getForkIndexComp
+
+getForkIndexSwap :: ForkIndexCompD i i'
+                 -> ForkIndexCompD i' i
+getForkIndexSwap = \case
+  ForkIndexCompNone -> ForkIndexCompNone
+  ForkIndexCompFst -> ForkIndexCompSnd
+  ForkIndexCompSnd -> ForkIndexCompFst
+
 type ForkIndexOr :: Index -> Index -> Index
 type family ForkIndexOr bef bef' where
   ForkIndexOr NextSend NextRecv = NextSend
-  ForkIndexOr NextRecv NextSend = NextSend
-  ForkIndexOr NextRecv NextRecv = NextRecv
+  ForkIndexOr NextRecv i = i
 
 data MayOnlyReturnAfterRecvD (i :: Index) (a :: Type) where
   MayOnlyReturnVoid :: MayOnlyReturnAfterRecvD i Void
