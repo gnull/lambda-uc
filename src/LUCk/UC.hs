@@ -22,6 +22,16 @@ type OnlyRecvChan a = '(Void, a)
 type PingSendChan = OnlySendChan ()
 type PingRecvChan = OnlyRecvChan ()
 
+type Marked :: Type -> (Type, Type) -> (Type, Type)
+type Marked u c = '( (u, Fst c), (u, Snd c))
+
+type MapMarked :: Type -> [(Type, Type)] -> [(Type, Type)]
+type family MapMarked u l where
+  MapMarked _ '[] = '[]
+  MapMarked u (x:xs) = Marked u x : MapMarked u xs
+
+type Pid = String
+
 -- |A protocol without it subroutine implementations built-in.
 --
 -- - `m` is the monad for local computations,
@@ -33,11 +43,11 @@ type PingRecvChan = OnlyRecvChan ()
 -- This type definition ensures that we never terminate, we must continuously
 -- be ready to receive messages and respond to them somehow.
 data ProtoNode up down m where
-  MkIdealNode :: AsyncT (PingSendChan : '(x, y) : down) m NextRecv NextRecv Void
+  MkIdealNode :: AsyncT (PingSendChan : Marked Pid '(x, y) : MapMarked Pid down) m NextRecv NextRecv Void
               -> ProtoNode '(y, x) down m
 
 data EnvProcess down m a where
-  MkEnvProcess :: AsyncT '[PingRecvChan, down] m NextSend NextSend a
+  MkEnvProcess :: AsyncT '[PingRecvChan, Marked Pid down] m NextSend NextSend a
                -> EnvProcess down m a
 
 data KnownPairD p where
@@ -83,7 +93,8 @@ mergeSendPorts i i' = case (listSplitConcat i, listSplitConcat i') of
 -- |Run environment with a given protocol (no adversary yet).
 subRespEval :: SubRespTree m iface
             -- ^The called protocol with its subroutines composed-in
-            -> ExecBuilder m ExecIndexInit (ExecIndexSome '[PingSendChan, ChanSwap iface] NextRecv Void) ()
+            -> ExecBuilder m ExecIndexInit
+                  (ExecIndexSome '[PingSendChan, ChanSwap (Marked Pid iface)] NextRecv Void) ()
 subRespEval (MkSubRespTree (MkIdealNode p) _ c) = M.do
     process p
     forEliminateHlist c $ \_ z -> M.do
@@ -93,16 +104,26 @@ subRespEval (MkSubRespTree (MkIdealNode p) _ c) = M.do
           connect Split1 Split2
           mergeSendPorts Split0 Split0
   where
-    forEliminateHlist :: HList (SubRespTree m) down
-                      -> ( forall p z s.
-                             ListSplitD down p (z:s)
-                          -> SubRespTree m z
-                          -> ExecBuilder m (ExecIndexSome (ping:w:z:s) NextRecv Void)
-                                           (ExecIndexSome (ping:w:s) NextRecv Void) ()
-                         )
-                      -> ExecBuilder m (ExecIndexSome (ping:w:down) NextRecv Void)
-                                       (ExecIndexSome '[ping, w] NextRecv Void) ()
+    forEliminateHlist
+      :: HList (SubRespTree m) down
+      -> ( forall p z s.
+             ListSplitD down p (z:s)
+          -> SubRespTree m z
+          -> ExecBuilder m (ExecIndexSome (ping:w:Marked Pid z:MapMarked Pid s) NextRecv Void)
+                           (ExecIndexSome (ping:w:MapMarked Pid s) NextRecv Void) ()
+         )
+      -> ExecBuilder m (ExecIndexSome (ping:w:MapMarked Pid down) NextRecv Void)
+                       (ExecIndexSome '[ping, w] NextRecv Void) ()
     forEliminateHlist HNil _ = xreturn ()
     forEliminateHlist (HCons z zs) f = M.do
       f SplitHere z
       forEliminateHlist zs $ f . SplitThere
+
+ucExec :: EnvProcess up m a
+       -> SubRespTree m up
+       -> ExecBuilder m ExecIndexInit (ExecIndexSome '[] NextSend a) ()
+ucExec (MkEnvProcess e) p@(MkSubRespTree _ KnownPairD _) = M.do
+  subRespEval p
+  forkRight $ process e
+  connect Split0 Split1
+  connect Split0 Split0
