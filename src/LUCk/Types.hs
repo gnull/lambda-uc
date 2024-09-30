@@ -127,6 +127,13 @@ listSplitConcat = \case
   SplitThere i -> case listSplitConcat i of
     Refl -> Refl
 
+listSplitAdd :: ListSplitD l p s
+             -> ListSplitD s p' s'
+             -> ListSplitD l (Concat p p') s'
+listSplitAdd = \case
+  SplitHere -> id
+  SplitThere i -> \j -> SplitThere $ listSplitAdd i j
+
 listConcatSplit :: ListSplitD l p s
                 -> ListSplitD (Concat p s') p s'
 listConcatSplit SplitHere = SplitHere

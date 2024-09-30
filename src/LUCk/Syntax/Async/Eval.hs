@@ -6,11 +6,11 @@ module LUCk.Syntax.Async.Eval
   -- $exec
     Exec(..)
   , runExec
-  -- * Writer Monad for Execution
+  -- * Monad for Building Executions
   -- $writer
-  , ExecWriter(..)
+  , ExecBuilder(..)
   , ExecIndex(..)
-  , execWriterToExec
+  , runExecBuilder
   -- ** Actions
   -- $actions
   , process
@@ -23,12 +23,14 @@ module LUCk.Syntax.Async.Eval
   , process'
   , forkLeft'
   , forkRight'
+  -- * Helper functions
+  , getForkIndexSwap
   )
 where
 
 import Control.XApplicative
 import Control.XMonad
-import Control.XMonad.XWriter
+import Control.XMonad.XAccum
 
 import LUCk.Syntax.Async.Eval.Internal
 import LUCk.Syntax.Async
@@ -104,7 +106,7 @@ execInvariant = \case
 
 -- $writer
 --
--- This section defines the `ExecWriter` monad that simplifies the construction
+-- This section defines the `ExecBuilder` monad that simplifies the construction
 -- of `Exec` exections. Any `Exec` value is built like a tree where each node
 -- is marked with one of constructors of `Exec`: `ExecFork` has two children
 -- nodes, `ExecProc` is a leaf (no children nodes), while `ExecSwap` and
@@ -115,27 +117,27 @@ execInvariant = \case
 -- build. Especially, if your `Exec` formala is complex and you want to build
 -- it gradually and see intermediate results.
 --
--- The `ExecWriter` monad aids in building `Exec` values in a modular
+-- The `ExecBuilder` monad aids in building `Exec` values in a modular
 -- way and providing the programmer with feedback at each step. Each
--- `ExecWriter` action internally stores a function @`Exec` l m i res ->
+-- `ExecBuilder` action internally stores a function @`Exec` l m i res ->
 -- `Exec` l' m i' res'@ or a function @() -> `Exec` l m i res@ (given by the
 -- `ExecIndex`). Two actions can be composed together if the corresponding
 -- functions compose.
 --
 -- To get a runnable execution @`Exec` '[] m i res@, define a value of type
--- @`ExecWriter` m `ExecIndexInit` (`ExecIndexSome` l i res) ()@ and pass it
--- to `execWriterToExec`. The result can be passed to `runExec` to actually
--- run it.  The basic actions available in `ExecWriter` are `forkLeft`,
+-- @`ExecBuilder` m `ExecIndexInit` (`ExecIndexSome` l i res) ()@ and pass it
+-- to `runExecBuilder`. The result can be passed to `runExec` to actually
+-- run it.  The basic actions available in `ExecBuilder` are `forkLeft`,
 -- `forkRight`, `connect` and `swap`.
 
--- |Index of the `ExecWriter` monad.
+-- |Index of the `ExecBuilder` monad.
 data ExecIndex
   = ExecIndexInit
   -- ^We haven't started any executions
   | ExecIndexSome [(Type, Type)] Index Type
   -- ^An execution with given @ach@, @i@, and @res@ is started
 
--- |Mapping from the indices of `ExecWriter` to the indices of internal indexed
+-- |Mapping from the indices of `ExecBuilder` to the indices of internal indexed
 -- monoid @(->)@.
 type MatchExecIndex :: (Type -> Type) -> ExecIndex -> Type
 type family MatchExecIndex m i where
@@ -143,44 +145,42 @@ type family MatchExecIndex m i where
   MatchExecIndex m (ExecIndexSome l i res) = Exec l m i res
 
 -- Indexed writer that uses @`Exec` _ _ _ _ -> `Exec` _ _ _ _@ as internal indexed monoid.
-type ExecWriter :: (Type -> Type) -> ExecIndex -> ExecIndex -> Type -> Type
-newtype ExecWriter m i j a = ExecWriter
-  { runExecWriter :: XWriter (MatchExecIndex m i) (MatchExecIndex m j) a
+type ExecBuilder :: (Type -> Type) -> ExecIndex -> ExecIndex -> Type -> Type
+newtype ExecBuilder m i j a = ExecBuilder
+  { fromExecBuilder :: XAccum (MatchExecIndex m i) (MatchExecIndex m j) a
   }
   deriving (Functor)
 
-instance XApplicative (ExecWriter m) where
-  xpure = ExecWriter . xpure
-  f <*>: x = ExecWriter $ runExecWriter f <*>: runExecWriter x
+instance XApplicative (ExecBuilder m) where
+  xpure = ExecBuilder . xpure
+  f <*>: x = ExecBuilder $ fromExecBuilder f <*>: fromExecBuilder x
 
-instance XMonad (ExecWriter m) where
-  m >>=: f = ExecWriter $ runExecWriter m >>=: (runExecWriter . f)
+instance XMonad (ExecBuilder m) where
+  m >>=: f = ExecBuilder $ fromExecBuilder m >>=: (fromExecBuilder . f)
 
--- |Extract the internal `Exec` from `ExecWriter`.
+-- |Extract the internal `Exec` from `ExecBuilder`.
 --
--- Note that `ExecWriter m i j ()` internally stores a function
+-- Note that `ExecBuilder m i j ()` internally stores a function
 -- @`MatchExecIndex` i -> `MatchExecIndex` j@. The function can be extracted
 -- using `runXWriter`.
 --
 -- At the same time, @`MatchExecIndex` `ExecIndexInit` = ()`@. Therefore,
--- @`ExecWriter` m `ExecIndexInit` (`ExecIndexSome` l i res)@ stores a function
+-- @`ExecBuilder` m `ExecIndexInit` (`ExecIndexSome` l i res)@ stores a function
 -- @() -> `Exec` m l i res@, which is isomorphic to just value @`Exec` m l i
 -- res@, which this functions extracts.
-execWriterToExec :: ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
+runExecBuilder :: ExecBuilder m ExecIndexInit (ExecIndexSome l i res) ()
                  -> MatchExecIndex m (ExecIndexSome l i res)
-execWriterToExec p = f ()
-  where
-    (f, ()) = runXWriter $ runExecWriter p
+runExecBuilder p = fst $ runXAccum (fromExecBuilder p) ()
 
 -- $actions
 --
--- The following are basic actions you can perform in `ExecWriter`. The
+-- The following are basic actions you can perform in `ExecBuilder`. The
 -- `process`, `forkLeft`, `forkRight`, `connect`, `swap` correpond to the
 -- constructors of `Exec`. The difference between `forkLeft` and `forkRight` is
 -- merely in the order of composing the child nodes.
 --
 -- The @`execGuard` = xreturn ()@ has no effect in the monad, but can be inserted
--- in-between other operations in `ExecWriter` to annotate the current
+-- in-between other operations in `ExecBuilder` to annotate the current
 -- context. This can be used to document the code, while having the compiler
 -- verify that the annotation is correct. In some rare cases, `execGuard` can also
 -- be used to resolve ambiguous types.
@@ -196,33 +196,33 @@ process' :: SIndex i
          -- ^Proof of @res@ not being `Void` only if @i == `NextSend`@
          -> AsyncT l m i i res
          -- ^The program that the created process will run
-         -> ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
-process' i retPrf = ExecWriter . tell . const . ExecProc i retPrf
+         -> ExecBuilder m ExecIndexInit (ExecIndexSome l i res) ()
+process' i retPrf = ExecBuilder . add . const . ExecProc i retPrf
 
 process :: (KnownIndex i, MayOnlyReturnAfterRecv i res)
         => AsyncT l m i i res
         -- ^The program that the created process will run
-        -> ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
+        -> ExecBuilder m ExecIndexInit (ExecIndexSome l i res) ()
 process = process' getSIndex getMayOnlyReturnAfterRecvPrf
 
 forkLeft' :: ForkIndexCompD i i'
           -- ^Proof of @i@ and @i'@ not being `NextSend` both
           -> KnownLenD l
           -- ^Length of list `l` (left branch)
-          -> ExecWriter m ExecIndexInit (ExecIndexSome l' i' res') ()
+          -> ExecBuilder m ExecIndexInit (ExecIndexSome l' i' res') ()
           -- ^Right branch of the fork
-          -> ExecWriter m (ExecIndexSome l i res)
+          -> ExecBuilder m (ExecIndexSome l i res)
                           (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
                           ()
-forkLeft' fPrf prf p = ExecWriter $ tell $
-  \e -> ExecFork fPrf prf e $ execWriterToExec p
+forkLeft' fPrf prf p = ExecBuilder $ add $
+  \e -> ExecFork fPrf prf e $ runExecBuilder p
 
 forkLeft :: ( ForkIndexComp i i'
             , KnownLen l
             )
-         => ExecWriter m ExecIndexInit (ExecIndexSome l' i' res') ()
+         => ExecBuilder m ExecIndexInit (ExecIndexSome l' i' res') ()
          -- ^Right branch of the fork
-         -> ExecWriter m (ExecIndexSome l i res)
+         -> ExecBuilder m (ExecIndexSome l i res)
                          (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
                          ()
 forkLeft = forkLeft' getForkIndexComp getKnownLenPrf
@@ -231,20 +231,20 @@ forkRight' :: ForkIndexCompD i i'
            -- ^Proof of @i@ and @i'@ not being `NextSend` both
            -> KnownLenD l
            -- ^Length of list `l` (left branch)
-           -> ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
+           -> ExecBuilder m ExecIndexInit (ExecIndexSome l i res) ()
            -- ^Left branch of the fork
-           -> ExecWriter m (ExecIndexSome l' i' res')
+           -> ExecBuilder m (ExecIndexSome l' i' res')
                            (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
                            ()
-forkRight' fPrf prf p = ExecWriter $ tell $
-  \e -> ExecFork fPrf prf (execWriterToExec p) e
+forkRight' fPrf prf p = ExecBuilder $ add $
+  \e -> ExecFork fPrf prf (runExecBuilder p) e
 
 forkRight :: ( ForkIndexComp i i'
              , KnownLen l
              )
-          => ExecWriter m ExecIndexInit (ExecIndexSome l i res) ()
+          => ExecBuilder m ExecIndexInit (ExecIndexSome l i res) ()
           -- ^Left branch of the fork
-          -> ExecWriter m (ExecIndexSome l' i' res')
+          -> ExecBuilder m (ExecIndexSome l' i' res')
                            (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
                            ()
 forkRight = forkRight' getForkIndexComp getKnownLenPrf
@@ -253,17 +253,17 @@ connect :: ListSplitD l p ('(x, y) : l')
         -- ^ Proof of @l == p ++ [(x, y)] ++ l'@
         -> ListSplitD l' p' ('(y, x) : rest)
         -- ^ Proof of @l' == p' ++ [(y, x)] ++ rest@
-        -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome (Concat p (Concat p' rest)) i res) ()
-connect prf prf' = ExecWriter $ tell $ ExecConn prf prf'
+        -> ExecBuilder m (ExecIndexSome l i res) (ExecIndexSome (Concat p (Concat p' rest)) i res) ()
+connect prf prf' = ExecBuilder $ add $ ExecConn prf prf'
 
 swap :: ListSplitD l p (f:l')
      -- ^Proof of @l == p ++ (f:l')@
      -> ListSplitD l' p' (s:rest)
      -- ^Proof of @l' == p' ++ (s:rest)@
-     -> ExecWriter m (ExecIndexSome l i res) (ExecIndexSome (Concat p (s : Concat p' (f:rest))) i res) ()
-swap prf prf' = ExecWriter $ tell $ ExecSwap prf prf'
+     -> ExecBuilder m (ExecIndexSome l i res) (ExecIndexSome (Concat p (s : Concat p' (f:rest))) i res) ()
+swap prf prf' = ExecBuilder $ add $ ExecSwap prf prf'
 
-execGuard :: forall l i res m. ExecWriter m (ExecIndexSome l i res) (ExecIndexSome l i res) ()
+execGuard :: forall l i res m. ExecBuilder m (ExecIndexSome l i res) (ExecIndexSome l i res) ()
 execGuard = xreturn ()
 
 -- |Run an execution.
@@ -290,3 +290,11 @@ runExec = escapeAsyncT . f
       ExecConn k k' p -> case execInvariant e of
         (SNextRecv, prf) -> connect_ prf k k' $ f p
         (SNextSend, prf) -> connect_ prf k k' $ f p
+
+
+getForkIndexSwap :: ForkIndexCompD i i'
+                 -> ForkIndexCompD i' i
+getForkIndexSwap = \case
+  ForkIndexCompNone -> ForkIndexCompNone
+  ForkIndexCompFst -> ForkIndexCompSnd
+  ForkIndexCompSnd -> ForkIndexCompFst

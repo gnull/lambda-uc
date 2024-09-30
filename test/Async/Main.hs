@@ -27,9 +27,9 @@ tests = testGroup "async execution tests"
   , testCase "round trip 3 processes" $
       generalizeAlgo (runExec $ threeSum 100 10 1) >>= (@?= 111)
   , testCase "round trip 3 processes, monadic notation" $
-      generalizeAlgo (runExec $ execWriterToExec $ threeSumWriter 100 10 1) >>= (@?= 111)
+      generalizeAlgo (runExec $ runExecBuilder $ threeSumWriter 100 10 1) >>= (@?= 111)
   , testCase "guessing game" $
-      generalizeAlgo (fmap (<= 7) $ runExec $ execWriterToExec guessingExec) >>= (@?= True)
+      generalizeAlgo (fmap (<= 7) $ runExec $ runExecBuilder guessingExec) >>= (@?= True)
   ]
 
 type PureM = Algo True False
@@ -53,7 +53,7 @@ threeSum x y z =
     (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ receiver2 y)
     (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ receiver2 z)
 
-threeSumWriter :: Int -> Int -> Int -> ExecWriter PureM ExecIndexInit (ExecIndexSome '[] NextSend Int) ()
+threeSumWriter :: Int -> Int -> Int -> ExecBuilder PureM ExecIndexInit (ExecIndexSome '[] NextSend Int) ()
 threeSumWriter x y z = M.do
   process $ receiver2 x
   -- guard @('[ '(Int, Void), '(Void, Int)])
@@ -150,7 +150,7 @@ guessingPlayer = M.do
             GT -> helper (mid + 1) t
           xreturn $ v + 1
 
-guessingExec :: ExecWriter RandM ExecIndexInit (ExecIndexSome '[] NextSend Integer) ()
+guessingExec :: ExecBuilder RandM ExecIndexInit (ExecIndexSome '[] NextSend Integer) ()
 guessingExec = M.do
   process $ guessingChallenger
   forkLeft $
@@ -205,7 +205,7 @@ useMaybeSends e chan = M.do
 -- This is not a basic combinator and is derived using `fork` and `connect`.
 connectSelf :: forall i a m x rest.
                (Monad m, KnownIndex i, MayOnlyReturnAfterRecv i a)
-            => ExecWriter m (ExecIndexSome ('(x, x) : rest) i a) (ExecIndexSome rest i a) ()
+            => ExecBuilder m (ExecIndexSome ('(x, x) : rest) i a) (ExecIndexSome rest i a) ()
 connectSelf = case lemma (getMayOnlyReturnAfterRecvPrf @i @a) getSIndex of
     (Refl, Refl) -> M.do
       forkRight $ process idProc
