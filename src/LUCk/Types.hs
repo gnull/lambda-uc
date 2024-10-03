@@ -5,7 +5,9 @@ module LUCk.Types
   , module Data.Void
   , module Data.Kind
   , module Data.Type.Equality
+  , smartRefl
   , Not
+  , BadInput(..)
   , SBool(..)
   , SIndex(..)
   , Or
@@ -36,8 +38,9 @@ module LUCk.Types
   , KnownIndex(..)
   , KnownLenD(..)
   , KnownLen(..)
+  , KnownPairD(..)
+  , SameLenD(..)
   , SameLen(..)
-  , SameLength(..)
   , Index(..)
   )
 where
@@ -50,7 +53,13 @@ import Data.HList
 
 import Data.Type.Equality ((:~:)(Refl))
 
+smartRefl :: (a ~ b) => a :~: b
+smartRefl = Refl
+
 type Not (a :: Type) = a -> Void
+
+-- |We use this in type families to mark inputs that are not considered
+data BadInput = BadInput
 
 data SBool (a :: Bool) where
   STrue :: SBool True
@@ -240,6 +249,9 @@ data KnownLenD :: forall a. [a] -> Type where
   KnownLenZ :: KnownLenD '[]
   KnownLenS :: forall a (x :: a) (l :: [a]). KnownLenD l -> KnownLenD (x : l)
 
+data KnownPairD p where
+  KnownPairD :: KnownPairD '(x, y)
+
 -- |Class of list values for which their length is known at compile time.
 type KnownLen :: forall a. [a] -> Constraint
 class KnownLen l where
@@ -251,18 +263,18 @@ instance KnownLen '[] where
 instance KnownLen xs => KnownLen (x:xs) where
   getKnownLenPrf = KnownLenS $ getKnownLenPrf @_ @xs
 
-data SameLen :: forall a b. [a] -> [b] -> Type where
-  SameLenNil :: SameLen '[] '[]
-  SameLenCons :: SameLen l l' -> SameLen (x:l) (x':l')
+data SameLenD :: forall a b. [a] -> [b] -> Type where
+  SameLenNil :: SameLenD '[] '[]
+  SameLenCons :: SameLenD l l' -> SameLenD (x:l) (x':l')
 
-type SameLength :: forall a b. [a] -> [b] -> Constraint
-class SameLength l l' where
-  proveSameLength :: SameLen l l'
+type SameLen :: forall a b. [a] -> [b] -> Constraint
+class SameLen l l' where
+  proveSameLength :: SameLenD l l'
 
-instance SameLength '[] '[] where
+instance SameLen '[] '[] where
   proveSameLength = SameLenNil
 
-instance SameLength l l' => SameLength (x:l) (x':l') where
+instance SameLen l l' => SameLen (x:l) (x':l') where
   proveSameLength = SameLenCons proveSameLength
 
 -- |Next operation of the asyncronous algorithm

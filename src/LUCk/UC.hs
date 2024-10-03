@@ -1,5 +1,6 @@
 module LUCk.UC
   ( ProtoNode
+  , EnvProcess(..)
   , SubRespTree(..)
   , subRespEval
   )
@@ -17,41 +18,11 @@ import LUCk.Syntax.Async
 import LUCk.Syntax.Async.Eval
 import LUCk.Syntax.Async.Eval.Internal
 
-type OnlySendChan a = '(a, Void)
-type OnlyRecvChan a = '(Void, a)
-type PingSendChan = OnlySendChan ()
-type PingRecvChan = OnlyRecvChan ()
-
-type Marked :: Type -> (Type, Type) -> (Type, Type)
-type Marked u c = '( (u, Fst c), (u, Snd c))
-
-type MapMarked :: Type -> [(Type, Type)] -> [(Type, Type)]
-type family MapMarked u l where
-  MapMarked _ '[] = '[]
-  MapMarked u (x:xs) = Marked u x : MapMarked u xs
-
-type Pid = String
-
--- |A protocol without it subroutine implementations built-in.
---
--- - `m` is the monad for local computations,
--- - `up` is the interface we expose to environment (or another protocol that
---   call us as a subroutine),
--- - `down` is the list of interfaces of subroutines we call on,
--- - `bef` is the WT state we start from.
---
--- This type definition ensures that we never terminate, we must continuously
--- be ready to receive messages and respond to them somehow.
-data ProtoNode up down m where
-  MkIdealNode :: AsyncT (PingSendChan : Marked Pid '(x, y) : MapMarked Pid down) m NextRecv NextRecv Void
-              -> ProtoNode '(y, x) down m
+import LUCk.UC.Shell
 
 data EnvProcess down m a where
-  MkEnvProcess :: AsyncT '[PingRecvChan, Marked Pid down] m NextSend NextSend a
+  MkEnvProcess :: AsyncT '[PingRecvChan, down] m NextSend NextSend a
                -> EnvProcess down m a
-
-data KnownPairD p where
-  KnownPairD :: KnownPairD '(x, y)
 
 -- |A tree of subroutine-respecting protocols.
 --
@@ -94,7 +65,7 @@ mergeSendPorts i i' = case (listSplitConcat i, listSplitConcat i') of
 subRespEval :: SubRespTree m iface
             -- ^The called protocol with its subroutines composed-in
             -> ExecBuilder m ExecIndexInit
-                  (ExecIndexSome '[PingSendChan, ChanSwap (Marked Pid iface)] NextRecv Void) ()
+                  (ExecIndexSome '[PingSendChan, ChanSwap iface] NextRecv Void) ()
 subRespEval (MkSubRespTree (MkIdealNode p) _ c) = M.do
     process p
     forEliminateHlist c $ \_ z -> M.do
@@ -109,10 +80,10 @@ subRespEval (MkSubRespTree (MkIdealNode p) _ c) = M.do
       -> ( forall p z s.
              ListSplitD down p (z:s)
           -> SubRespTree m z
-          -> ExecBuilder m (ExecIndexSome (ping:w:Marked Pid z:MapMarked Pid s) NextRecv Void)
-                           (ExecIndexSome (ping:w:MapMarked Pid s) NextRecv Void) ()
+          -> ExecBuilder m (ExecIndexSome (ping:w:z:s) NextRecv Void)
+                           (ExecIndexSome (ping:w:s) NextRecv Void) ()
          )
-      -> ExecBuilder m (ExecIndexSome (ping:w:MapMarked Pid down) NextRecv Void)
+      -> ExecBuilder m (ExecIndexSome (ping:w:down) NextRecv Void)
                        (ExecIndexSome '[ping, w] NextRecv Void) ()
     forEliminateHlist HNil _ = xreturn ()
     forEliminateHlist (HCons z zs) f = M.do

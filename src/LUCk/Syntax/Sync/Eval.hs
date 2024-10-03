@@ -76,7 +76,7 @@ data OracleReq a = OracleReqHalt | OracleReq a
 -- Note that `runWithOracles` passes all the messages between the running
 -- interactive algorithms, therefore its result is a non-interactive algorithm.
 runWithOracles :: forall m (down :: [(Type, Type)]) (rets :: [Type]) a.
-               (Monad m, SameLength down rets)
+               (Monad m, SameLen down rets)
                => OracleCaller m down a
                -- ^The oracle caller algorithm
                -> HList2 (OracleWrapper m) down rets
