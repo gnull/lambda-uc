@@ -1,5 +1,5 @@
 module LUCk.UC
-  ( ProtoNode
+  ( IdealFunc
   , EnvProcess(..)
   , SubRespTree(..)
   , subRespEval
@@ -26,11 +26,11 @@ data EnvProcess down m a where
 
 -- |A tree of subroutine-respecting protocols.
 --
--- A `SubRespTree m up` is simply @ProtoNode up down m@ where the
+-- A `SubRespTree m up` is simply @IdealFunc up down m@ where the
 -- required subroutine interfaces were filled with actual implementations (and,
 -- therefore, are not required and not exposed by a type parameter anymore).
 data SubRespTree (m :: Type -> Type) (up :: (Type, Type)) where
-  MkSubRespTree :: ProtoNode '(x, y) down m
+  MkSubRespTree :: IdealFunc '(x, y) down m
                 -> KnownPairD '(x, y)
                 -> HList (SubRespTree m) down
                 -> SubRespTree m '(x, y)
@@ -66,7 +66,7 @@ subRespEval :: SubRespTree m iface
             -- ^The called protocol with its subroutines composed-in
             -> ExecBuilder m ExecIndexInit
                   (ExecIndexSome '[PingSendChan, ChanSwap iface] NextRecv Void) ()
-subRespEval (MkSubRespTree (MkIdealNode p) _ c) = M.do
+subRespEval (MkSubRespTree p _ c) = M.do
     process p
     forEliminateHlist c $ \_ z -> M.do
       forkRight $ subRespEval z

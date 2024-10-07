@@ -73,26 +73,29 @@ instance Ord (HList SomeOrd l) where
   compare HNil HNil = mempty
   compare (HCons x xs) (HCons y ys) = compare x y <> compare xs ys
 
--- |A protocol without it subroutine implementations built-in.
+-- |An interactive algorithm with that defines an ideal functionality.
 --
--- - `m` is the monad for local computations,
--- - `up` is the interface we expose to environment (or another protocol that
---   call us as a subroutine),
--- - `down` is the list of interfaces of subroutines we call on,
--- - `bef` is the WT state we start from.
+-- Has the following interfaces.
 --
--- This type definition ensures that we never terminate, we must continuously
--- be ready to receive messages and respond to them somehow.
-data ProtoNode up down m where
-  MkIdealNode :: AsyncT (PingSendChan : '(x, y) : down) m NextRecv NextRecv Void
-              -> ProtoNode '(y, x) down m
+-- - @up@ interface to its callers,
+-- - @down@ interfaces to its subroutines,
+-- - a single `PingSendChan` interface to yield control to the environment.
+type IdealFunc up down m = AsyncT (PingSendChan : ChanSwap up : down) m NextRecv NextRecv Void
 
-type SidProtoNode rest sid up sids down m =
-  ProtoNode (SidIface (sid:rest) up) (SidIfaceList (sid:rest) sids down) m
+-- |An `IdealFunc` where @up@ and @down@ interfaces are appropriately marked
+-- with ESID and PID values to handle multiple sessions in one process.
+--
+-- This is used by `multiSidShell` to implement multiple sessions of
+-- `SingleSidIdealFunc` inside.
+type MultSidIdealFunc rest sid up sids down m =
+  IdealFunc (SidIface (sid:rest) up) (SidIfaceList (sid:rest) sids down) m
 
--- |Equivalent to `SidProtoNode` where @rest = '[]@ and @sid = ()@.
-type NoSidProtoNode up sids down m =
-  ProtoNode (Marked Pid up) (ZipMapMarked sids down) m
+-- |An `IdealFunc` that implements a single session. The interface it provides
+-- to its caller is maked only with PID values.
+--
+-- Use this with `multiSidShell` to get a multi-session extension.
+type SingleSidIdealFunc up sids down m =
+  IdealFunc (Marked Pid up) (ZipMapMarked sids down) m
 
 matchZipMapMarked :: KnownLenD sids
                   -> SameLenD sids down
@@ -131,37 +134,36 @@ multiSidShell :: forall sid x y sids down m rest.
                  Monad m
               => KnownLenD sids
               -> SameLenD sids down
-              -> (sid -> NoSidProtoNode '(x, y) sids down m)
-              -> SidProtoNode rest sid '(x, y) sids down m
+              -> (sid -> SingleSidIdealFunc '(x, y) sids down m)
+              -> MultSidIdealFunc rest sid '(x, y) sids down m
 multiSidShell len lenPrf impl = helper Map.empty
   where
-    helper :: Map.Map (HList SomeOrd (sid:rest)) (NoSidProtoNode '(x, y) sids down m)
-           -> SidProtoNode rest sid '(x, y) sids down m
-    helper m = MkIdealNode $ M.do
+    helper :: Map.Map (HList SomeOrd (sid:rest)) (SingleSidIdealFunc '(x, y) sids down m)
+           -> MultSidIdealFunc rest sid '(x, y) sids down m
+    helper m = M.do
       m' <- recvAny >>=: \case
         SomeSndMessage Here contra -> case contra of {}
         SomeSndMessage (There Here) (HCons pid (HCons sid rest), mess) -> M.do
           let (SomeOrd sid') = sid
               (SomeOrd pid') = pid
               k = HCons sid rest
-              (MkIdealNode st) = Map.findWithDefault (impl sid') k m
+              st = Map.findWithDefault (impl sid') k m
           st' <- ($ SomeSndMessage (There Here) (pid', mess)) . mayOnlyRecvVoidPrf <$> xlift (runTillRecv st)
           (resp, st'') <- mayOnlySendVoidPrf <$> xlift (runTillSend st')
           handleResp k resp
-          xreturn $ Map.insert k (MkIdealNode st'') m
+          xreturn $ Map.insert k st'' m
         SomeSndMessage (There2 i) mess -> M.do
           matchSidIfaceList @(sid:rest) len lenPrf i $ \_ Refl -> M.do
             let ix = There2 $ sidIfaceListToZipMapMarked @down @sids i len lenPrf
                 (HCons pid (HCons s (HCons sid rest)), mess') = mess
                 (SomeOrd sid') = sid
                 k = HCons sid rest
-                (MkIdealNode st) = Map.findWithDefault (impl sid') k m
+                st = Map.findWithDefault (impl sid') k m
             st' <- ($ SomeSndMessage ix (HListMatch2 pid s, mess')) . mayOnlyRecvVoidPrf <$> xlift (runTillRecv st)
             (resp, st'') <- mayOnlySendVoidPrf <$> xlift (runTillSend st')
             handleResp k resp
-            xreturn $ Map.insert k (MkIdealNode st'') m
-      let (MkIdealNode cont) = helper m'
-      cont
+            xreturn $ Map.insert k st'' m
+      helper m'
 
     handleResp :: HList SomeOrd (sid:rest)
                -> SomeFstMessage (PingSendChan : Marked Pid '(y, x) : ZipMapMarked sids down)
