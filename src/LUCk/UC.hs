@@ -1,6 +1,5 @@
 module LUCk.UC
-  ( IdealFunc
-  , EnvProcess(..)
+  ( EnvProcess(..)
   , SubRespTree(..)
   , subRespEval
   )
@@ -30,7 +29,7 @@ data EnvProcess down m a where
 -- required subroutine interfaces were filled with actual implementations (and,
 -- therefore, are not required and not exposed by a type parameter anymore).
 data SubRespTree (m :: Type -> Type) (up :: (Type, Type)) where
-  MkSubRespTree :: IdealFunc '(x, y) down m
+  MkSubRespTree :: Proto '(x, y) down m
                 -> KnownPairD '(x, y)
                 -> HList (SubRespTree m) down
                 -> SubRespTree m '(x, y)
