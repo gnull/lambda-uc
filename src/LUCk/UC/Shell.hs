@@ -70,8 +70,8 @@ type family ZipMapPidMarked sids down where
 
 type family ZipMarked sids down where
   ZipMarked '[] '[] = '[]
-  ZipMarked (s:ss) (p:ds) = Marked s p
-                             : ZipMarked ss ds
+  ZipMarked (s:ss) (p:ds) = Marked (SomeOrd s) p
+                          : ZipMarked ss ds
   ZipMarked _ _ = '[]
 
 data SomeOrd a where
@@ -138,6 +138,22 @@ matchZipMapPidMarked len lenPrf = \case
   There i -> case (len, lenPrf) of
     (KnownLenS j, SameLenCons k) -> \cont -> matchZipMapPidMarked j k i $ cont . There
 
+matchZipMarked :: KnownLenD sids
+               -> SameLenD sids down
+               -> InList (ZipMarked sids down) p
+               -> ( forall s x y.
+                      InList (ZipMarked sids down)
+                             '((SomeOrd s, x), (SomeOrd s, y))
+                   -> '((SomeOrd s, x), (SomeOrd s, y)) :~: p
+                   -> a
+                  )
+               -> a
+matchZipMarked len lenPrf = \case
+  Here -> case (len, lenPrf) of
+    (KnownLenS _, SameLenCons _) -> \cont -> cont Here Refl
+  There i -> case (len, lenPrf) of
+    (KnownLenS j, SameLenCons k) -> \cont -> matchZipMarked j k i $ cont . There
+
 matchPidSidIfaceList :: forall rest sids down p a.
                      KnownLenD sids
                   -> SameLenD sids down
@@ -154,6 +170,23 @@ matchPidSidIfaceList len lenPrf = \case
     (KnownLenS _, SameLenCons _) -> \cont -> cont Here Refl
   There i -> case (len, lenPrf) of
     (KnownLenS j, SameLenCons k) -> \cont -> matchPidSidIfaceList j k i $ cont . There
+
+matchSidIfaceList :: forall rest sids down p a.
+                     KnownLenD sids
+                  -> SameLenD sids down
+                  -> InList (SidIfaceList rest sids down) p
+                  -> ( forall s x y.
+                         InList (SidIfaceList rest sids down)
+                               '((HList SomeOrd (s:rest), x), (HList SomeOrd (s:rest), y))
+                      -> '((HList SomeOrd (s:rest), x), (HList SomeOrd (s:rest), y)) :~: p
+                      -> a
+                     )
+                  -> a
+matchSidIfaceList len lenPrf = \case
+  Here -> case (len, lenPrf) of
+    (KnownLenS _, SameLenCons _) -> \cont -> cont Here Refl
+  There i -> case (len, lenPrf) of
+    (KnownLenS j, SameLenCons k) -> \cont -> matchSidIfaceList j k i $ cont . There
 
 multiSidIdealShell :: forall sid x y sids down m rest.
                  Monad m
@@ -240,9 +273,76 @@ multiSidRealShell :: forall sid x y sids down m rest.
               => KnownLenD sids
               -> SameLenD sids down
               -> (Pid -> sid -> SingleSidReal '(x, y) sids down m)
-              -> MultSidReal rest sid '(x, y) sids down m
-multiSidRealShell len lenPrf impl = M.do
-  recvAny >>=: \case
-    SomeSndMessage Here contra -> case contra of {}
-    SomeSndMessage (There Here) m -> undefined
-    SomeSndMessage (There2 i) m -> undefined
+              -> Pid -> MultSidReal rest sid '(x, y) sids down m
+multiSidRealShell len lenPrf impl pid = helper Map.empty
+  where
+    helper :: Map.Map (HList SomeOrd (sid:rest)) (SingleSidReal '(x, y) sids down m)
+           -> MultSidReal rest sid '(x, y) sids down m
+    helper m = M.do
+      m' <- recvAny >>=: \case
+        SomeSndMessage Here contra -> case contra of {}
+        SomeSndMessage (There Here) (k, mess) -> M.do
+          let (HCons sid rest) = k
+              (SomeOrd sid') = sid
+              st = Map.findWithDefault (impl pid sid') k m
+          st' <- ($ SomeSndMessage (There Here) mess) . mayOnlyRecvVoidPrf <$> xlift (runTillRecv st)
+          (resp, st'') <- mayOnlySendVoidPrf <$> xlift (runTillSend st')
+          handleResp k resp
+          xreturn $ Map.insert k st'' m
+        SomeSndMessage (There2 i) mess -> M.do
+          matchSidIfaceList @(sid:rest) len lenPrf i $ \_ Refl -> M.do
+            let ix = There2 $ sidIfaceListToZipMapMarked @down @sids i len lenPrf
+                (HCons s (HCons sid rest), mess') = mess
+                (SomeOrd sid') = sid
+                k = HCons sid rest
+                st = Map.findWithDefault (impl pid sid') k m
+            st' <- ($ SomeSndMessage ix (s, mess')) . mayOnlyRecvVoidPrf <$> xlift (runTillRecv st)
+            (resp, st'') <- mayOnlySendVoidPrf <$> xlift (runTillSend st')
+            handleResp k resp
+            xreturn $ Map.insert k st'' m
+      helper m'
+
+    handleResp :: HList SomeOrd (sid:rest)
+               -> SomeFstMessage (PingSendChan : '(y, x) : ZipMarked sids down)
+               -> AsyncT (PingSendChan : SidIface (sid:rest) '(y, x) : SidIfaceList (sid:rest) sids down)
+                         m NextSend NextRecv ()
+    handleResp k = \case
+      SomeFstMessage Here () ->
+        send Here ()
+      SomeFstMessage (There Here) respMess ->
+        send (There Here) (k, respMess)
+      SomeFstMessage (There2 i) respMess -> matchZipMarked len lenPrf i $ \i' Refl ->
+        let
+          ix = There2 $ zipMapMarkedToSidIfaceList @down @sids i' len lenPrf
+          (s, m') = respMess
+        in send ix (HCons s $ k, m')
+
+    zipMapMarkedToSidIfaceList :: forall down' sids' s x' y'.
+                                  InList (ZipMarked sids' down')
+                                        '((SomeOrd s, x'), (SomeOrd s, y'))
+                               -> KnownLenD sids'
+                               -> SameLenD sids' down'
+                               -> InList (SidIfaceList (sid:rest) sids' down')
+                                        '((HList SomeOrd (s:sid:rest), x'), (HList SomeOrd (s:sid:rest), y'))
+    zipMapMarkedToSidIfaceList = \case
+      Here -> \case
+        KnownLenS _ -> \case
+          SameLenCons _ -> Here
+      There i -> \case
+        KnownLenS j -> \case
+          SameLenCons k -> There $ zipMapMarkedToSidIfaceList i j k
+
+    sidIfaceListToZipMapMarked :: forall down' sids' s x' y'.
+                                  InList (SidIfaceList (sid:rest) sids' down')
+                                        '((HList SomeOrd (s:sid:rest), x'), (HList SomeOrd (s:sid:rest), y'))
+                               -> KnownLenD sids'
+                               -> SameLenD sids' down'
+                               -> InList (ZipMarked sids' down')
+                                        '((SomeOrd s, x'), (SomeOrd s, y'))
+    sidIfaceListToZipMapMarked = \case
+      Here -> \case
+        KnownLenS _ -> \case
+          SameLenCons _ -> Here
+      There i -> \case
+        KnownLenS j -> \case
+          SameLenCons k -> There $ sidIfaceListToZipMapMarked i j k
