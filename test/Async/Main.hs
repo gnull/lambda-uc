@@ -69,31 +69,31 @@ threeSumWriter x y z = M.do
   -- guard @('[ '(Int, Void), '(Void, Int)])
   connect Split0 Split0
 
-sender :: Int -> AsyncT '[ '(Int, Int)] PureM NextSend NextSend Int
+sender :: Int -> AsyncT '[P Int Int] PureM NextSend NextSend Int
 sender x = M.do
   sendOne x
   recvOne
 
-receiver :: Int -> AsyncT '[ '(Int, Int)] PureM NextRecv NextRecv Void
+receiver :: Int -> AsyncT '[P Int Int] PureM NextRecv NextRecv Void
 receiver x = M.do
   m <- recvOne
   sendOne $ m + x
   receiver x
 
-sender2 :: Int -> AsyncT '[ '(Int, Void), '(Void, Int)] PureM NextSend NextSend Int
+sender2 :: Int -> AsyncT '[P Int Void, P Void Int] PureM NextSend NextSend Int
 sender2 x = M.do
   send Here x
   recvAny >>=: \case
-    SomeSndMessage Here contra -> case contra of {}
-    SomeSndMessage (There Here) m -> xreturn m
-    SomeSndMessage (There2 contra) _ -> case contra of {}
+    SomeRxMess Here contra -> case contra of {}
+    SomeRxMess (There Here) m -> xreturn m
+    SomeRxMess (There2 contra) _ -> case contra of {}
 
-receiver2 :: Int -> AsyncT '[ '(Int, Void), '(Void, Int)] PureM NextRecv NextRecv Void
+receiver2 :: Int -> AsyncT '[P Int Void, P Void Int] PureM NextRecv NextRecv Void
 receiver2 x = M.do
   m <- recvAny >>=: \case
-    SomeSndMessage Here contra -> case contra of {}
-    SomeSndMessage (There Here) m -> xreturn m
-    SomeSndMessage (There2 contra) _ -> case contra of {}
+    SomeRxMess Here contra -> case contra of {}
+    SomeRxMess (There Here) m -> xreturn m
+    SomeRxMess (There2 contra) _ -> case contra of {}
   send Here $ m + x
   receiver2 x
 
@@ -108,13 +108,13 @@ receiver2 x = M.do
 --
 -- - Polymorphic monad
 guessingChallenger :: (Rand m, Print m)
-                   => AsyncT '[ '(Ordering, Integer)] m NextRecv NextRecv Void
+                   => AsyncT '[P Ordering Integer] m NextRecv NextRecv Void
 guessingChallenger =  M.do
     secret <- rangeDist 0 100
     debugPrint $ "challenger picked secret " ++ show secret
     helper secret
   where
-    helper :: Print m => Integer -> AsyncT '[ '(Ordering, Integer)] m NextRecv NextRecv Void
+    helper :: Print m => Integer -> AsyncT '[P Ordering Integer] m NextRecv NextRecv Void
     helper secret = M.do
       guess <- recvOne
       let res = secret `compare` guess
@@ -127,7 +127,7 @@ guessingChallenger =  M.do
 -- - ensuring that player is deterministic
 -- - using undefined to mark conditions that are not considered (assumed to never occur)
 guessingPlayer :: Print m
-               => AsyncT '[ '(Integer, Ordering)] m NextSend NextSend Integer
+               => AsyncT '[P Integer Ordering] m NextSend NextSend Integer
 guessingPlayer = M.do
     n <- helper 0 100
     debugPrint $ "found result in " ++ show n ++ " attempts"
@@ -136,7 +136,7 @@ guessingPlayer = M.do
     helper :: Print m
            => Integer
            -> Integer
-           -> AsyncT '[ '(Integer, Ordering)] m NextSend NextSend Integer
+           -> AsyncT '[P Integer Ordering] m NextSend NextSend Integer
     helper f t
       | f >= t = undefined
       | f == t - 1 = xreturn 0
@@ -157,13 +157,13 @@ guessingExec = M.do
     process guessingPlayer
   connect Split0 Split0
 
--- |Sends String s to the given channel, waits for the other side to repond with
-test :: String -> AsyncExT e '[ '(String, Int)] m NextSend NextSend Int
+-- |Sends String s to the given port, waits for the other side to repond with
+test :: String -> AsyncExT e '[P String Int] m NextSend NextSend Int
 test s = M.do
   send Here s
   recvAny >>=: \case
-    SomeSndMessage (There contra) _ -> case contra of
-    SomeSndMessage Here m -> xreturn m
+    SomeRxMess (There contra) _ -> case contra of
+    SomeRxMess Here m -> xreturn m
 
 -- |Demonstrates the use of @SomeWTM@. To express a computation that
 -- dynamically chooses what state to leave the monad in, do the following:
@@ -172,40 +172,40 @@ test s = M.do
 --
 -- 2. Inside @SomeWTM@, wrap each branch where your WT state is fixed in
 -- @decided@.
-maybeSends :: Chan Bool Bool l -> SomeWT ex l m NextRecv Bool
-maybeSends chan =
+maybeSends :: PortInList Bool Bool l -> SomeWT ex l m NextRecv Bool
+maybeSends port =
   ContFromAnyWT $ \cont -> M.do
-  (SomeSndMessage s msg) <- recvAny
-  case testEquality chan s of
+  (SomeRxMess s msg) <- recvAny
+  case testEquality port s of
     Just Refl -> M.do
-      send chan False
+      send port False
       cont msg
     Nothing -> cont False
 
 useMaybeSends :: InList ex '(ExBadSender, NextSend)
-              -> Chan Bool Bool ach
+              -> PortInList Bool Bool ach
               -> AsyncExT ex ach m NextRecv NextSend Bool
-useMaybeSends e chan = M.do
+useMaybeSends e port = M.do
   -- Step #1: pass @maybeSends@ to dispatchSomeWT
   -- Step #2: pass it a continuation that starts from unknown WT state
-  res <- dispatchSomeWT (maybeSends chan) $ \b -> M.do
+  res <- dispatchSomeWT (maybeSends port) $ \b -> M.do
     -- _ -- in this context, the state of WT is unknown
     -- Step #3: match on the current WT and provide actions for every branch
     asyncGetIndex >>=: \case
       SNextSend -> xreturn b
       SNextRecv -> M.do
-        m <- recv e chan
+        m <- recv e port
         xreturn m
   -- _ -- in this context, the state of WT is fixed
   xreturn $ not res
 
 
--- |Connect the first channel to itself.
+-- |Connect the first port to itself.
 --
 -- This is not a basic combinator and is derived using `fork` and `connect`.
 connectSelf :: forall i a m x rest.
                (Monad m, KnownIndex i, MayOnlyReturnAfterRecv i a)
-            => ExecBuilder m (ExecIndexSome ('(x, x) : rest) i a) (ExecIndexSome rest i a) ()
+            => ExecBuilder m (ExecIndexSome (P x x : rest) i a) (ExecIndexSome rest i a) ()
 connectSelf = case lemma (getMayOnlyReturnAfterRecvPrf @i @a) getSIndex of
     (Refl, Refl) -> M.do
       forkRight $ process idProc
@@ -223,20 +223,20 @@ connectSelf = case lemma (getMayOnlyReturnAfterRecvPrf @i @a) getSIndex of
 
 -- |Process that sends back everything it gets
 idProc :: Monad m
-       => AsyncT '[ '(x, x)] m NextRecv NextRecv Void
+       => AsyncT '[P x x] m NextRecv NextRecv Void
 idProc = M.do
   recvOne >>=: sendOne
   idProc
 
--- |Merge two single-directional channels into one.
+-- |Merge two single-directional ports into one.
 --
--- Any message that arrives on the merged channels is passed as is with no
--- marking to tell what channel it came from.
-mergeProc :: AsyncT '[ '(a, Void), '(Void, a), '(Void, a)] m NextRecv NextRecv Void
+-- Any message that arrives on the merged ports is passed as is with no
+-- marking to tell what port it came from.
+mergeProc :: AsyncT '[P a Void, P Void a, P Void a] m NextRecv NextRecv Void
 mergeProc = M.do
   () <- recvAny >>=: \case
-    SomeSndMessage Here contra -> case contra of {}
-    SomeSndMessage (There Here) x -> send Here x
-    SomeSndMessage (There2 Here) x -> send Here x
-    SomeSndMessage (There3 contra) _ -> case contra of {}
+    SomeRxMess Here contra -> case contra of {}
+    SomeRxMess (There Here) x -> send Here x
+    SomeRxMess (There2 Here) x -> send Here x
+    SomeRxMess (There3 contra) _ -> case contra of {}
   mergeProc

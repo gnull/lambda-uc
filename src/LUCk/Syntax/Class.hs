@@ -150,10 +150,10 @@ class (XThrow m ex, XMonad m') => XCatch m ex m' where
 -- Oracle calls are synchronous: calling algorithm is put to sleep until the
 -- oracle responds to the call.
 
-class Monad m => Sync (m :: Type -> Type) (down :: [(Type, Type)]) | m -> down where
+class Monad m => Sync (m :: Type -> Type) (down :: [Port]) | m -> down where
   -- |Perform an oracle call to a child. The call waits for the child to
   -- respond (putting caller to sleep until then).
-  call :: Chan x y down -> x -> m y
+  call :: PortInList x y down -> x -> m y
 
 
 -- $async
@@ -168,58 +168,58 @@ class Monad m => Sync (m :: Type -> Type) (down :: [(Type, Type)]) | m -> down w
 -- from anyone — as the exact order of messages can not be predicted at compile
 -- time.
 
-class XMonad m => Async (m :: Index -> Index -> Type -> Type) (chans :: [(Type, Type)]) | m -> chans where
-  -- |Send a message to the channel it is marked with.
-  sendMess :: SomeFstMessage chans -> m NextSend NextRecv ()
+class XMonad m => Async (m :: Index -> Index -> Type -> Type) (ports :: [Port]) | m -> ports where
+  -- |Send a message to the port it is marked with.
+  sendMess :: SomeTxMess ports -> m NextSend NextRecv ()
 
   -- |Curried version of `sendMess`.
-  send :: Chan x y chans -> x -> m NextSend NextRecv ()
-  send i m = sendMess $ SomeFstMessage i m
+  send :: PortInList x y ports -> x -> m NextSend NextRecv ()
+  send i m = sendMess $ SomeTxMess i m
 
-  -- |Receive the next message which can arrive from any of `chan` channels.
-  recvAny :: m NextRecv NextSend (SomeSndMessage chans)
+  -- |Receive the next message which can arrive from any of `port` ports.
+  recvAny :: m NextRecv NextSend (SomeRxMess ports)
 
 -- $derived
 --
 -- Some convenient shorthand operations built from basic ones.
 
-recvOne :: Async m '[ '(x, y)]
+recvOne :: Async m '[P x y]
              => m NextRecv NextSend y
 recvOne = M.do
   recvAny >>=: \case
-    SomeSndMessage Here m -> xpure m
-    SomeSndMessage (There contra) _ -> case contra of {}
+    SomeRxMess Here m -> xpure m
+    SomeRxMess (There contra) _ -> case contra of {}
 
-sendOne :: Async m '[ '(x, y)]
+sendOne :: Async m '[P x y]
             => x -> m NextSend NextRecv ()
 sendOne = send Here
 
 -- |An exception thrown if a message does not arrive from the expected sender.
 data ExBadSender = ExBadSender
 
--- |Receive from a specific channel. If an unexpected message arrives from
--- another channel, throw the `ExBadSender` exception.
+-- |Receive from a specific port. If an unexpected message arrives from
+-- another port, throw the `ExBadSender` exception.
 recv :: (XThrow m ex, Async m l)
      => InList ex '(ExBadSender, NextSend)
-     -> Chan x y l
+     -> PortInList x y l
      -> m NextRecv NextSend y
 recv e i = M.do
-  SomeSndMessage j m <- recvAny
+  SomeRxMess j m <- recvAny
   case testEquality i j of
     Just Refl -> xreturn m
     Nothing -> M.do
       xthrow e ExBadSender
 
--- |Send message to a given channel and wait for a response. If some other
+-- |Send message to a given port and wait for a response. If some other
 -- message arrives before the expected response, throw the `ExBadSender`
 -- exception.
 sendSync :: (XThrow m ex, Async m l)
          => InList ex '(ExBadSender, NextSend)
          -> x
-         -> Chan x y l -> m NextSend NextSend y
-sendSync e m chan = M.do
-  send chan m
-  (SomeSndMessage i y) <- recvAny
-  case testEquality i chan of
+         -> PortInList x y l -> m NextSend NextSend y
+sendSync e m port = M.do
+  send port m
+  (SomeRxMess i y) <- recvAny
+  case testEquality i port of
     Just Refl -> xreturn y
     Nothing -> xthrow e ExBadSender

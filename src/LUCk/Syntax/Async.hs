@@ -44,11 +44,11 @@ import LUCk.Syntax.Class
 
 -- |@bef@ and @aft@ are the states before and after the given action. The
 -- meaning of possible states is as follows:
-data AsyncActions (ex :: [(Type, Index)]) (ach :: [(Type, Type)]) (m :: Type -> Type)
+data AsyncActions (ex :: [(Type, Index)]) (ach :: [Port]) (m :: Type -> Type)
                   (bef :: Index) (aft :: Index) (a :: Type) where
-  RecvAction :: (SomeSndMessage ach -> a)
+  RecvAction :: (SomeRxMess ach -> a)
              -> AsyncActions ex ach m NextRecv NextSend a
-  SendAction :: SomeFstMessage ach
+  SendAction :: SomeTxMess ach
              -> a
              -> AsyncActions ex ach m NextSend NextRecv a
   -- |Throw an exception.
@@ -114,14 +114,14 @@ instance XApplicative (AsyncExT ex ach m) where
 instance XMonad (AsyncExT ex ach m) where
   m >>=: f = AsyncExT $ runInterT m >>=: (runInterT . f)
 
--- |Interactive action with no free channels can be interpreted as local.
+-- |Interactive action with no free ports can be interpreted as local.
 --
--- Apply this function once you've bound all the free channels to run the execution.
+-- Apply this function once you've bound all the free ports to run the execution.
 escapeAsyncT :: Monad m
             => AsyncT '[] m NextSend NextSend a
             -> m a
 escapeAsyncT cont = runTillSend cont >>= \case
-  SrSend (SomeFstMessage contra _) _ -> case contra of {}
+  SrSend (SomeTxMess contra _) _ -> case contra of {}
   SrHalt res -> pure res
 
 xfreeAsync :: AsyncActions ex ach m bef aft a -> AsyncExT ex ach m bef aft a
@@ -182,7 +182,7 @@ type AsyncT = AsyncExT '[]
 -- |The result of `runTillSend`
 data SendRes ach m aft a where
   -- |Algorithm called `send`.
-  SrSend :: SomeFstMessage ach
+  SrSend :: SomeTxMess ach
          -> AsyncT ach m NextRecv aft a
          -> SendRes ach m aft a
   -- |Algorithm called `sendFinal`.
@@ -202,7 +202,7 @@ runTillSend (AsyncExT (Join v)) = case v of
 -- |The result of `runTillRecv`.
 data RecvRes ach m aft a where
   -- |Algorithm ran `recvAny`.
-  RrRecv :: (SomeSndMessage ach -> AsyncT ach m NextSend aft a)
+  RrRecv :: (SomeRxMess ach -> AsyncT ach m NextSend aft a)
          -> RecvRes ach m aft a
   -- |Algorithm has halted without accepting a message
   RrHalt :: a
@@ -249,21 +249,21 @@ runTillRecv (AsyncExT (Join v)) = case v of
 --           _
 -- @
 
--- |Proof: A program with sync channels and return type `Void` may not
+-- |Proof: A program with sync ports and return type `Void` may not
 -- terminate; if it starts from `NextRecv` state, it will inevitably request
 -- an rx message.
 mayOnlyRecvVoidPrf :: RecvRes ach m aft Void
-                   -> SomeSndMessage ach
+                   -> SomeRxMess ach
                    -> AsyncT ach m NextSend aft Void
 mayOnlyRecvVoidPrf = \case
   RrHalt contra -> case contra of {}
   RrRecv x -> x
 
--- |Proof: A program with sync channels and return type `Void` may not
+-- |Proof: A program with sync ports and return type `Void` may not
 -- terminate; if it starts from `NextSend` state, it will inevitably request to
 -- send a message.
 mayOnlySendVoidPrf :: SendRes ach m aft Void
-                   -> (SomeFstMessage ach, AsyncT ach m NextRecv aft Void)
+                   -> (SomeTxMess ach, AsyncT ach m NextRecv aft Void)
 mayOnlySendVoidPrf = \case
   SrHalt contra -> case contra of {}
   SrSend m cont -> (m, cont)

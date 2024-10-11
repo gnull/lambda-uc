@@ -36,7 +36,7 @@ module LUCk.Types
   , KnownIndex(..)
   , KnownLenD(..)
   , KnownLen(..)
-  , KnownPairD(..)
+  , KnownPortD(..)
   , SameLenD(..)
   , SameLen(..)
   , Index(..)
@@ -241,8 +241,8 @@ data KnownLenD :: forall a. [a] -> Type where
   KnownLenZ :: KnownLenD '[]
   KnownLenS :: forall a (x :: a) (l :: [a]). KnownLenD l -> KnownLenD (x : l)
 
-data KnownPairD p where
-  KnownPairD :: KnownPairD '(x, y)
+data KnownPortD p where
+  KnownPortD :: KnownPortD (P x y)
 
 -- |Class of list values for which their length is known at compile time.
 type KnownLen :: forall a. [a] -> Constraint

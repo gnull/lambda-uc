@@ -8,7 +8,7 @@ module LUCk.Syntax.Async.Eval.Internal
   , swap_
   , connect_
   -- ** Unsafe
-  , permChans
+  , permPorts
   -- *Helper functions and types
   -- $helpers
   , ForkPremiseD(..)
@@ -85,29 +85,29 @@ instance MayOnlyReturnAfterRecv NextSend a where
 
 -- |Given an index in the concatenation of @`Concat` ach ach'@, return the
 -- corresponding element's index either in @ach@ or in @ach'@.
-chanFromConcat :: forall (ach :: [(Type, Type)]) ach' x y.
+portFromConcat :: forall (ach :: [Port]) ach' x y.
                   KnownLenD ach
-               -> Chan x y (Concat ach ach')
-               -> Either (Chan x y ach) (Chan x y ach')
-chanFromConcat = \case
+               -> PortInList x y (Concat ach ach')
+               -> Either (PortInList x y ach) (PortInList x y ach')
+portFromConcat = \case
   KnownLenZ -> Right
   KnownLenS rest -> \case
     Here -> Left Here
-    There ch -> mapLeft There $ chanFromConcat rest ch
+    There ch -> mapLeft There $ portFromConcat rest ch
 
 -- |Given an element's index in @ach@, return the same element's index in @`Concat` ach ach'@.
 fstToConcat :: forall ach ach' x y.
                KnownLenD ach
-            -> Chan x y ach
-            -> Chan x y (Concat ach ach')
+            -> PortInList x y ach
+            -> PortInList x y (Concat ach ach')
 fstToConcat _ Here = Here
 fstToConcat (KnownLenS n) (There rest) = There $ fstToConcat @_ @(ach') n rest
 
 -- |Given an element's index in @ach'@, return the same element's index in @`Concat` ach ach'@.
 sndToConcat :: forall ach ach' x y.
                KnownLenD ach
-            -> Chan x y ach'
-            -> Chan x y (Concat ach ach')
+            -> PortInList x y ach'
+            -> PortInList x y (Concat ach ach')
 sndToConcat KnownLenZ = id
 sndToConcat (KnownLenS n) = There . sndToConcat n
 
@@ -117,7 +117,7 @@ sndToConcat (KnownLenS n) = There . sndToConcat n
 --
 -- The `fork_`, `swap_` and `connect_` correspond one-to-one to the constructors
 -- of `Exec`. And `escapeSyncT` evaluates a concurrent algorithm that has all
--- of its channels bound as a local algorithm.
+-- of its ports bound as a local algorithm.
 
 data ForkPremiseD bef bef' aft aft' a a' = ForkPremiseD
   { forkPremiseIndexCompBef :: ForkIndexCompD bef bef'
@@ -138,7 +138,7 @@ getForkPremiseD =
                getMayOnlyReturnAfterRecvPrf
                getMayOnlyReturnAfterRecvPrf
 
--- |Run two processes in parallel exposing the free channels of both of them.
+-- |Run two processes in parallel exposing the free ports of both of them.
 --
 -- The typeclass constaint `Forkable` here ensures that:
 --
@@ -158,7 +158,7 @@ fork_ :: forall m ach ach' bef bef' aft aft' a a'.
      => ForkPremiseD bef bef' aft aft' a a'
      -- ^Proof that this combination of indices and return values is valid
      -> KnownLenD ach
-     -- ^Depdendent length of free channels list in left branch
+     -- ^Depdendent length of free ports list in left branch
      -> AsyncT ach m bef aft a
      -- ^Left branch of the fork_
      -> AsyncT ach' m bef' aft' a'
@@ -166,23 +166,23 @@ fork_ :: forall m ach ach' bef bef' aft aft' a a'.
      -> AsyncT (Concat ach ach') m (ForkIndexOr bef bef') (ForkIndexOr aft aft') (ChooseRet aft aft' a a')
 fork_ fPrf lPrf l r = case forkPremiseIndexCompBef fPrf of
   ForkIndexCompNone -> M.do
-    SomeSndMessage i m <- recvAny
-    case chanFromConcat @ach @ach' lPrf i of
+    SomeRxMess i m <- recvAny
+    case portFromConcat @ach @ach' lPrf i of
       Left i' -> xlift (runTillRecv l) >>=: \case
         RrRecv l' -> M.do
           let fPrf' = fPrf {forkPremiseIndexCompBef = getForkIndexComp}
-          fork_ fPrf' lPrf (l' $ SomeSndMessage i' m) r
+          fork_ fPrf' lPrf (l' $ SomeRxMess i' m) r
         RrHalt res -> case forkPremiseRet fPrf of
           MayOnlyReturnVoid -> case res of {}
       Right i' -> xlift (runTillRecv r) >>=: \case
         RrRecv r' -> M.do
           let fPrf' = fPrf {forkPremiseIndexCompBef = getForkIndexComp}
-          fork_ fPrf' lPrf l (r' $ SomeSndMessage i' m)
+          fork_ fPrf' lPrf l (r' $ SomeRxMess i' m)
         RrHalt res -> case forkPremiseRet' fPrf of
           MayOnlyReturnVoid -> case res of {}
   ForkIndexCompFst ->
     xlift (runTillSend l) >>=: \case
-      SrSend (SomeFstMessage i m) cont -> M.do
+      SrSend (SomeTxMess i m) cont -> M.do
         send (fstToConcat @ach @ach' lPrf i) m
         let fPrf' = fPrf {forkPremiseIndexCompBef = getForkIndexComp}
         fork_ fPrf' lPrf cont r
@@ -192,7 +192,7 @@ fork_ fPrf lPrf l r = case forkPremiseIndexCompBef fPrf of
           ForkIndexCompFst -> xreturn res
   ForkIndexCompSnd ->
     xlift (runTillSend r) >>=: \case
-      SrSend (SomeFstMessage i m) cont -> M.do
+      SrSend (SomeTxMess i m) cont -> M.do
         send (sndToConcat @ach @ach' lPrf i) m
         let fPrf' = fPrf {forkPremiseIndexCompBef = getForkIndexComp}
         fork_ fPrf' lPrf l cont
@@ -201,35 +201,35 @@ fork_ fPrf lPrf l r = case forkPremiseIndexCompBef fPrf of
         MayOnlyReturnType -> case forkPremiseIndexCompAft fPrf of
           ForkIndexCompSnd -> xreturn res
 
--- |Reorders the open the free channels.
+-- |Reorders the open the free ports.
 --
--- The @`permChans` f g@ should only be called with @f . g = id@. This is not
+-- The @`permPorts` f g@ should only be called with @f . g = id@. This is not
 -- verified by compiler, should be checked manually.
 --
 -- For a safe alternative, see `swap_`. That one is guaranteed to only permute
--- channels and never cause bad behaviors.
-permChans :: (KnownIndex bef, Monad m)
-         => (forall x y. Chan x y l -> Chan x y l')
-         -> (forall x y. Chan x y l' -> Chan x y l)
+-- ports and never cause bad behaviors.
+permPorts :: (KnownIndex bef, Monad m)
+         => (forall x y. PortInList x y l -> PortInList x y l')
+         -> (forall x y. PortInList x y l' -> PortInList x y l)
          -> AsyncT l m bef aft a
          -> AsyncT l' m bef aft a
-permChans f g cont = asyncGetIndex >>=: \case
+permPorts f g cont = asyncGetIndex >>=: \case
   SNextRecv -> M.do
     xlift (runTillRecv cont) >>=: \case
       RrHalt res -> xreturn res
       RrRecv cont' -> M.do
-        SomeSndMessage i m <- recvAny
-        permChans f g $ cont' $ SomeSndMessage (g i) m
+        SomeRxMess i m <- recvAny
+        permPorts f g $ cont' $ SomeRxMess (g i) m
   SNextSend -> M.do
     xlift (runTillSend cont) >>=: \case
       SrHalt res -> xreturn res
-      SrSend (SomeFstMessage i m) cont' -> M.do
+      SrSend (SomeTxMess i m) cont' -> M.do
         send (f i) m
-        permChans f g cont'
+        permPorts f g cont'
 
--- |Swap two free channels.
+-- |Swap two free ports.
 --
--- We go from an action where free channels are 
+-- We go from an action where free ports are 
 --   @p ++ [f] ++ p' ++ [s] ++ rest@
 --   to
 --   @p ++ [s] ++ p' ++ [f] ++ rest@.
@@ -247,14 +247,14 @@ swap_ :: ( KnownIndex bef
      -> AsyncT l m bef aft a
      -> AsyncT (Concat p (s : Concat p' (f:rest))) m bef aft a
 swap_ prfF prfS cont = case (listSplitConcat prfF, listSplitConcat prfS) of
-    (Refl, Refl) -> permChans (f prfF prfS)
+    (Refl, Refl) -> permPorts (f prfF prfS)
                               (uncurry f $ listSplitSwap prfF prfS)
                               cont
   where
     f :: ListSplitD l p (f:l')
       -> ListSplitD l' p' (s:rest)
-      -> Chan x y l
-      -> Chan x y (Concat p (s : Concat p' (f:rest)))
+      -> PortInList x y l
+      -> PortInList x y (Concat p (s : Concat p' (f:rest)))
     f p p' i = let
         (pInv, pInv') = listSplitSwap p p'
       in case (listSplitConcat p, listSplitConcat p') of
@@ -309,23 +309,23 @@ findIndex (SplitThere j) (There i) = case findIndex j i of
 doesNotReturnInRecvPrf :: MayOnlyReturnAfterRecvD aft a
                        -> RecvRes ach m aft a
                        -- ^Result of running `runTillRecv`
-                       -> (SomeSndMessage ach -> AsyncT ach m NextSend aft a)
+                       -> (SomeRxMess ach -> AsyncT ach m NextSend aft a)
                        -- ^The continutation that tells how the process chose to receive the message
 doesNotReturnInRecvPrf retPrf = \case
   RrHalt contra -> case retPrf of
     MayOnlyReturnVoid -> case contra of {}
   RrRecv cont -> cont
 
--- |Connect two adjacent free channels with each other. This binds them and
+-- |Connect two adjacent free ports with each other. This binds them and
 -- removes from the free list.
 connect_ :: (Monad m, KnownIndex bef)
         => MayOnlyReturnAfterRecvD aft a
-        -> ListSplitD l p ('(x, y) : l')
+        -> ListSplitD l p (P x y : l')
         -- ^ Proof of @l == p ++ [(x, y)] ++ l'@
-        -> ListSplitD l' p' ('(y, x) : rest)
+        -> ListSplitD l' p' (P y x : rest)
         -- ^ Proof of @l' == p' ++ [(y, x)] ++ rest@
         -> AsyncT l m bef aft a
-        -- ^Exectuion where we want to connect_ the channels
+        -- ^Exectuion where we want to connect_ the ports
         -> AsyncT (Concat p (Concat p' rest)) m bef aft a
 connect_ retPrf prf prf' cont = case (listSplitConcat prf, listSplitConcat prf') of
   (Refl, Refl) -> let
@@ -334,33 +334,33 @@ connect_ retPrf prf prf' cont = case (listSplitConcat prf, listSplitConcat prf')
       SNextRecv -> M.do
         xlift (runTillRecv cont) >>=: \case
           RrRecv cont' -> M.do
-            SomeSndMessage i m <- recvAny
-            connect_ retPrf prf prf' $ cont' $ SomeSndMessage (g prf prf' i) m
+            SomeRxMess i m <- recvAny
+            connect_ retPrf prf prf' $ cont' $ SomeRxMess (g prf prf' i) m
           RrHalt res -> xreturn res
       SNextSend -> M.do
         xlift (runTillSend cont) >>=: \case
           SrHalt res -> xreturn res
-          SrSend (SomeFstMessage i m) cont' -> case f prf prf' i of
+          SrSend (SomeTxMess i m) cont' -> case f prf prf' i of
               SomeValue Here (Refl, Refl) -> M.do
                 cont'' <- doesNotReturnInRecvPrf retPrf <$> xlift (runTillRecv cont')
                 let i' = padLeftIndexSameSuff prf $ There $ padLeftIndexSameSuff prf' Here
-                connect_ retPrf prf prf' $ cont'' $ SomeSndMessage i' m
+                connect_ retPrf prf prf' $ cont'' $ SomeRxMess i' m
               SomeValue (There Here) (Refl, Refl) -> M.do
                 cont'' <- doesNotReturnInRecvPrf retPrf <$> xlift (runTillRecv cont')
                 let i' = padLeftIndexSameSuff prf Here
-                connect_ retPrf prf prf' $ cont'' $ SomeSndMessage i' m
+                connect_ retPrf prf prf' $ cont'' $ SomeRxMess i' m
               SomeValue (There2 Here) i' -> M.do
                 send i' m
                 connect_ retPrf prf prf' cont'
               SomeValue (There3 contra) _ -> case contra of {}
 
   where
-    f :: ListSplitD l p ('(x', y') : l')
-      -> ListSplitD l' p' ('(y', x') : rest)
-      -> Chan x y l
+    f :: ListSplitD l p (P x' y' : l')
+      -> ListSplitD l' p' (P y' x' : rest)
+      -> PortInList x y l
       -> SomeValue '[ (x :~: x', y :~: y')
                     , (x :~: y', y :~: x')
-                    , Chan x y (Concat p (Concat p' rest))
+                    , PortInList x y (Concat p (Concat p' rest))
                     ]
     f p p' c = case (listSplitConcat p, listSplitConcat p') of
         (Refl, Refl) -> let
@@ -373,10 +373,10 @@ connect_ retPrf prf prf' cont = case (listSplitConcat prf, listSplitConcat prf')
             Right Here -> SomeValue (There Here) (Refl, Refl)
             Right (There i') -> SomeValue (There2 Here) $ padLeftIndex p $ padLeftIndex p' i'
 
-    g :: ListSplitD l p ('(x', y') : l')
-      -> ListSplitD l' p' ('(y', x') : rest)
-      -> Chan x y (Concat p (Concat p' rest))
-      -> Chan x y l
+    g :: ListSplitD l p (P x' y' : l')
+      -> ListSplitD l' p' (P y' x' : rest)
+      -> PortInList x y (Concat p (Concat p' rest))
+      -> PortInList x y l
     g p p' c = case (listSplitConcat p, listSplitConcat p') of
         (Refl, Refl) -> let
           (pInv, pInv') = listSplitSuff2 p p'

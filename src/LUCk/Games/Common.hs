@@ -22,7 +22,7 @@ import Control.Monad (MonadPlus(..))
 -- got.
 oracleMapM :: (Monad m)
            => (a -> m b)
-           -> OracleWrapper m '(a, b) [(a, b)]
+           -> OracleWrapper m (P a b) [(a, b)]
 oracleMapM f = OracleWrapper $ M.do
   recvOne >>=: \case
     OracleReqHalt -> xreturn []

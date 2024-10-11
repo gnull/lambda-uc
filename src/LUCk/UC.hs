@@ -20,7 +20,7 @@ import LUCk.Syntax.Async.Eval.Internal
 import LUCk.UC.Shell
 
 data EnvProcess down m a where
-  MkEnvProcess :: AsyncT '[PingRecvChan, down] m NextSend NextSend a
+  MkEnvProcess :: AsyncT '[PingRecvPort, down] m NextSend NextSend a
                -> EnvProcess down m a
 
 -- |A tree of subroutine-respecting protocols.
@@ -28,16 +28,16 @@ data EnvProcess down m a where
 -- A `SubRespTree m up` is simply @IdealFunc up down m@ where the
 -- required subroutine interfaces were filled with actual implementations (and,
 -- therefore, are not required and not exposed by a type parameter anymore).
-data SubRespTree (m :: Type -> Type) (up :: (Type, Type)) where
-  MkSubRespTree :: Proto '(x, y) down m
-                -> KnownPairD '(x, y)
+data SubRespTree (m :: Type -> Type) (up :: Port) where
+  MkSubRespTree :: Proto (P x y) down m
+                -> KnownPortD (P x y)
                 -> HList (SubRespTree m) down
-                -> SubRespTree m '(x, y)
+                -> SubRespTree m (P x y)
 
 mergeSendPorts :: forall l p s p' s' a m i res.
-                  ListSplitD l p ( OnlySendChan a : s)
-               -> ListSplitD s p' ( OnlySendChan a : s')
-               -> ExecBuilder m (ExecIndexSome l i res) (ExecIndexSome (OnlySendChan a : Concat p (Concat p' s')) i res) ()
+                  ListSplitD l p ( OnlySendPort a : s)
+               -> ListSplitD s p' ( OnlySendPort a : s')
+               -> ExecBuilder m (ExecIndexSome l i res) (ExecIndexSome (OnlySendPort a : Concat p (Concat p' s')) i res) ()
 mergeSendPorts i i' = case (listSplitConcat i, listSplitConcat i') of
     (Refl, Refl) -> execInvariantM >>=: \case
         (iPrf, retPrf) -> M.do
@@ -50,13 +50,13 @@ mergeSendPorts i i' = case (listSplitConcat i, listSplitConcat i') of
             (Refl, SNextRecv, MayOnlyReturnVoid) -> xreturn ()
             (Refl, SNextSend, MayOnlyReturnVoid) -> xreturn ()
   where
-    sendMerger :: AsyncT '[ OnlySendChan a, OnlyRecvChan a, OnlyRecvChan a] m NextRecv NextRecv Void
+    sendMerger :: AsyncT '[ OnlySendPort a, OnlyRecvPort a, OnlyRecvPort a] m NextRecv NextRecv Void
     sendMerger = M.do
       x <- recvAny <&> \case
-        SomeSndMessage Here contra -> case contra of {}
-        SomeSndMessage (There Here) x -> x
-        SomeSndMessage (There2 Here) x -> x
-        SomeSndMessage (There3 contra) _ -> case contra of {}
+        SomeRxMess Here contra -> case contra of {}
+        SomeRxMess (There Here) x -> x
+        SomeRxMess (There2 Here) x -> x
+        SomeRxMess (There3 contra) _ -> case contra of {}
       send Here x
       sendMerger
 
@@ -64,13 +64,13 @@ mergeSendPorts i i' = case (listSplitConcat i, listSplitConcat i') of
 subRespEval :: SubRespTree m iface
             -- ^The called protocol with its subroutines composed-in
             -> ExecBuilder m ExecIndexInit
-                  (ExecIndexSome '[PingSendChan, ChanSwap iface] NextRecv Void) ()
+                  (ExecIndexSome '[PingSendPort, PortSwap iface] NextRecv Void) ()
 subRespEval (MkSubRespTree p _ c) = M.do
     process p
     forEliminateHlist c $ \_ z -> M.do
       forkRight $ subRespEval z
       case z of
-        MkSubRespTree _ KnownPairD _ -> M.do
+        MkSubRespTree _ KnownPortD _ -> M.do
           connect Split1 Split2
           mergeSendPorts Split0 Split0
   where
@@ -92,7 +92,7 @@ subRespEval (MkSubRespTree p _ c) = M.do
 ucExec :: EnvProcess up m a
        -> SubRespTree m up
        -> ExecBuilder m ExecIndexInit (ExecIndexSome '[] NextSend a) ()
-ucExec (MkEnvProcess e) p@(MkSubRespTree _ KnownPairD _) = M.do
+ucExec (MkEnvProcess e) p@(MkSubRespTree _ KnownPortD _) = M.do
   subRespEval p
   forkRight $ process e
   connect Split0 Split1

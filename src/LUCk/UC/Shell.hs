@@ -15,16 +15,16 @@ import LUCk.Types
 
 import qualified Data.Map.Strict as Map
 
-type OnlySendChan a = '(a, Void)
-type OnlyRecvChan a = '(Void, a)
-type PingSendChan = OnlySendChan ()
-type PingRecvChan = OnlyRecvChan ()
+type OnlySendPort a = P a Void
+type OnlyRecvPort a = P Void a
+type PingSendPort = OnlySendPort ()
+type PingRecvPort = OnlyRecvPort ()
 
-type Marked :: Type -> (Type, Type) -> (Type, Type)
+type Marked :: Type -> Port -> Port
 type family Marked u c where
-  Marked u p = '( (u, Fst p), (u, Snd p))
+  Marked u p = P (u, PortTxType p) (u, PortRxType p)
 
-type MapMarked :: Type -> [(Type, Type)] -> [(Type, Type)]
+type MapMarked :: Type -> [Port] -> [Port]
 type family MapMarked u l where
   MapMarked _ '[] = '[]
   MapMarked u (x:xs) = Marked u x : MapMarked u xs
@@ -47,7 +47,7 @@ type PidSidIface sid sr = Marked (HList SomeOrd (Pid:sid)) sr
 type SidIface sid sr = Marked (HList SomeOrd sid) sr
 
 -- |A list of multi-session interfaces like `PidSidIface`
-type PidSidIfaceList :: [Type] -> [Type] -> [(Type, Type)] -> [(Type, Type)]
+type PidSidIfaceList :: [Type] -> [Type] -> [Port] -> [Port]
 type family PidSidIfaceList rest sids down where
   PidSidIfaceList _ '[] '[] = '[]
   PidSidIfaceList rest (s:ss) (p:ds) = PidSidIface (s:rest) p
@@ -55,7 +55,7 @@ type family PidSidIfaceList rest sids down where
   PidSidIfaceList _ _ _ = '[]
 
 -- |A list of multi-session interfaces like `SidIface`
-type SidIfaceList :: [Type] -> [Type] -> [(Type, Type)] -> [(Type, Type)]
+type SidIfaceList :: [Type] -> [Type] -> [Port] -> [Port]
 type family SidIfaceList rest sids down where
   SidIfaceList _ '[] '[] = '[]
   SidIfaceList rest (s:ss) (p:ds) = SidIface (s:rest) p
@@ -96,8 +96,8 @@ instance Ord (HList SomeOrd l) where
 --
 -- - @up@ interface to its callers,
 -- - @down@ interfaces to its subroutines,
--- - a single `PingSendChan` interface to yield control to the environment.
-type Proto up down m = AsyncT (PingSendChan : ChanSwap up : down) m NextRecv NextRecv Void
+-- - a single `PingSendPort` interface to yield control to the environment.
+type Proto up down m = AsyncT (PingSendPort : PortSwap up : down) m NextRecv NextRecv Void
 
 -- |A `Proto` where @up@ and @down@ interfaces are appropriately marked
 -- with ESID and PID values to handle multiple sessions in one process.
@@ -126,9 +126,9 @@ matchZipMapPidMarked :: KnownLenD sids
                   -> SameLenD sids down
                   -> InList (ZipMapPidMarked sids down) p
                   -> ( forall s x y.
-                         InList (ZipMapPidMarked sids down)
-                                '((HList SomeOrd '[Pid, s], x), (HList SomeOrd '[Pid, s], y))
-                      -> '((HList SomeOrd '[Pid, s], x), (HList SomeOrd '[Pid, s], y)) :~: p
+                         PortInList (HList SomeOrd '[Pid, s], x) (HList SomeOrd '[Pid, s], y)
+                                    (ZipMapPidMarked sids down)
+                      -> P (HList SomeOrd '[Pid, s], x) (HList SomeOrd '[Pid, s], y) :~: p
                       -> a
                      )
                   -> a
@@ -142,9 +142,8 @@ matchZipMarked :: KnownLenD sids
                -> SameLenD sids down
                -> InList (ZipMarked sids down) p
                -> ( forall s x y.
-                      InList (ZipMarked sids down)
-                             '((SomeOrd s, x), (SomeOrd s, y))
-                   -> '((SomeOrd s, x), (SomeOrd s, y)) :~: p
+                      PortInList (SomeOrd s, x) (SomeOrd s, y) (ZipMarked sids down)
+                   -> P (SomeOrd s, x) (SomeOrd s, y) :~: p
                    -> a
                   )
                -> a
@@ -159,9 +158,9 @@ matchPidSidIfaceList :: forall rest sids down p a.
                   -> SameLenD sids down
                   -> InList (PidSidIfaceList rest sids down) p
                   -> ( forall s x y.
-                         InList (PidSidIfaceList rest sids down)
-                               '((HList SomeOrd (Pid:s:rest), x), (HList SomeOrd (Pid:s:rest), y))
-                      -> '((HList SomeOrd (Pid:s:rest), x), (HList SomeOrd (Pid:s:rest), y)) :~: p
+                         PortInList (HList SomeOrd (Pid:s:rest), x) (HList SomeOrd (Pid:s:rest), y)
+                                    (PidSidIfaceList rest sids down)
+                      -> P (HList SomeOrd (Pid:s:rest), x) (HList SomeOrd (Pid:s:rest), y) :~: p
                       -> a
                      )
                   -> a
@@ -176,9 +175,9 @@ matchSidIfaceList :: forall rest sids down p a.
                   -> SameLenD sids down
                   -> InList (SidIfaceList rest sids down) p
                   -> ( forall s x y.
-                         InList (SidIfaceList rest sids down)
-                               '((HList SomeOrd (s:rest), x), (HList SomeOrd (s:rest), y))
-                      -> '((HList SomeOrd (s:rest), x), (HList SomeOrd (s:rest), y)) :~: p
+                         PortInList (HList SomeOrd (s:rest), x) (HList SomeOrd (s:rest), y)
+                                    (SidIfaceList rest sids down)
+                      -> P (HList SomeOrd (s:rest), x) (HList SomeOrd (s:rest), y) :~: p
                       -> a
                      )
                   -> a
@@ -192,59 +191,59 @@ multiSidIdealShell :: forall sid x y sids down m rest.
                  Monad m
               => KnownLenD sids
               -> SameLenD sids down
-              -> (sid -> SingleSidIdeal '(x, y) sids down m)
-              -> MultSidIdeal rest sid '(x, y) sids down m
+              -> (sid -> SingleSidIdeal (P x y) sids down m)
+              -> MultSidIdeal rest sid (P x y) sids down m
 multiSidIdealShell len lenPrf impl = helper Map.empty
   where
-    helper :: Map.Map (HList SomeOrd (sid:rest)) (SingleSidIdeal '(x, y) sids down m)
-           -> MultSidIdeal rest sid '(x, y) sids down m
+    helper :: Map.Map (HList SomeOrd (sid:rest)) (SingleSidIdeal (P x y) sids down m)
+           -> MultSidIdeal rest sid (P x y) sids down m
     helper m = M.do
       m' <- recvAny >>=: \case
-        SomeSndMessage Here contra -> case contra of {}
-        SomeSndMessage (There Here) (HCons pid (HCons sid rest), mess) -> M.do
+        SomeRxMess Here contra -> case contra of {}
+        SomeRxMess (There Here) (HCons pid (HCons sid rest), mess) -> M.do
           let (SomeOrd sid') = sid
               (SomeOrd pid') = pid
               k = HCons sid rest
               st = Map.findWithDefault (impl sid') k m
-          st' <- ($ SomeSndMessage (There Here) (pid', mess)) . mayOnlyRecvVoidPrf <$> xlift (runTillRecv st)
+          st' <- ($ SomeRxMess (There Here) (pid', mess)) . mayOnlyRecvVoidPrf <$> xlift (runTillRecv st)
           (resp, st'') <- mayOnlySendVoidPrf <$> xlift (runTillSend st')
           handleResp k resp
           xreturn $ Map.insert k st'' m
-        SomeSndMessage (There2 i) mess -> M.do
+        SomeRxMess (There2 i) mess -> M.do
           matchPidSidIfaceList @(sid:rest) len lenPrf i $ \_ Refl -> M.do
             let ix = There2 $ sidIfaceListToZipMapMarked @down @sids i len lenPrf
                 (HCons pid (HCons s (HCons sid rest)), mess') = mess
                 (SomeOrd sid') = sid
                 k = HCons sid rest
                 st = Map.findWithDefault (impl sid') k m
-            st' <- ($ SomeSndMessage ix (HListMatch2 pid s, mess')) . mayOnlyRecvVoidPrf <$> xlift (runTillRecv st)
+            st' <- ($ SomeRxMess ix (HListMatch2 pid s, mess')) . mayOnlyRecvVoidPrf <$> xlift (runTillRecv st)
             (resp, st'') <- mayOnlySendVoidPrf <$> xlift (runTillSend st')
             handleResp k resp
             xreturn $ Map.insert k st'' m
       helper m'
 
     handleResp :: HList SomeOrd (sid:rest)
-               -> SomeFstMessage (PingSendChan : Marked Pid '(y, x) : ZipMapPidMarked sids down)
-               -> AsyncT (PingSendChan : PidSidIface (sid:rest) '(y, x) : PidSidIfaceList (sid:rest) sids down)
+               -> SomeTxMess (PingSendPort : Marked Pid (P y x) : ZipMapPidMarked sids down)
+               -> AsyncT (PingSendPort : PidSidIface (sid:rest) (P y x) : PidSidIfaceList (sid:rest) sids down)
                          m NextSend NextRecv ()
     handleResp k = \case
-      SomeFstMessage Here () ->
+      SomeTxMess Here () ->
         send Here ()
-      SomeFstMessage (There Here) (respPid, respMess) ->
+      SomeTxMess (There Here) (respPid, respMess) ->
         send (There Here) (HCons (SomeOrd respPid) k, respMess)
-      SomeFstMessage (There2 i) respMess -> matchZipMapPidMarked len lenPrf i $ \_ Refl ->
+      SomeTxMess (There2 i) respMess -> matchZipMapPidMarked len lenPrf i $ \_ Refl ->
         let
           ix = There2 $ zipMapMarkedToSidIfaceList @down @sids i len lenPrf
           (HListMatch2 pid'' s, m') = respMess
         in send ix (HCons pid'' $ HCons s $ k, m')
 
     zipMapMarkedToSidIfaceList :: forall down' sids' s x' y'.
-                                  InList (ZipMapPidMarked sids' down')
-                                        '((HList SomeOrd '[Pid, s], x'), (HList SomeOrd '[Pid, s], y'))
+                                  PortInList (HList SomeOrd '[Pid, s], x') (HList SomeOrd '[Pid, s], y')
+                                             (ZipMapPidMarked sids' down')
                                -> KnownLenD sids'
                                -> SameLenD sids' down'
-                               -> InList (PidSidIfaceList (sid:rest) sids' down')
-                                        '((HList SomeOrd (Pid:s:sid:rest), x'), (HList SomeOrd (Pid:s:sid:rest), y'))
+                               -> PortInList (HList SomeOrd (Pid:s:sid:rest), x') (HList SomeOrd (Pid:s:sid:rest), y')
+                                             (PidSidIfaceList (sid:rest) sids' down')
     zipMapMarkedToSidIfaceList = \case
       Here -> \case
         KnownLenS _ -> \case
@@ -254,12 +253,12 @@ multiSidIdealShell len lenPrf impl = helper Map.empty
           SameLenCons k -> There $ zipMapMarkedToSidIfaceList i j k
 
     sidIfaceListToZipMapMarked :: forall down' sids' s x' y'.
-                                  InList (PidSidIfaceList (sid:rest) sids' down')
-                                        '((HList SomeOrd (Pid:s:sid:rest), x'), (HList SomeOrd (Pid:s:sid:rest), y'))
+                                  PortInList (HList SomeOrd (Pid:s:sid:rest), x') (HList SomeOrd (Pid:s:sid:rest), y')
+                                             (PidSidIfaceList (sid:rest) sids' down')
                                -> KnownLenD sids'
                                -> SameLenD sids' down'
-                               -> InList (ZipMapPidMarked sids' down')
-                                        '((HList SomeOrd '[Pid, s], x'), (HList SomeOrd '[Pid, s], y'))
+                               -> PortInList (HList SomeOrd '[Pid, s], x') (HList SomeOrd '[Pid, s], y')
+                                             (ZipMapPidMarked sids' down')
     sidIfaceListToZipMapMarked = \case
       Here -> \case
         KnownLenS _ -> \case
@@ -272,58 +271,58 @@ multiSidRealShell :: forall sid x y sids down m rest.
                  Monad m
               => KnownLenD sids
               -> SameLenD sids down
-              -> (Pid -> sid -> SingleSidReal '(x, y) sids down m)
-              -> Pid -> MultSidReal rest sid '(x, y) sids down m
+              -> (Pid -> sid -> SingleSidReal (P x y) sids down m)
+              -> Pid -> MultSidReal rest sid (P x y) sids down m
 multiSidRealShell len lenPrf impl pid = helper Map.empty
   where
-    helper :: Map.Map (HList SomeOrd (sid:rest)) (SingleSidReal '(x, y) sids down m)
-           -> MultSidReal rest sid '(x, y) sids down m
+    helper :: Map.Map (HList SomeOrd (sid:rest)) (SingleSidReal (P x y) sids down m)
+           -> MultSidReal rest sid (P x y) sids down m
     helper m = M.do
       m' <- recvAny >>=: \case
-        SomeSndMessage Here contra -> case contra of {}
-        SomeSndMessage (There Here) (k, mess) -> M.do
+        SomeRxMess Here contra -> case contra of {}
+        SomeRxMess (There Here) (k, mess) -> M.do
           let (HCons sid rest) = k
               (SomeOrd sid') = sid
               st = Map.findWithDefault (impl pid sid') k m
-          st' <- ($ SomeSndMessage (There Here) mess) . mayOnlyRecvVoidPrf <$> xlift (runTillRecv st)
+          st' <- ($ SomeRxMess (There Here) mess) . mayOnlyRecvVoidPrf <$> xlift (runTillRecv st)
           (resp, st'') <- mayOnlySendVoidPrf <$> xlift (runTillSend st')
           handleResp k resp
           xreturn $ Map.insert k st'' m
-        SomeSndMessage (There2 i) mess -> M.do
+        SomeRxMess (There2 i) mess -> M.do
           matchSidIfaceList @(sid:rest) len lenPrf i $ \_ Refl -> M.do
             let ix = There2 $ sidIfaceListToZipMapMarked @down @sids i len lenPrf
                 (HCons s (HCons sid rest), mess') = mess
                 (SomeOrd sid') = sid
                 k = HCons sid rest
                 st = Map.findWithDefault (impl pid sid') k m
-            st' <- ($ SomeSndMessage ix (s, mess')) . mayOnlyRecvVoidPrf <$> xlift (runTillRecv st)
+            st' <- ($ SomeRxMess ix (s, mess')) . mayOnlyRecvVoidPrf <$> xlift (runTillRecv st)
             (resp, st'') <- mayOnlySendVoidPrf <$> xlift (runTillSend st')
             handleResp k resp
             xreturn $ Map.insert k st'' m
       helper m'
 
     handleResp :: HList SomeOrd (sid:rest)
-               -> SomeFstMessage (PingSendChan : '(y, x) : ZipMarked sids down)
-               -> AsyncT (PingSendChan : SidIface (sid:rest) '(y, x) : SidIfaceList (sid:rest) sids down)
+               -> SomeTxMess (PingSendPort : (P y x) : ZipMarked sids down)
+               -> AsyncT (PingSendPort : SidIface (sid:rest) (P y x) : SidIfaceList (sid:rest) sids down)
                          m NextSend NextRecv ()
     handleResp k = \case
-      SomeFstMessage Here () ->
+      SomeTxMess Here () ->
         send Here ()
-      SomeFstMessage (There Here) respMess ->
+      SomeTxMess (There Here) respMess ->
         send (There Here) (k, respMess)
-      SomeFstMessage (There2 i) respMess -> matchZipMarked len lenPrf i $ \i' Refl ->
+      SomeTxMess (There2 i) respMess -> matchZipMarked len lenPrf i $ \i' Refl ->
         let
           ix = There2 $ zipMapMarkedToSidIfaceList @down @sids i' len lenPrf
           (s, m') = respMess
         in send ix (HCons s $ k, m')
 
     zipMapMarkedToSidIfaceList :: forall down' sids' s x' y'.
-                                  InList (ZipMarked sids' down')
-                                        '((SomeOrd s, x'), (SomeOrd s, y'))
+                                  PortInList (SomeOrd s, x') (SomeOrd s, y')
+                                             (ZipMarked sids' down')
                                -> KnownLenD sids'
                                -> SameLenD sids' down'
-                               -> InList (SidIfaceList (sid:rest) sids' down')
-                                        '((HList SomeOrd (s:sid:rest), x'), (HList SomeOrd (s:sid:rest), y'))
+                               -> PortInList (HList SomeOrd (s:sid:rest), x') (HList SomeOrd (s:sid:rest), y')
+                                             (SidIfaceList (sid:rest) sids' down')
     zipMapMarkedToSidIfaceList = \case
       Here -> \case
         KnownLenS _ -> \case
@@ -333,12 +332,12 @@ multiSidRealShell len lenPrf impl pid = helper Map.empty
           SameLenCons k -> There $ zipMapMarkedToSidIfaceList i j k
 
     sidIfaceListToZipMapMarked :: forall down' sids' s x' y'.
-                                  InList (SidIfaceList (sid:rest) sids' down')
-                                        '((HList SomeOrd (s:sid:rest), x'), (HList SomeOrd (s:sid:rest), y'))
+                                  PortInList (HList SomeOrd (s:sid:rest), x') (HList SomeOrd (s:sid:rest), y')
+                                             (SidIfaceList (sid:rest) sids' down')
                                -> KnownLenD sids'
                                -> SameLenD sids' down'
-                               -> InList (ZipMarked sids' down')
-                                        '((SomeOrd s, x'), (SomeOrd s, y'))
+                               -> PortInList (SomeOrd s, x') (SomeOrd s, y')
+                                             (ZipMarked sids' down')
     sidIfaceListToZipMapMarked = \case
       Here -> \case
         KnownLenS _ -> \case

@@ -5,15 +5,13 @@ import Prelude hiding ((!!))
 import Data.Kind (Type)
 import Data.Type.Equality ((:~:)(Refl), TestEquality(..))
 
-import Data.Functor.Identity
-
 -- * Dependent pointer into a list
 
 -- |Dependent index of an element of type @(x, y)@ in list @xs@
 --
--- We use lists of pairs to encode the channels an algorithm has access to,
+-- We use lists of pairs to encode the ports an algorithm has access to,
 -- as well heterogenous lists @HList@ that occur during interpretation of our
--- algorithms. And this type serves as a pointer into one of such channels in
+-- algorithms. And this type serves as a pointer into one of such ports in
 -- the list.
 type InList :: forall a. [a] -> a -> Type
 data InList xs x where
@@ -45,20 +43,30 @@ instance TestEquality (InList xs) where
 padMessageIndex :: SomeValue ts -> SomeValue (t : ts)
 padMessageIndex (SomeValue i' x') = SomeValue (There i') x'
 
--- * Channel Lists
+-- * Port Lists
 
--- |A pointer into the list of channels @xs@.
+-- |A port is defined by a pair of types.
 --
--- The @Chan x y xs@ is a bi-directional channel where you can send values of
--- type $x$ and receive type $y$.
-type Chan :: forall a b. a -> b -> [(a, b)] -> Type
-type Chan x y xs = InList xs '(x, y)
+-- @`P` A B@ allows sending values of type @A@ and receiving @B@.
+data Port = P Type Type
 
--- Mixing this with `Fst` and `Snd` is hard at this point, since haskell fails
--- to automatically derive `(Snd up, Fst up) ~ ChanSwap up`.
-type ChanSwap :: (Type, Type) -> (Type, Type)
-type family ChanSwap p where
-  ChanSwap '(x, y) = '(y, x)
+type PortTxType :: Port -> Type
+type family PortTxType p where
+  PortTxType (P x _) = x
+
+type PortRxType :: Port -> Type
+type family PortRxType p where
+  PortRxType (P _ x) = x
+
+type PortSwap :: Port -> Port
+type family PortSwap p where
+  PortSwap (P x y) = P y x
+
+-- |A pointer into the list of ports @xs@.
+--
+-- The @`PortInList` x y xs@ is a proof of @`P` x y@ being in @xs@.
+type PortInList :: Type -> Type -> [Port] -> Type
+type PortInList x y xs = InList xs (P x y)
 
 type Fst :: forall a b. (a, b) -> a
 type family Fst p where
@@ -78,11 +86,11 @@ type family Zip l l' where
   Zip '[] '[] = '[]
   Zip (x:xs) (y:ys) = '(x, y) : Zip xs ys
 
-data SomeSndMessage xs where
-  SomeSndMessage :: Chan x y xs -> y -> SomeSndMessage xs
+data SomeRxMess xs where
+  SomeRxMess :: PortInList x y xs -> y -> SomeRxMess xs
 
-data SomeFstMessage xs where
-  SomeFstMessage :: Chan x y xs -> x -> SomeFstMessage xs
+data SomeTxMess xs where
+  SomeTxMess :: PortInList x y xs -> x -> SomeTxMess xs
 
 -- * Heterogenous Lists
 --

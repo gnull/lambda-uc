@@ -47,7 +47,7 @@ import LUCk.Types
 --
 -- You start with the processes defined as @`AsyncT` m ach i i a`@ wrapped
 -- in `ExecProc`, then you combine them using `ExecFork`, `ExecConn` and
--- `ExecSwap` until you've connected all the free channels and left with
+-- `ExecSwap` until you've connected all the free ports and left with
 -- @`Exec` m '[] `NextSend` a@. The latter can be evaluated with `runExec` to
 -- yield the final result of evaluation.
 --
@@ -78,20 +78,20 @@ data Exec ach m i a where
            -> Exec ach' m i' a'
            -- ^Second forked process
            -> Exec (Concat ach ach') m (ForkIndexOr i i') (ChooseRet i i' a a')
-  -- |Swap positions of two adjacent free channels.
+  -- |Swap positions of two adjacent free ports.
   ExecSwap :: ListSplitD l p (f:l')
            -- ^Proof of @l == p ++ (f:l')@
            -> ListSplitD l' p' (s:rest)
            -- ^Proof of @l' == p' ++ (s:rest)@
            -> Exec l m i a
            -> Exec (Concat p (s : Concat p' (f:rest))) m i a
-  -- |Connect two adjacent free channels of a given execution (making them bound).
-  ExecConn :: ListSplitD l p ('(x, y) : l')
-           -- ^ Proof of @l == p ++ [(x, y)] ++ l'@
-           -> ListSplitD l' p' ('(y, x) : rest)
-           -- ^ Proof of @l' == p' ++ [(y, x)] ++ rest@
+  -- |Connect two adjacent free ports of a given execution (making them bound).
+  ExecConn :: ListSplitD l p (P x y : l')
+           -- ^ Proof of @l == p ++ [P x y] ++ l'@
+           -> ListSplitD l' p' (P y x : rest)
+           -- ^ Proof of @l' == p' ++ [P y x] ++ rest@
            -> Exec l m i a
-           -- ^Exectuion where we want to connect the channels
+           -- ^Exectuion where we want to connect the ports
            -> Exec (Concat p (Concat p' rest)) m i a
 
 execInvariant :: Exec ach m i a
@@ -135,7 +135,7 @@ execInvariant = \case
 data ExecIndex
   = ExecIndexInit
   -- ^We haven't started any executions
-  | ExecIndexSome [(Type, Type)] Index Type
+  | ExecIndexSome [Port] Index Type
   -- ^An execution with given @ach@, @i@, and @res@ is started
 
 -- |Mapping from the indices of `ExecBuilder` to the indices of internal indexed
@@ -250,9 +250,9 @@ forkRight :: ( ForkIndexComp i i'
                            ()
 forkRight = forkRight' getForkIndexComp getKnownLenPrf
 
-connect :: ListSplitD l p ('(x, y) : l')
+connect :: ListSplitD l p (P x y : l')
         -- ^ Proof of @l == p ++ [(x, y)] ++ l'@
-        -> ListSplitD l' p' ('(y, x) : rest)
+        -> ListSplitD l' p' (P y x : rest)
         -- ^ Proof of @l' == p' ++ [(y, x)] ++ rest@
         -> ExecBuilder m (ExecIndexSome l i res) (ExecIndexSome (Concat p (Concat p' rest)) i res) ()
 connect prf prf' = ExecBuilder $ add $ ExecConn prf prf'
@@ -273,7 +273,7 @@ execInvariantM = execInvariant <$> ExecBuilder look
 
 -- |Run an execution.
 --
--- Note that the list of free channels must be empty, i.e. all channels must be
+-- Note that the list of free ports must be empty, i.e. all ports must be
 -- bound for an execution to be defined.
 runExec :: Monad m
         => Exec '[] m NextSend a

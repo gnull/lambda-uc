@@ -49,11 +49,11 @@ type OracleCaller m down = SyncT down m
 
 -- |An algorithm serving oracle calls from parent, but not having access to
 -- any oracles of its own.
-type Oracle (m :: Type -> Type) (up :: (Type, Type)) =
-  AsyncT '[ '(Snd up, OracleReq (Fst up))] m NextRecv NextSend
+type Oracle (m :: Type -> Type) (up :: Port) =
+  AsyncT '[P (PortRxType up) (OracleReq (PortTxType up))] m NextRecv NextSend
 
 -- |Version of `Oracle` that's wrapped in newtype, convenient for use with `HList2`.
-newtype OracleWrapper (m :: Type -> Type) (up :: (Type, Type)) (ret :: Type) =
+newtype OracleWrapper (m :: Type -> Type) (up :: Port) (ret :: Type) =
   OracleWrapper
     { runOracleWrapper
       :: Oracle m up ret
@@ -75,7 +75,7 @@ data OracleReq a = OracleReqHalt | OracleReq a
 --
 -- Note that `runWithOracles` passes all the messages between the running
 -- interactive algorithms, therefore its result is a non-interactive algorithm.
-runWithOracles :: forall m (down :: [(Type, Type)]) (rets :: [Type]) a.
+runWithOracles :: forall m (down :: [Port]) (rets :: [Type]) a.
                (Monad m, SameLen down rets)
                => OracleCaller m down a
                -- ^The oracle caller algorithm
@@ -94,23 +94,23 @@ runWithOracles = \top bot -> Trans.lift (runTillCall top) >>= \case
       runWithOracles (cont r) bot'
   where
     oracleCall :: x
-               -> OracleWrapper m '(x, y) s
-               -> MaybeT m (OracleWrapper m '(x, y) s, y)
+               -> OracleWrapper m (P x y) s
+               -> MaybeT m (OracleWrapper m (P x y) s, y)
     oracleCall m (OracleWrapper bot) = Trans.lift (runTillRecv bot) >>= \case
-      RrRecv cont -> Trans.lift (runTillSend $ cont $ SomeSndMessage Here (OracleReq m)) >>= \case
+      RrRecv cont -> Trans.lift (runTillSend $ cont $ SomeRxMess Here (OracleReq m)) >>= \case
         SrHalt _ -> mzero
         SrSend r bot' -> case r of
-            SomeFstMessage Here r' -> pure (OracleWrapper bot', r')
-            SomeFstMessage (There contra) _ -> case contra of {}
+            SomeTxMess Here r' -> pure (OracleWrapper bot', r')
+            SomeTxMess (There contra) _ -> case contra of {}
           
     halt :: OracleWrapper m up x
          -> MaybeT m x
     halt (OracleWrapper bot) = Trans.lift (runTillRecv bot) >>= \case
-      RrRecv cont -> Trans.lift (runTillSend $ cont $ SomeSndMessage Here OracleReqHalt) >>= \case
+      RrRecv cont -> Trans.lift (runTillSend $ cont $ SomeRxMess Here OracleReqHalt) >>= \case
         SrHalt s -> pure s
         SrSend _ _ -> mzero
 
-    haltAll :: forall (down' :: [(Type, Type)]) (rets' :: [Type]).
+    haltAll :: forall (down' :: [Port]) (rets' :: [Type]).
                HList2 (OracleWrapper m) down' rets'
             -> MaybeT m (HList Identity rets')
     haltAll = \case
@@ -122,17 +122,17 @@ runWithOracles = \top bot -> Trans.lift (runTillCall top) >>= \case
 
 -- |Version of `runWithOracles` that accepts only one oracle
 runWithOracles1 :: Monad m
-                => OracleCaller m '[ '(x, y) ] a
-                -> OracleWrapper m '(x, y) b
+                => OracleCaller m '[P x y] a
+                -> OracleWrapper m (P x y) b
                 -> MaybeT m (a, b)
 runWithOracles1 top bot = runWithOracles top (HList2Match1 bot) <&>
   \(a, HListMatch1 (Identity b)) -> (a, b)
 
 -- |Version of `runWithOracles` that accepts two oracles
 runWithOracles2 :: Monad m
-                => OracleCaller m '[ '(x, y), '(x', y') ] a
-                -> OracleWrapper m '(x, y) b
-                -> OracleWrapper m '(x', y') b'
+                => OracleCaller m '[P x y, P x' y'] a
+                -> OracleWrapper m (P x y) b
+                -> OracleWrapper m (P x' y') b'
                 -> MaybeT m (a, b, b')
 runWithOracles2 top bot bot' = runWithOracles top (HList2Match2 bot bot') <&>
   \(a, HListMatch2 (Identity b) (Identity b')) -> (a, b, b')

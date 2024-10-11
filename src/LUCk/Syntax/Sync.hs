@@ -28,9 +28,9 @@ import LUCk.Syntax.Class
 --
 -- Actions are given in Free monad syntax.
 
-data SyncActions (sch :: [(Type, Type)]) (m :: Type -> Type) a where
+data SyncActions (sch :: [Port]) (m :: Type -> Type) a where
   -- |Perform a call to a child, immediately getting the result
-  CallAction :: Chan x y sch -> x -> (y -> a) -> SyncActions sch m a
+  CallAction :: PortInList x y sch -> x -> (y -> a) -> SyncActions sch m a
   -- |Run a local action in the inner monad.
   LiftAction :: m x -> (x -> a) -> SyncActions sch m a
 
@@ -40,7 +40,7 @@ instance Functor (SyncActions sch m) where
 
 -- $monad
 
--- |Non-indexed transformer that adds syncronous `call` (channels given by
+-- |Non-indexed transformer that adds syncronous `call` (ports given by
 -- @sch@) to monad @m@. You will often see `LUCk.Syntax.Algo.Algo`, and `SyncT`
 -- will automatically implement its typeclasses such as `Print` or `Rand`.
 --
@@ -94,9 +94,9 @@ instance Sync (SyncT sch m) sch where
 -- step-by-step.
 
 -- |The result of `runTillCall`
-data CallRes (sch :: [(Type, Type)]) (m :: Type -> Type) a where
+data CallRes (sch :: [Port]) (m :: Type -> Type) a where
   -- |Algorithm called `call`.
-  CrCall :: Chan x y sch
+  CrCall :: PortInList x y sch
          -> x
          -> (y -> SyncT sch m a)
          -> CallRes sch m a

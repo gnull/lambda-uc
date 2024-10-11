@@ -40,7 +40,7 @@ type SpSymEncryptionScheme key mes ciph s = Integer -> SymEncryptionScheme key m
 data EncDecReq mes ciph = EncReq mes | DecReq ciph
 data EncDecResp mes ciph = EncResp ciph | DecResp mes | RespError
 
-type EncDecIface mes ciph = '(EncDecReq mes ciph, EncDecResp mes ciph)
+type EncDecIface mes ciph = P (EncDecReq mes ciph) (EncDecResp mes ciph)
 
 type AdvAlgo mes ciph
   = OracleCaller ProbAlgo '[ EncDecIface mes ciph ] Bool
