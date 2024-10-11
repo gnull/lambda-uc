@@ -16,9 +16,9 @@ import qualified Control.Monad.Free as F
 import Control.XMonad
 
 import LUCk.Types
-import LUCk.Syntax.Class
 
 import qualified LUCk.Syntax.Algo as L
+import LUCk.Syntax.Algo (Rand(..), Print(..))
 import qualified LUCk.Syntax.Async as S
 
 import qualified Control.XMonad.Do as M
@@ -61,31 +61,21 @@ generalizeAlgo (L.Algo (F.Free v)) =
     L.PrintAction s r -> debugPrint s >> (generalizeAlgo $ L.Algo r)
     L.RandAction cont -> rand >>= (\b -> generalizeAlgo $ L.Algo $ cont b)
 
--- |Generalizes a concrete action in `@S.AsyncExT@ ex up (@L.Algo@ pr ra)`, to
--- any monad that implements the same typeclasses.
---
--- From practical perspective, this lets you interpret the `S.AsyncT` syntax
--- in something like `IO`. Or you can use this to move actions to a less
--- restrictive monad (`S.AsyncT` with more permissive parameters).
---
--- From abstract perspective, the signature of this function fully
--- characterizes the actions that `S.AsyncT` may do with the given parameters.
-generalizeAsyncT :: ( IfThenElse pr (forall b. Print (m b b)) (forall b. Empty (m b b))
-                , IfThenElse ra (forall b. Rand (m b b)) (forall b. Empty (m b b))
-                , (forall b. Monad (m b b))
-                , XThrow m ex
-                , Async m up
-                )
-               => (SBool pr, SBool ra)
-               -- ^An argument that helps GHC evaluate constraints
-               -> S.AsyncExT ex up (L.Algo pr ra) bef aft a
-               -> m bef aft a
+-- |Generalizes a concrete action in `@S.AsyncExT@ ex ports (@L.Algo@ pr ra)`,
+-- to an `S.AsyncExT` that may potentially allow more operations (due to more
+-- permissive parameters).
+generalizeAsyncT :: ( IfThenElse pr (Print m) (Empty m)
+                    , IfThenElse ra (Rand m) (Empty m)
+                    )
+                => (forall e. InList ex e -> InList ex' e)
+                -> S.AsyncExT ex ports (L.Algo pr ra) bef aft a
+                -> S.AsyncExT ex' ports m bef aft a
 generalizeAsyncT _ (S.AsyncExT (Pure v)) = xreturn v
 generalizeAsyncT h (S.AsyncExT (Join v)) =
     case v of
-      S.SendAction m r -> sendMess m >>: generalizeAsyncT h (S.AsyncExT r)
-      S.RecvAction cont -> recvAny >>=: generalizeAsyncT h . S.AsyncExT . cont
-      S.ThrowAction i e -> xthrow i e
+      S.SendAction m r -> S.sendMess m >>: generalizeAsyncT h (S.AsyncExT r)
+      S.RecvAction cont -> S.recvAny >>=: generalizeAsyncT h . S.AsyncExT . cont
+      S.ThrowAction i e -> S.xthrow (h i) e
       S.LiftAction (L.Algo m) cont -> case m of
         F.Pure r -> generalizeAsyncT h $ S.AsyncExT $ cont r
         F.Free (L.PrintAction s r) -> M.do

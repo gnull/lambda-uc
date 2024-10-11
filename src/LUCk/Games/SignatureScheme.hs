@@ -1,7 +1,6 @@
 module LUCk.Games.SignatureScheme where
 
 import LUCk.Types
-import LUCk.Syntax.Class
 import LUCk.Syntax.Algo
 import LUCk.Syntax.Sync
 import LUCk.Syntax.Sync.Eval

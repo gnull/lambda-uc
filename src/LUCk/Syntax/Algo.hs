@@ -4,7 +4,11 @@ import Data.Kind (Type)
 
 import Control.Monad.Free
 
-import LUCk.Syntax.Class
+import Control.Monad
+-- import Control.XMonad
+import Control.XMonad.Trans
+import qualified System.Random as Random
+import qualified Control.Monad.Trans.Class as Trans
 
 -- |Non-interactive algorithm. May use the following side-effects:
 --
@@ -39,10 +43,58 @@ instance Print (Algo True ra) where
 instance Rand (Algo pr True) where
   rand = Algo $ liftF $ RandAction id
 
--- instance Throw (Algo pr ra e) e where
---   throw = Algo . throw
+class Monad m => Print (m :: Type -> Type) where
+  -- |Print debug info.
+  --
+  -- This has no effect on the algorithm definition, i.e. all `debugPrint`
+  -- calls are ignored when your protocol is converted into a real-world
+  -- implementation. But you may use print statements to illustrate your
+  -- algorithms in toy executions.
+  debugPrint :: String -> m ()
 
--- instance Catch (Algo pr ra e) e (Algo pr ra e') where
---   catch x h = Algo $ catch (runAlgo x) (runAlgo . h)
+instance Print IO where
+  debugPrint = putStrLn
 
--- $eval
+instance (Trans.MonadTrans t, Print m) => Print (t m) where
+  debugPrint = Trans.lift . debugPrint
+
+instance (XMonadTrans t, Print m, bef ~ aft) => Print (t m bef aft) where
+  debugPrint = xlift . debugPrint
+
+class Monad m => Rand (m :: Type -> Type) where
+  -- |Sample a random value.
+  rand :: m Bool
+
+instance (Trans.MonadTrans t, Rand m) => Rand (t m) where
+  rand = Trans.lift $ rand
+
+instance (XMonadTrans t, Rand m, bef ~ aft) => Rand (t m bef aft) where
+  rand = xlift $ rand
+
+instance Rand IO where
+  rand = Random.randomIO
+
+class UniformDist s where
+  -- |Sample a uniformly random value from `s`
+  uniformDist :: forall m. Rand m => m s
+
+instance UniformDist Bool where
+  uniformDist = rand
+
+-- |Sample a random value from the given range of `Integer`
+rangeDist :: Rand m => Integer -> Integer -> m Integer
+rangeDist = \f t -> (f +) <$> rangeDist0 (t - f)
+  where
+    integerLog2Ceil x | x == 1 = 1
+                      | x `mod` 2 == 0 = 1 + integerLog2Ceil (x `div` 2)
+                      | otherwise = integerLog2Ceil $ x + 1
+
+    fromBase2 l = sum $ zipWith (*) l $ map (2^) [0..]
+
+    rangeDist0 n = do
+      let p = integerLog2Ceil n
+      nb <- fmap fromBase2 $ fmap (map $ toInteger . fromEnum) $ replicateM p $ uniformDist @Bool
+      if nb < n then
+        return nb
+      else
+        rangeDist0 n

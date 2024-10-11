@@ -62,7 +62,6 @@ library
       Data.HList
       LUCk.Types
       LUCk.Syntax
-      LUCk.Syntax.Class
       LUCk.Syntax.Algo
       LUCk.Syntax.Async
       LUCk.Syntax.Async.Eval

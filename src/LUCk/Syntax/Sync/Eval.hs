@@ -21,7 +21,6 @@ import Control.XMonad
 import qualified Control.XMonad.Do as M
 
 import LUCk.Types
-import LUCk.Syntax.Class
 import LUCk.Syntax.Sync
 import LUCk.Syntax.Async
 

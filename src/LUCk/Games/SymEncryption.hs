@@ -3,7 +3,6 @@
 module LUCk.Games.SymEncryption where
 
 import LUCk.Types
-import LUCk.Syntax.Class
 import LUCk.Syntax.Algo
 import LUCk.Syntax.Async
 import LUCk.Syntax.Sync.Eval

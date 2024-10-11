@@ -35,7 +35,6 @@ import Control.XMonad.XAccum
 
 import LUCk.Syntax.Async.Eval.Internal
 import LUCk.Syntax.Async
-import LUCk.Syntax.Class
 import LUCk.Types
 
 -- $exec
