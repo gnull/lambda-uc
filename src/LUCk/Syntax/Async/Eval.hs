@@ -16,7 +16,7 @@ module LUCk.Syntax.Async.Eval
   , process
   , forkLeft
   , forkRight
-  , connect
+  , link
   , swap
   , execGuard
   , execInvariantM
@@ -42,12 +42,12 @@ import LUCk.Types
 --
 -- This section defines syntax for distributed exection of processes.
 --
--- You define your processes and their connections as a value of type `Exec`,
+-- You define your processes and their links as a value of type `Exec`,
 -- and then run it using `runExec`.
 --
 -- You start with the processes defined as @`AsyncT` m ach i i a`@ wrapped
--- in `ExecProc`, then you combine them using `ExecFork`, `ExecConn` and
--- `ExecSwap` until you've connected all the free ports and left with
+-- in `ExecProc`, then you combine them using `ExecFork`, `ExecLink` and
+-- `ExecSwap` until you've linked all the free ports and left with
 -- @`Exec` m '[] `NextSend` a@. The latter can be evaluated with `runExec` to
 -- yield the final result of evaluation.
 --
@@ -85,13 +85,13 @@ data Exec ach m i a where
            -- ^Proof of @l' == p' ++ (s:rest)@
            -> Exec l m i a
            -> Exec (Concat p (s : Concat p' (f:rest))) m i a
-  -- |Connect two adjacent free ports of a given execution (making them bound).
-  ExecConn :: ListSplitD l p (P x y : l')
+  -- |Link two adjacent free ports of a given execution (making them bound).
+  ExecLink :: ListSplitD l p (P x y : l')
            -- ^ Proof of @l == p ++ [P x y] ++ l'@
            -> ListSplitD l' p' (P y x : rest)
            -- ^ Proof of @l' == p' ++ [P y x] ++ rest@
            -> Exec l m i a
-           -- ^Exectuion where we want to connect the ports
+           -- ^Exectuion where we want to link the ports
            -> Exec (Concat p (Concat p' rest)) m i a
 
 execInvariant :: Exec ach m i a
@@ -103,7 +103,7 @@ execInvariant = \case
     ForkIndexCompFst -> (getSIndex, getMayOnlyReturnAfterRecvPrf)
     ForkIndexCompSnd -> (getSIndex, getMayOnlyReturnAfterRecvPrf)
   ExecSwap _ _ p -> execInvariant p
-  ExecConn _ _ p -> execInvariant p
+  ExecLink _ _ p -> execInvariant p
 
 -- $writer
 --
@@ -129,7 +129,7 @@ execInvariant = \case
 -- @`ExecBuilder` m `ExecIndexInit` (`ExecIndexSome` l i res) ()@ and pass it
 -- to `runExecBuilder`. The result can be passed to `runExec` to actually
 -- run it.  The basic actions available in `ExecBuilder` are `forkLeft`,
--- `forkRight`, `connect` and `swap`.
+-- `forkRight`, `link` and `swap`.
 
 -- |Index of the `ExecBuilder` monad.
 data ExecIndex
@@ -176,7 +176,7 @@ runExecBuilder p = fst $ runXAccum (fromExecBuilder p) ()
 -- $actions
 --
 -- The following are basic actions you can perform in `ExecBuilder`. The
--- `process`, `forkLeft`, `forkRight`, `connect`, `swap` correpond to the
+-- `process`, `forkLeft`, `forkRight`, `link`, `swap` correpond to the
 -- constructors of `Exec`. The difference between `forkLeft` and `forkRight` is
 -- merely in the order of composing the child nodes.
 --
@@ -250,12 +250,12 @@ forkRight :: ( ForkIndexComp i i'
                            ()
 forkRight = forkRight' getForkIndexComp getKnownLenPrf
 
-connect :: ListSplitD l p (P x y : l')
+link :: ListSplitD l p (P x y : l')
         -- ^ Proof of @l == p ++ [(x, y)] ++ l'@
         -> ListSplitD l' p' (P y x : rest)
         -- ^ Proof of @l' == p' ++ [(y, x)] ++ rest@
         -> ExecBuilder m (ExecIndexSome l i res) (ExecIndexSome (Concat p (Concat p' rest)) i res) ()
-connect prf prf' = ExecBuilder $ add $ ExecConn prf prf'
+link prf prf' = ExecBuilder $ add $ ExecLink prf prf'
 
 swap :: ListSplitD l p (f:l')
      -- ^Proof of @l == p ++ (f:l')@
@@ -292,6 +292,6 @@ runExec = escapeAsyncT . f
       ExecSwap k k' p -> case execInvariant e of
         (SNextRecv, _) -> swap_ k k' $ f p
         (SNextSend, _) -> swap_ k k' $ f p
-      ExecConn k k' p -> case execInvariant e of
-        (SNextRecv, prf) -> connect_ prf k k' $ f p
-        (SNextSend, prf) -> connect_ prf k k' $ f p
+      ExecLink k k' p -> case execInvariant e of
+        (SNextRecv, prf) -> link_ prf k k' $ f p
+        (SNextSend, prf) -> link_ prf k k' $ f p

@@ -42,8 +42,8 @@ mergeSendPorts i i' = case (listSplitConcat i, listSplitConcat i') of
     (Refl, Refl) -> execInvariantM >>=: \case
         (iPrf, retPrf) -> M.do
           forkRight' (getForkIndexRecv iPrf) getKnownLenPrf $ process sendMerger
-          connect Split2 i
-          connect Split1 (listSplitAdd (listSplitPopSuffix i) i')
+          link Split2 i
+          link Split1 (listSplitAdd (listSplitPopSuffix i) i')
           -- We've done everything, now just prove this to the compiler
           case (concatAssocPrf @p @p' @s' (listSplitPopSuffix i), iPrf, retPrf) of
             (Refl, _, MayOnlyReturnType) -> xreturn ()
@@ -71,7 +71,7 @@ subRespEval (MkSubRespTree p _ c) = M.do
       forkRight $ subRespEval z
       case z of
         MkSubRespTree _ KnownPortD _ -> M.do
-          connect Split1 Split2
+          link Split1 Split2
           mergeSendPorts Split0 Split0
   where
     forEliminateHlist
@@ -95,5 +95,5 @@ ucExec :: EnvProcess up m a
 ucExec (MkEnvProcess e) p@(MkSubRespTree _ KnownPortD _) = M.do
   subRespEval p
   forkRight $ process e
-  connect Split0 Split1
-  connect Split0 Split0
+  link Split0 Split1
+  link Split0 Split0

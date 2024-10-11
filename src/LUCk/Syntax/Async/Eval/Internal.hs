@@ -6,7 +6,7 @@ module LUCk.Syntax.Async.Eval.Internal
   -- $core
     fork_
   , swap_
-  , connect_
+  , link_
   -- ** Unsafe
   , permPorts
   -- *Helper functions and types
@@ -115,7 +115,7 @@ sndToConcat (KnownLenS n) = There . sndToConcat n
 --
 -- These are utility functions that are used by `runExec` to evaluate an exection.
 --
--- The `fork_`, `swap_` and `connect_` correspond one-to-one to the constructors
+-- The `fork_`, `swap_` and `link_` correspond one-to-one to the constructors
 -- of `Exec`. And `escapeSyncT` evaluates a concurrent algorithm that has all
 -- of its ports bound as a local algorithm.
 
@@ -316,18 +316,18 @@ doesNotReturnInRecvPrf retPrf = \case
     MayOnlyReturnVoid -> case contra of {}
   RrRecv cont -> cont
 
--- |Connect two adjacent free ports with each other. This binds them and
+-- |Link two adjacent free ports with each other. This binds them and
 -- removes from the free list.
-connect_ :: (Monad m, KnownIndex bef)
+link_ :: (Monad m, KnownIndex bef)
         => MayOnlyReturnAfterRecvD aft a
         -> ListSplitD l p (P x y : l')
         -- ^ Proof of @l == p ++ [(x, y)] ++ l'@
         -> ListSplitD l' p' (P y x : rest)
         -- ^ Proof of @l' == p' ++ [(y, x)] ++ rest@
         -> AsyncT l m bef aft a
-        -- ^Exectuion where we want to connect_ the ports
+        -- ^Exectuion where we want to link_ the ports
         -> AsyncT (Concat p (Concat p' rest)) m bef aft a
-connect_ retPrf prf prf' cont = case (listSplitConcat prf, listSplitConcat prf') of
+link_ retPrf prf prf' cont = case (listSplitConcat prf, listSplitConcat prf') of
   (Refl, Refl) -> let
     in
     asyncGetIndex >>=: \case
@@ -335,7 +335,7 @@ connect_ retPrf prf prf' cont = case (listSplitConcat prf, listSplitConcat prf')
         xlift (runTillRecv cont) >>=: \case
           RrRecv cont' -> M.do
             SomeRxMess i m <- recvAny
-            connect_ retPrf prf prf' $ cont' $ SomeRxMess (g prf prf' i) m
+            link_ retPrf prf prf' $ cont' $ SomeRxMess (g prf prf' i) m
           RrHalt res -> xreturn res
       SNextSend -> M.do
         xlift (runTillSend cont) >>=: \case
@@ -344,14 +344,14 @@ connect_ retPrf prf prf' cont = case (listSplitConcat prf, listSplitConcat prf')
               SomeValue Here (Refl, Refl) -> M.do
                 cont'' <- doesNotReturnInRecvPrf retPrf <$> xlift (runTillRecv cont')
                 let i' = padLeftIndexSameSuff prf $ There $ padLeftIndexSameSuff prf' Here
-                connect_ retPrf prf prf' $ cont'' $ SomeRxMess i' m
+                link_ retPrf prf prf' $ cont'' $ SomeRxMess i' m
               SomeValue (There Here) (Refl, Refl) -> M.do
                 cont'' <- doesNotReturnInRecvPrf retPrf <$> xlift (runTillRecv cont')
                 let i' = padLeftIndexSameSuff prf Here
-                connect_ retPrf prf prf' $ cont'' $ SomeRxMess i' m
+                link_ retPrf prf prf' $ cont'' $ SomeRxMess i' m
               SomeValue (There2 Here) i' -> M.do
                 send i' m
-                connect_ retPrf prf prf' cont'
+                link_ retPrf prf prf' cont'
               SomeValue (There3 contra) _ -> case contra of {}
 
   where

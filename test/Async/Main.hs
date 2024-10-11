@@ -37,7 +37,7 @@ type RandM = Algo True True
 
 twoSum :: Int -> Int -> Exec '[] PureM NextSend Int
 twoSum x y =
-  ExecConn Split0 Split0 $
+  ExecLink Split0 Split0 $
   ExecFork getForkIndexComp
            (KnownLenS KnownLenZ)
            (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ sender x)
@@ -45,10 +45,10 @@ twoSum x y =
 
 threeSum :: Int -> Int -> Int -> Exec '[] PureM NextSend Int
 threeSum x y z =
-  ExecConn Split0 Split0 $
-  ExecConn Split1 Split0 $
+  ExecLink Split0 Split0 $
+  ExecLink Split1 Split0 $
   ExecFork getForkIndexComp getKnownLenPrf (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ sender2 x) $
-  ExecConn Split1 Split0 $
+  ExecLink Split1 Split0 $
   ExecFork getForkIndexComp getKnownLenPrf
     (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ receiver2 y)
     (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ receiver2 z)
@@ -56,18 +56,18 @@ threeSum x y z =
 threeSumWriter :: Int -> Int -> Int -> ExecBuilder PureM ExecIndexInit (ExecIndexSome '[] NextSend Int) ()
 threeSumWriter x y z = M.do
   process $ receiver2 x
-  -- guard @('[ '(Int, Void), '(Void, Int)])
+  execGuard @'[P Int Void, P Void Int]
   forkLeft $
     process $ receiver2 y
-  -- guard @('[ '(Int, Void), '(Void, Int), '(Int, Void), '(Void, Int)])
-  connect Split1 Split0
-  -- guard @('[ '(Int, Void), '(Void, Int)])
+  execGuard @'[P Int Void, P Void Int, P Int Void, P Void Int]
+  link Split1 Split0
+  execGuard @'[P Int Void, P Void Int]
   forkLeft  $
     process $ sender2 z
-  -- guard @('[ '(Int, Void), '(Void, Int), '(Int, Void), '(Void, Int)])
-  connect Split1 Split0
-  -- guard @('[ '(Int, Void), '(Void, Int)])
-  connect Split0 Split0
+  execGuard @'[P Int Void, P Void Int, P Int Void, P Void Int]
+  link Split1 Split0
+  execGuard @'[P Int Void, P Void Int]
+  link Split0 Split0
 
 sender :: Int -> AsyncT '[P Int Int] PureM NextSend NextSend Int
 sender x = M.do
@@ -155,7 +155,7 @@ guessingExec = M.do
   process $ guessingChallenger
   forkLeft $
     process guessingPlayer
-  connect Split0 Split0
+  link Split0 Split0
 
 -- |Sends String s to the given port, waits for the other side to repond with
 test :: String -> AsyncExT e '[P String Int] m NextSend NextSend Int
@@ -200,16 +200,16 @@ useMaybeSends e port = M.do
   xreturn $ not res
 
 
--- |Connect the first port to itself.
+-- |Link the first port to itself.
 --
--- This is not a basic combinator and is derived using `fork` and `connect`.
-connectSelf :: forall i a m x rest.
+-- This is not a basic combinator and is derived using `fork` and `link`.
+linkSelf :: forall i a m x rest.
                (Monad m, KnownIndex i, MayOnlyReturnAfterRecv i a)
             => ExecBuilder m (ExecIndexSome (P x x : rest) i a) (ExecIndexSome rest i a) ()
-connectSelf = case lemma (getMayOnlyReturnAfterRecvPrf @i @a) getSIndex of
+linkSelf = case lemma (getMayOnlyReturnAfterRecvPrf @i @a) getSIndex of
     (Refl, Refl) -> M.do
       forkRight $ process idProc
-      connect Split0 Split0
+      link Split0 Split0
   where
     lemma :: forall i a.
              MayOnlyReturnAfterRecvD i a
