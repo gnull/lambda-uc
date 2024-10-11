@@ -5,9 +5,7 @@ module LUCk.Types
   , module Data.Void
   , module Data.Kind
   , module Data.Type.Equality
-  , smartRefl
   , Not
-  , BadInput(..)
   , SBool(..)
   , SIndex(..)
   , Or
@@ -53,13 +51,7 @@ import Data.HList
 
 import Data.Type.Equality ((:~:)(Refl))
 
-smartRefl :: (a ~ b) => a :~: b
-smartRefl = Refl
-
 type Not (a :: Type) = a -> Void
-
--- |We use this in type families to mark inputs that are not considered
-data BadInput = BadInput
 
 data SBool (a :: Bool) where
   STrue :: SBool True
