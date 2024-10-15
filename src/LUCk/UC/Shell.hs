@@ -281,7 +281,7 @@ multiSidRealShell len lenPrf impl pid = helper Map.empty
       m' <- recvAny >>=: \case
         SomeRxMess Here contra -> case contra of {}
         SomeRxMess (There Here) (k, mess) -> M.do
-          let (HCons sid rest) = k
+          let (HCons sid _) = k
               (SomeOrd sid') = sid
               st = Map.findWithDefault (impl pid sid') k m
           st' <- ($ SomeRxMess (There Here) mess) . mayOnlyRecvVoidPrf <$> xlift (runTillRecv st)
