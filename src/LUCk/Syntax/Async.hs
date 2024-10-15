@@ -66,8 +66,10 @@ import LUCk.Types
 -- meaning of possible states is as follows:
 data AsyncActions (ach :: [Port]) (m :: Type -> Type)
                   (bef :: Index) (aft :: Index) (a :: Type) where
+  -- |Receive a message from some channel
   RecvAction :: (SomeRxMess ach -> a)
              -> AsyncActions ach m NextRecv NextSend a
+  -- |Send a message to the chosen channel
   SendAction :: SomeTxMess ach
              -> a
              -> AsyncActions ach m NextSend NextRecv a
