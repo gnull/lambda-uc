@@ -3,8 +3,7 @@
 module LUCk.Syntax.Async (
   -- * Interactive Algorithm Monad
   -- $monad
-    AsyncExT(..)
-  , AsyncT
+    AsyncT(..)
   , Index
   , escapeAsyncT
   , xfreeAsync
@@ -14,8 +13,8 @@ module LUCk.Syntax.Async (
   -- * Interactive Computations
   -- $interactive
   , Index
-  , xthrow
-  , xcatch
+  -- , xthrow
+  -- , xcatch
   -- ** Asynchronous Interaction
   -- $async
   , send
@@ -26,9 +25,9 @@ module LUCk.Syntax.Async (
   -- $derived
   , recvOne
   , sendOne
-  , ExBadSender(..)
-  , recv
-  , sendSync
+  -- , ExBadSender(..)
+  -- , recv
+  -- , sendSync
   -- * Step-by-step Execution
   -- $step
   , runTillSend
@@ -65,41 +64,35 @@ import LUCk.Types
 
 -- |@bef@ and @aft@ are the states before and after the given action. The
 -- meaning of possible states is as follows:
-data AsyncActions (ex :: [(Type, Index)]) (ach :: [Port]) (m :: Type -> Type)
+data AsyncActions (ach :: [Port]) (m :: Type -> Type)
                   (bef :: Index) (aft :: Index) (a :: Type) where
   RecvAction :: (SomeRxMess ach -> a)
-             -> AsyncActions ex ach m NextRecv NextSend a
+             -> AsyncActions ach m NextRecv NextSend a
   SendAction :: SomeTxMess ach
              -> a
-             -> AsyncActions ex ach m NextSend NextRecv a
-  -- |Throw an exception.
-  ThrowAction :: InList ex '(e, b)
-              -> e
-              -> AsyncActions ex ach m b b' a
-
+             -> AsyncActions ach m NextSend NextRecv a
   -- |Run a local action in the inner monad.
   LiftAction :: m x
              -> (x -> a)
-             -> AsyncActions ex ach m b b a
+             -> AsyncActions ach m b b a
 
-instance Functor (AsyncActions ex ach m bef aft) where
+instance Functor (AsyncActions ach m bef aft) where
   fmap f (RecvAction cont) = RecvAction $ f . cont
   fmap f (SendAction m r) = SendAction m $ f r
-  fmap _ (ThrowAction i e) = ThrowAction i e
   fmap f (LiftAction m cont) = LiftAction m $ f . cont
 
 -- $monad
 
 -- |The monad for expressing interactive algorithms.
 --
--- By instantiating `AsyncExT` with different parameters, you can finely
+-- By instantiating `AsyncT` with different parameters, you can finely
 -- control what side-effects you allow:
 --
 -- - Local computations in Monad @`stInner` st@.
 -- - Asynchronous (`send` and `recvAny`) communcation over
 --   interfaces defined in @`stAsync` st@.
 --
--- Asynchronous communcation depends on the `Index` state of `AsyncExT`. There
+-- Asynchronous communcation depends on the `Index` state of `AsyncT`. There
 -- are two possible index states which are interpreted as follows.
 --
 -- - `NextSend` means that it's our turn to send.
@@ -109,31 +102,24 @@ instance Functor (AsyncActions ex ach m bef aft) where
 -- The states `NextSend` and `NextRecv` are toggled with `send` and
 -- `recvAny`. Any asyncronous algorithm will alternate between `send` and
 -- `recvAny` some number of times, until it terminates. Such algorithm's
--- indices tell which of the two operations must be first and last (effectively
--- telling the parity of the number of alternations).
---
--- The `AsyncExT` also implements Index-aware exceptions, configured with @`stEx`
--- st@. Each exception is defined by a type of value thrown and `Index` from
--- which it is thrown.
---
--- `AsyncT` is a special version of `AsyncExT` where exceptions are disabled.
-newtype AsyncExT ex ach m bef aft a
-    = AsyncExT { runInterT :: XFree (AsyncActions ex ach m) bef aft a }
+-- indices tell which of the two operations must be first and last.
+newtype AsyncT ach m bef aft a
+    = AsyncT { runInterT :: XFree (AsyncActions ach m) bef aft a }
   deriving (Functor)
 
-instance bef ~ aft => Applicative (AsyncExT ex ach m bef aft) where
-  f <*> m = AsyncExT $ runInterT f <*> runInterT m
-  pure = AsyncExT . pure
+instance bef ~ aft => Applicative (AsyncT ach m bef aft) where
+  f <*> m = AsyncT $ runInterT f <*> runInterT m
+  pure = AsyncT . pure
 
-instance bef ~ aft => Monad (AsyncExT ex ach m bef aft) where
-  m >>= f = AsyncExT $ runInterT m Monad.>>= (runInterT . f)
+instance bef ~ aft => Monad (AsyncT ach m bef aft) where
+  m >>= f = AsyncT $ runInterT m Monad.>>= (runInterT . f)
 
-instance XApplicative (AsyncExT ex ach m) where
-  xpure = AsyncExT . xpure
-  f <*>: x = AsyncExT $ runInterT f <*>: runInterT x
+instance XApplicative (AsyncT ach m) where
+  xpure = AsyncT . xpure
+  f <*>: x = AsyncT $ runInterT f <*>: runInterT x
 
-instance XMonad (AsyncExT ex ach m) where
-  m >>=: f = AsyncExT $ runInterT m >>=: (runInterT . f)
+instance XMonad (AsyncT ach m) where
+  m >>=: f = AsyncT $ runInterT m >>=: (runInterT . f)
 
 -- |Interactive action with no free ports can be interpreted as local.
 --
@@ -145,38 +131,33 @@ escapeAsyncT cont = runTillSend cont >>= \case
   SrSend (SomeTxMess contra _) _ -> case contra of {}
   SrHalt res -> pure res
 
-xfreeAsync :: AsyncActions ex ach m bef aft a -> AsyncExT ex ach m bef aft a
-xfreeAsync = AsyncExT . xfree
+xfreeAsync :: AsyncActions ach m bef aft a -> AsyncT ach m bef aft a
+xfreeAsync = AsyncT . xfree
 
-instance XMonadTrans (AsyncExT ex ach) where
+instance XMonadTrans (AsyncT ach) where
   xlift m = xfreeAsync $ LiftAction m id
 
--- Haskell can't derive these for us when there are ambiguous types in M.do notation:
---
--- @
---   debugPring "hey"
---   b <- rand
--- @
+-- xthrow :: InList ex '(e, b) -> e -> AsyncT ex ach m b b' a
+-- xthrow i ex = xfreeAsync $ ThrowAction i ex
 
-xthrow :: InList ex '(e, b) -> e -> AsyncExT ex ach m b b' a
-xthrow i ex = xfreeAsync $ ThrowAction i ex
+-- xcatch :: AsyncT ex ach m bef aft a
+--       -- ^The computation that may throw an exception
+--       -> (forall e b. InList ex '(e, b) -> e -> AsyncT ex' ach m b aft a)
+--       -- ^How to handle the exception
+--       -> AsyncT ex' ach m bef aft a
+-- xcatch (AsyncT a) h = AsyncT $ xcatch' a $ \i e -> runInterT (h i e)
+--   where
+--     xcatch' :: XFree (AsyncActions ex ach m) bef aft a
+--             -> (forall e b. InList ex '(e, b) -> e -> XFree (AsyncActions ex' ach m) b aft a)
+--             -> XFree (AsyncActions ex' ach m) bef aft a
+--     xcatch' (Pure x) _ = xreturn x
+--     xcatch' (Join a') h' = case a' of
+--         RecvAction cont -> Join $ RecvAction $ (`xcatch'` h') . cont
+--         SendAction x r -> Join $ SendAction x $ r `xcatch'` h'
+--         ThrowAction i e -> h' i e
+--         LiftAction m cont -> Join $ LiftAction m $ (`xcatch'` h') . cont
 
-xcatch :: AsyncExT ex ach m bef aft a
-      -- ^The computation that may throw an exception
-      -> (forall e b. InList ex '(e, b) -> e -> AsyncExT ex' ach m b aft a)
-      -- ^How to handle the exception
-      -> AsyncExT ex' ach m bef aft a
-xcatch (AsyncExT a) h = AsyncExT $ xcatch' a $ \i e -> runInterT (h i e)
-  where
-    xcatch' :: XFree (AsyncActions ex ach m) bef aft a
-            -> (forall e b. InList ex '(e, b) -> e -> XFree (AsyncActions ex' ach m) b aft a)
-            -> XFree (AsyncActions ex' ach m) bef aft a
-    xcatch' (Pure x) _ = xreturn x
-    xcatch' (Join a') h' = case a' of
-        RecvAction cont -> Join $ RecvAction $ (`xcatch'` h') . cont
-        SendAction x r -> Join $ SendAction x $ r `xcatch'` h'
-        ThrowAction i e -> h' i e
-        LiftAction m cont -> Join $ LiftAction m $ (`xcatch'` h') . cont
+
 
 -- $async
 --
@@ -191,19 +172,19 @@ xcatch (AsyncExT a) h = AsyncExT $ xcatch' a $ \i e -> runInterT (h i e)
 -- time.
 
 -- |Send a message to the port it is marked with.
-sendMess :: SomeTxMess ports -> AsyncExT ex ports m NextSend NextRecv ()
+sendMess :: SomeTxMess ports -> AsyncT ports m NextSend NextRecv ()
 sendMess m = xfreeAsync $ SendAction m ()
 
 -- |Curried version of `sendMess`.
-send :: PortInList x y ports -> x -> AsyncExT ex ports m NextSend NextRecv ()
+send :: PortInList x y ports -> x -> AsyncT ports m NextSend NextRecv ()
 send i m = sendMess $ SomeTxMess i m
 
 -- |Receive the next message which can arrive from any of `port` ports.
-recvAny :: AsyncExT ex ports m NextRecv NextSend (SomeRxMess ports)
+recvAny :: AsyncT ports m NextRecv NextSend (SomeRxMess ports)
 recvAny = xfreeAsync $ RecvAction id
 
 -- $derived
--- The following definitions specialize `AsyncExT` for narrower use-cases. These
+-- The following definitions specialize `AsyncT` for narrower use-cases. These
 -- definitions should suffice for most of the programs you'd want to write.
 
 -- $interactive
@@ -234,36 +215,33 @@ recvOne = M.do
 sendOne :: x -> AsyncT '[P x y] m NextSend NextRecv ()
 sendOne = send Here
 
--- |An exception thrown if a message does not arrive from the expected sender.
-data ExBadSender = ExBadSender
+-- -- |An exception thrown if a message does not arrive from the expected sender.
+-- data ExBadSender = ExBadSender
 
--- |Receive from a specific port. If an unexpected message arrives from
--- another port, throw the `ExBadSender` exception.
-recv :: InList ex '(ExBadSender, NextSend)
-     -> PortInList x y l
-     -> AsyncExT ex l m NextRecv NextSend y
-recv e i = M.do
-  SomeRxMess j m <- recvAny
-  case testEquality i j of
-    Just Refl -> xreturn m
-    Nothing -> M.do
-      xthrow e ExBadSender
+-- -- |Receive from a specific port. If an unexpected message arrives from
+-- -- another port, throw the `ExBadSender` exception.
+-- recv :: InList ex '(ExBadSender, NextSend)
+--      -> PortInList x y l
+--      -> AsyncT l m NextRecv NextSend y
+-- recv e i = M.do
+--   SomeRxMess j m <- recvAny
+--   case testEquality i j of
+--     Just Refl -> xreturn m
+--     Nothing -> M.do
+--       xthrow e ExBadSender
 
--- |Send message to a given port and wait for a response. If some other
--- message arrives before the expected response, throw the `ExBadSender`
--- exception.
-sendSync :: InList ex '(ExBadSender, NextSend)
-         -> x
-         -> PortInList x y l -> AsyncExT ex l m NextSend NextSend y
-sendSync e m port = M.do
-  send port m
-  (SomeRxMess i y) <- recvAny
-  case testEquality i port of
-    Just Refl -> xreturn y
-    Nothing -> xthrow e ExBadSender
-
--- |Same as `AsyncExT`, but with exceptions off.
-type AsyncT = AsyncExT '[]
+-- -- |Send message to a given port and wait for a response. If some other
+-- -- message arrives before the expected response, throw the `ExBadSender`
+-- -- exception.
+-- sendSync :: InList ex '(ExBadSender, NextSend)
+--          -> x
+--          -> PortInList x y l -> AsyncT ex l m NextSend NextSend y
+-- sendSync e m port = M.do
+--   send port m
+--   (SomeRxMess i y) <- recvAny
+--   case testEquality i port of
+--     Just Refl -> xreturn y
+--     Nothing -> xthrow e ExBadSender
 
 -- $step
 --
@@ -285,16 +263,15 @@ data SendRes ach m aft a where
   -- |Algorithm called `sendFinal`.
   SrHalt :: a -> SendRes ach m NextSend a
 
--- |Given `AsyncExT` action starting in `NextSend` state (holding write token),
+-- |Given `AsyncT` action starting in `NextSend` state (holding write token),
 -- run it until it does `send` or halts.
 runTillSend :: Monad m
             => AsyncT ach m NextSend b a
             -> m (SendRes ach m b a)
-runTillSend (AsyncExT (Pure v)) = pure $ SrHalt v
-runTillSend (AsyncExT (Join v)) = case v of
-  SendAction x r -> pure $ SrSend x $ AsyncExT r
-  ThrowAction contra _ -> case contra of {}
-  LiftAction m cont -> m >>= runTillSend . AsyncExT . cont
+runTillSend (AsyncT (Pure v)) = pure $ SrHalt v
+runTillSend (AsyncT (Join v)) = case v of
+  SendAction x r -> pure $ SrSend x $ AsyncT r
+  LiftAction m cont -> m >>= runTillSend . AsyncT . cont
 
 -- |The result of `runTillRecv`.
 data RecvRes ach m aft a where
@@ -310,11 +287,10 @@ data RecvRes ach m aft a where
 runTillRecv :: Monad m
         => AsyncT ach m NextRecv b a
         -> m (RecvRes ach m b a)
-runTillRecv (AsyncExT (Pure v)) = pure $ RrHalt v
-runTillRecv (AsyncExT (Join v)) = case v of
-  RecvAction cont -> pure $ RrRecv $ AsyncExT . cont
-  ThrowAction contra _ -> case contra of {}
-  LiftAction a cont -> a >>= runTillRecv . AsyncExT . cont
+runTillRecv (AsyncT (Pure v)) = pure $ RrHalt v
+runTillRecv (AsyncT (Join v)) = case v of
+  RecvAction cont -> pure $ RrRecv $ AsyncT . cont
+  LiftAction a cont -> a >>= runTillRecv . AsyncT . cont
 
 -- $lemmas
 --

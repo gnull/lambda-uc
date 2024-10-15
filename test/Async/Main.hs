@@ -158,7 +158,7 @@ guessingExec = M.do
   link Split0 Split0
 
 -- |Sends String s to the given port, waits for the other side to repond with
-test :: String -> AsyncExT e '[P String Int] m NextSend NextSend Int
+test :: String -> AsyncT '[P String Int] m NextSend NextSend Int
 test s = M.do
   send Here s
   recvAny >>=: \case
@@ -182,22 +182,20 @@ maybeSends port =
       cont msg
     Nothing -> cont False
 
-useMaybeSends :: InList ex '(ExBadSender, NextSend)
-              -> PortInList Bool Bool ach
-              -> AsyncExT ex ach m NextRecv NextSend Bool
-useMaybeSends e port = M.do
+useMaybeSends :: PortInList Bool Bool ach
+              -> AsyncT ach m NextRecv NextSend (SomeRxMess ach)
+useMaybeSends port = M.do
   -- Step #1: pass @maybeSends@ to dispatchSomeWT
   -- Step #2: pass it a continuation that starts from unknown WT state
   res <- dispatchSomeWT (maybeSends port) $ \b -> M.do
     -- _ -- in this context, the state of WT is unknown
     -- Step #3: match on the current WT and provide actions for every branch
     asyncGetIndex >>=: \case
-      SNextSend -> xreturn b
+      SNextSend -> xreturn $ SomeRxMess port $ b
       SNextRecv -> M.do
-        m <- recv e port
-        xreturn m
+        recvAny
   -- _ -- in this context, the state of WT is fixed
-  xreturn $ not res
+  xreturn $ res
 
 
 -- |Link the first port to itself.
