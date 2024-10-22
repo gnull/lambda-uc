@@ -1,4 +1,32 @@
-module LUCk.Syntax.PrAlgo where
+module LUCk.Syntax.PrAlgo
+  (
+  -- * Syntax
+  -- $syntax
+    PrAlgo(..)
+  , MonadRand(..)
+  , AlgoActions(..)
+  -- * Distributions
+  -- $dists
+  , UniformDist(..)
+  , rangeDist
+  -- * Interpretations
+  -- The following two sections define interpretations of `PrAlgo`. The pure
+  -- interpretations do not require `IO` and return back to pure functions `->`
+  -- in one way or another. Impure implementations, on the other hand, run
+  -- probabilistic computations in `IO` using your OS PRG.
+  --
+  -- ** Pure
+  -- $pure
+  , pr
+  , withRandomBits
+  , collectRandomBits
+  -- ** Impure
+  -- $monadic
+  , toMonadRand
+  , toIO
+  , writerTtoIO
+  )
+where
 
 import Data.Kind (Type)
 
@@ -11,12 +39,16 @@ import Control.XMonad.Trans
 import qualified System.Random as Random
 import qualified Control.Monad.Trans.Class as Trans
 
--- |Non-interactive algorithm. May use the following side-effects:
+-- $syntax
 --
--- - Print debug messages if `pr == True`,
--- - Sample random values if `ra == True`,
+-- This section defines the syntax of `PrAlgo` monad for probabilistic algorithms.
+
+-- |Probabilistic algorithm. Allows only one action `rand` to sample a random
+-- bit.
 --
--- Use `Control.Monad.Except.ExceptT` if you want algorithms with exceptions.
+-- Use with `Control.Monad.Except.ExceptT`, `Control.Monad.Maybe.MaybeT`
+-- or `Control.Monad.Writer.WriterT` if you want extra side-effects such
+-- exceptions or writing debug messages.
 newtype PrAlgo a =
     PrAlgo { runAlgo :: Free AlgoActions a }
   deriving (Functor)
@@ -34,18 +66,12 @@ data AlgoActions (a :: Type) where
 instance Functor AlgoActions where
   fmap f (RandAction cont) = RandAction $ f . cont
 
--- |Calculate the probability of a random event
-pr :: PrAlgo Bool -> Rational
-pr a = case runAlgo a of
-  Pure True -> 1
-  Pure False -> 0
-  Free (RandAction cont) -> (pr (PrAlgo $ cont False) + pr (PrAlgo $ cont True)) / 2
-
 -- Local
 
 instance MonadRand PrAlgo where
   rand = PrAlgo $ liftF $ RandAction id
 
+-- |Class of monads that allow sampling a random bit.
 class Monad m => MonadRand (m :: Type -> Type) where
   -- |Sample a random value.
   rand :: m Bool
@@ -59,8 +85,12 @@ instance (XMonadTrans t, MonadRand m, bef ~ aft) => MonadRand (t m bef aft) wher
 instance MonadRand IO where
   rand = Random.randomIO
 
+-- $dists
+--
+-- Common probability distributions.
+
 class UniformDist s where
-  -- |Sample a uniformly random value from `s`
+  -- |Sample a uniformly random value from @s@
   uniformDist :: forall m. MonadRand m => m s
 
 instance UniformDist Bool where
@@ -84,19 +114,66 @@ rangeDist = \f t -> (f +) <$> rangeDist0 (t - f)
       else
         rangeDist0 n
 
-toMonadRand :: MonadRand m
-               => PrAlgo a
-               -> m a
-toMonadRand (PrAlgo (Pure v)) = pure v
-toMonadRand (PrAlgo (Free v)) =
-  case v of
-    RandAction cont -> rand >>= (\b -> toMonadRand $ PrAlgo $ cont b)
+-- $pure
+--
+-- These are the pure interpretations of `PrAlgo`, i.e. those that do not
+-- require `IO`.
 
+-- |Calculate the probability of a random event.
+--
+-- You can see this as a pure interpretation (not using `IO`) of `PrAlgo`.
+pr :: PrAlgo Bool -> Rational
+pr a = case runAlgo a of
+  Pure True -> 1
+  Pure False -> 0
+  Free (RandAction cont) -> (pr (PrAlgo $ cont False) + pr (PrAlgo $ cont True)) / 2
+
+-- |Run a probabilistic algorithm supplying the given stream of bits.
+--
+-- If the number of supplied bits was sufficient for all the `rand` requests
+-- that algorithm made until it terminated, evaluates to `Right` of the
+-- result. If the bits were exhausted before the algorithm was ready to
+-- terminate, return `Left` of the continuation with remaining computations.
+withRandomBits :: [Bool] -> PrAlgo a -> Either (Bool -> PrAlgo a) a
+withRandomBits bs m = case runAlgo m of
+  Pure x -> Right x
+  Free (RandAction cont) -> case bs of
+    [] -> Left $ PrAlgo . cont
+    (x:xs) -> withRandomBits xs $ PrAlgo $ cont x
+
+-- |Run a probabilistic algorithm, collecting the random bits it samples.
+--
+-- This is, in some sense, dual to `withRandomBits`: collected randomBits can
+-- be fed back to an algorithm to repeat its execution.
+collectRandomBits :: PrAlgo a -> PrAlgo (a, [Bool])
+collectRandomBits m = case runAlgo m of
+  Pure x -> pure (x, [])
+  Free (RandAction cont) -> do
+    x <- rand
+    (a, xs) <- collectRandomBits $ PrAlgo $ cont x
+    pure (a, x:xs)
+
+-- $monadic
+--
+-- The following are interpretations of `PrAlgo` in `IO`.
+
+-- |Convert an `PrAlgo` to any monad that implements `MonadRand`.
+toMonadRand :: MonadRand m
+            => PrAlgo a
+            -> m a
+toMonadRand (PrAlgo (Pure v)) = pure v
+toMonadRand (PrAlgo (Free (RandAction cont))) =
+  rand >>= (\b -> toMonadRand $ PrAlgo $ cont b)
+
+-- |Run a probabilistic algorithm in `IO`.
+--
+-- The random bits are faithfully sampled using OS RNG.
 toIO :: PrAlgo a -> IO a
 toIO = toMonadRand
 
+-- |Same as `toIO`, but also allows printing debug messages.
 writerTtoIO :: WriterT [String] PrAlgo a
-                      -> IO a
+            -> IO a
 writerTtoIO m = do
   (a, w) <- toMonadRand $ runWriterT m
   putStrLn $ unlines w
