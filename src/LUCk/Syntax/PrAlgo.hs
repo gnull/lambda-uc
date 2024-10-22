@@ -34,6 +34,13 @@ data AlgoActions (a :: Type) where
 instance Functor AlgoActions where
   fmap f (RandAction cont) = RandAction $ f . cont
 
+-- |Calculate the probability of a random event
+pr :: PrAlgo Bool -> Rational
+pr a = case runAlgo a of
+  Pure True -> 1
+  Pure False -> 0
+  Free (RandAction cont) -> (pr (PrAlgo $ cont False) + pr (PrAlgo $ cont True)) / 2
+
 -- Local
 
 instance MonadRand PrAlgo where

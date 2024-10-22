@@ -36,10 +36,3 @@ assert False = mzero
 
 evalMaybeT :: Functor m => a -> MaybeT m a -> m a
 evalMaybeT v m = fromMaybe v <$> runMaybeT m
-
--- |Calculate the probability of a random event
-pr :: PrAlgo Bool -> Rational
-pr a = case runAlgo a of
-  Pure True -> 1
-  Pure False -> 0
-  Free (RandAction cont) -> (pr (PrAlgo $ cont False) + pr (PrAlgo $ cont True)) / 2
