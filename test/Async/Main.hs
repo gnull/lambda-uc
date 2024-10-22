@@ -6,6 +6,10 @@ import Test.Tasty.HUnit      (testCase, assertEqual, (@?=))
 import Control.XMonad
 import qualified Control.XMonad.Do as M
 
+import Control.Monad.Writer.Class
+import Control.Monad.Writer
+import Data.Functor.Identity
+
 import Data.Type.Equality
 import Data.Fin (Fin(..))
 import Data.Nat (Nat(..))
@@ -29,11 +33,14 @@ tests = testGroup "async execution tests"
   , testCase "round trip 3 processes, monadic notation" $
       generalizeAlgo (runExec $ runExecBuilder $ threeSumWriter 100 10 1) >>= (@?= 111)
   , testCase "guessing game" $
-      generalizeAlgo (fmap (<= 7) $ runExec $ runExecBuilder guessingExec) >>= (@?= True)
+      generalizeWriterTAlgo (fmap (<= 7) $ runExec $ runExecBuilder guessingExec) >>= (@?= True)
   ]
 
-type PureM = Algo True False
-type RandM = Algo True True
+type PureM = Algo
+type RandM = Algo
+type Log = [String]
+
+debugPrint x = tell [x]
 
 twoSum :: Int -> Int -> Exec '[] PureM NextSend Int
 twoSum x y =
@@ -107,14 +114,14 @@ receiver2 x = M.do
 --   alternation of `send` and `recvAny`.
 --
 -- - Polymorphic monad
-guessingChallenger :: (Rand m, Print m)
+guessingChallenger :: (Rand m, MonadWriter Log m)
                    => AsyncT '[P Ordering Integer] m NextRecv NextRecv Void
 guessingChallenger =  M.do
     secret <- rangeDist 0 100
     debugPrint $ "challenger picked secret " ++ show secret
     helper secret
   where
-    helper :: Print m => Integer -> AsyncT '[P Ordering Integer] m NextRecv NextRecv Void
+    helper :: MonadWriter Log m => Integer -> AsyncT '[P Ordering Integer] m NextRecv NextRecv Void
     helper secret = M.do
       guess <- recvOne
       let res = secret `compare` guess
@@ -126,14 +133,14 @@ guessingChallenger =  M.do
 --
 -- - ensuring that player is deterministic
 -- - using undefined to mark conditions that are not considered (assumed to never occur)
-guessingPlayer :: Print m
+guessingPlayer :: MonadWriter Log m
                => AsyncT '[P Integer Ordering] m NextSend NextSend Integer
 guessingPlayer = M.do
     n <- helper 0 100
     debugPrint $ "found result in " ++ show n ++ " attempts"
     xreturn n
   where
-    helper :: Print m
+    helper :: MonadWriter Log m
            => Integer
            -> Integer
            -> AsyncT '[P Integer Ordering] m NextSend NextSend Integer
@@ -150,7 +157,7 @@ guessingPlayer = M.do
             GT -> helper (mid + 1) t
           xreturn $ v + 1
 
-guessingExec :: ExecBuilder RandM ExecIndexInit (ExecIndexSome '[] NextSend Integer) ()
+guessingExec :: ExecBuilder (WriterT Log RandM) ExecIndexInit (ExecIndexSome '[] NextSend Integer) ()
 guessingExec = M.do
   process $ guessingChallenger
   forkLeft $

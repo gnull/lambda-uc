@@ -11,6 +11,7 @@ import Control.XFreer.Join
 import qualified Control.XMonad.Do as M
 
 import Data.Maybe (isJust)
+import Data.Functor.Identity
 import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Monad (MonadPlus(..))
 -- import qualified Control.Monad.Trans.Class as Trans
@@ -18,7 +19,9 @@ import Control.Monad (MonadPlus(..))
 import LUCk.Games.Common
 
 type SigAlgo :: Bool -> Type -> Type
-type SigAlgo ra = Algo False ra
+type family SigAlgo ra where
+  SigAlgo True = Algo
+  SigAlgo False = Identity
 
 data SignatureScheme sk pk mes sig = SignatureScheme
   { sigKey :: forall m. Rand m => m (sk, pk)

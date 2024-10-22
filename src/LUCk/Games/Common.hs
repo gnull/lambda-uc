@@ -39,7 +39,7 @@ evalMaybeT :: Functor m => a -> MaybeT m a -> m a
 evalMaybeT v m = fromMaybe v <$> runMaybeT m
 
 -- |Calculate the probability of a random event
-pr :: Algo False True Bool -> Rational
+pr :: Algo Bool -> Rational
 pr a = case runAlgo a of
   Pure True -> 1
   Pure False -> 0
