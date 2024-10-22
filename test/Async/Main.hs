@@ -27,22 +27,20 @@ main = defaultMain tests
 tests :: TestTree
 tests = testGroup "async execution tests"
   [ testCase "round trip 2 processes" $
-      generalizeAlgo (runExec $ twoSum 10 1) >>= (@?= 11)
+      toIO (runExec $ twoSum 10 1) >>= (@?= 11)
   , testCase "round trip 3 processes" $
-      generalizeAlgo (runExec $ threeSum 100 10 1) >>= (@?= 111)
+      toIO (runExec $ threeSum 100 10 1) >>= (@?= 111)
   , testCase "round trip 3 processes, monadic notation" $
-      generalizeAlgo (runExec $ runExecBuilder $ threeSumWriter 100 10 1) >>= (@?= 111)
+      toIO (runExec $ runExecBuilder $ threeSumWriter 100 10 1) >>= (@?= 111)
   , testCase "guessing game" $
-      generalizeWriterTAlgo (fmap (<= 7) $ runExec $ runExecBuilder guessingExec) >>= (@?= True)
+      writerTtoIO (fmap (<= 7) $ runExec $ runExecBuilder guessingExec) >>= (@?= True)
   ]
 
-type PureM = Algo
-type RandM = Algo
 type Log = [String]
 
 debugPrint x = tell [x]
 
-twoSum :: Int -> Int -> Exec '[] PureM NextSend Int
+twoSum :: Int -> Int -> Exec '[] PrAlgo NextSend Int
 twoSum x y =
   ExecLink Split0 Split0 $
   ExecFork getForkIndexComp
@@ -50,7 +48,7 @@ twoSum x y =
            (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ sender x)
            (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ receiver y)
 
-threeSum :: Int -> Int -> Int -> Exec '[] PureM NextSend Int
+threeSum :: Int -> Int -> Int -> Exec '[] PrAlgo NextSend Int
 threeSum x y z =
   ExecLink Split0 Split0 $
   ExecLink Split1 Split0 $
@@ -60,7 +58,7 @@ threeSum x y z =
     (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ receiver2 y)
     (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ receiver2 z)
 
-threeSumWriter :: Int -> Int -> Int -> ExecBuilder PureM ExecIndexInit (ExecIndexSome '[] NextSend Int) ()
+threeSumWriter :: Int -> Int -> Int -> ExecBuilder PrAlgo ExecIndexInit (ExecIndexSome '[] NextSend Int) ()
 threeSumWriter x y z = M.do
   process $ receiver2 x
   execGuard @'[P Int Void, P Void Int]
@@ -76,18 +74,18 @@ threeSumWriter x y z = M.do
   execGuard @'[P Int Void, P Void Int]
   link Split0 Split0
 
-sender :: Int -> AsyncT '[P Int Int] PureM NextSend NextSend Int
+sender :: Int -> AsyncT '[P Int Int] PrAlgo NextSend NextSend Int
 sender x = M.do
   sendOne x
   recvOne
 
-receiver :: Int -> AsyncT '[P Int Int] PureM NextRecv NextRecv Void
+receiver :: Int -> AsyncT '[P Int Int] PrAlgo NextRecv NextRecv Void
 receiver x = M.do
   m <- recvOne
   sendOne $ m + x
   receiver x
 
-sender2 :: Int -> AsyncT '[P Int Void, P Void Int] PureM NextSend NextSend Int
+sender2 :: Int -> AsyncT '[P Int Void, P Void Int] PrAlgo NextSend NextSend Int
 sender2 x = M.do
   send Here x
   recvAny >>=: \case
@@ -95,7 +93,7 @@ sender2 x = M.do
     SomeRxMess (There Here) m -> xreturn m
     SomeRxMess (There2 contra) _ -> case contra of {}
 
-receiver2 :: Int -> AsyncT '[P Int Void, P Void Int] PureM NextRecv NextRecv Void
+receiver2 :: Int -> AsyncT '[P Int Void, P Void Int] PrAlgo NextRecv NextRecv Void
 receiver2 x = M.do
   m <- recvAny >>=: \case
     SomeRxMess Here contra -> case contra of {}
@@ -114,7 +112,7 @@ receiver2 x = M.do
 --   alternation of `send` and `recvAny`.
 --
 -- - Polymorphic monad
-guessingChallenger :: (Rand m, MonadWriter Log m)
+guessingChallenger :: (MonadRand m, MonadWriter Log m)
                    => AsyncT '[P Ordering Integer] m NextRecv NextRecv Void
 guessingChallenger =  M.do
     secret <- rangeDist 0 100
@@ -157,7 +155,7 @@ guessingPlayer = M.do
             GT -> helper (mid + 1) t
           xreturn $ v + 1
 
-guessingExec :: ExecBuilder (WriterT Log RandM) ExecIndexInit (ExecIndexSome '[] NextSend Integer) ()
+guessingExec :: ExecBuilder (WriterT Log PrAlgo) ExecIndexInit (ExecIndexSome '[] NextSend Integer) ()
 guessingExec = M.do
   process $ guessingChallenger
   forkLeft $

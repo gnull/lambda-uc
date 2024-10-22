@@ -38,6 +38,7 @@ module LUCk.Syntax.Async (
   -- $lemmas
   , mayOnlyRecvVoidPrf
   , mayOnlySendVoidPrf
+  , toMonadRandAsyncT
 ) where
 
 -- import Prelude hiding ((>>=), return)
@@ -49,6 +50,8 @@ import Control.XMonad
 import qualified Control.XMonad.Do as M
 import Control.XMonad.Trans
 -- import qualified Control.XMonad.Do as M
+
+import qualified LUCk.Syntax.PrAlgo as L
 
 import Data.Kind
 import Data.HList
@@ -342,3 +345,13 @@ mayOnlySendVoidPrf :: SendRes ach m aft Void
 mayOnlySendVoidPrf = \case
   SrHalt contra -> case contra of {}
   SrSend m cont -> (m, cont)
+
+toMonadRandAsyncT :: L.MonadRand m
+                 => AsyncT ports L.PrAlgo bef aft a
+                 -> AsyncT ports m bef aft a
+toMonadRandAsyncT (AsyncT (Pure v)) = xreturn v
+toMonadRandAsyncT (AsyncT (Join v)) =
+    case v of
+      SendAction m r -> sendMess m >>: toMonadRandAsyncT (AsyncT r)
+      RecvAction cont -> recvAny >>=: toMonadRandAsyncT . AsyncT . cont
+      LiftAction m cont -> xlift (L.toMonadRand m) >>=: toMonadRandAsyncT . AsyncT . cont

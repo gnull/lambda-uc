@@ -1,10 +1,9 @@
 module LUCk.Games.SignatureScheme where
 
 import LUCk.Types
-import LUCk.Syntax.Algo
+import LUCk.Syntax.PrAlgo
 import LUCk.Syntax.Sync
 import LUCk.Syntax.Sync.Eval
-import LUCk.Syntax.Extra
 
 import Control.XMonad
 import Control.XFreer.Join
@@ -20,12 +19,12 @@ import LUCk.Games.Common
 
 type SigAlgo :: Bool -> Type -> Type
 type family SigAlgo ra where
-  SigAlgo True = Algo
+  SigAlgo True = PrAlgo
   SigAlgo False = Identity
 
 data SignatureScheme sk pk mes sig = SignatureScheme
-  { sigKey :: forall m. Rand m => m (sk, pk)
-  , sigSign :: forall m. Rand m => sk -> mes -> m sig
+  { sigKey :: forall m. MonadRand m => m (sk, pk)
+  , sigSign :: forall m. MonadRand m => sk -> mes -> m sig
   , sigVer :: pk -> mes -> sig -> Bool
   }
 

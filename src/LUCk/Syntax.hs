@@ -1,12 +1,10 @@
 module LUCk.Syntax
-  ( module LUCk.Syntax.Algo
+  ( module LUCk.Syntax.PrAlgo
   , module LUCk.Syntax.Async
   -- , module LUCk.Syntax.Sync
-  , module LUCk.Syntax.Extra
   )
   where
 
-import LUCk.Syntax.Algo
+import LUCk.Syntax.PrAlgo
 import LUCk.Syntax.Async
 -- import LUCk.Syntax.Sync
-import LUCk.Syntax.Extra

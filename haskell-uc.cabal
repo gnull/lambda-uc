@@ -62,14 +62,13 @@ library
       Data.HList
       LUCk.Types
       LUCk.Syntax
-      LUCk.Syntax.Algo
+      LUCk.Syntax.PrAlgo
       LUCk.Syntax.Async
       LUCk.Syntax.Async.Eval
       LUCk.Syntax.Async.Eval.Internal
       LUCk.Syntax.Async.SomeWT
       LUCk.Syntax.Sync
       LUCk.Syntax.Sync.Eval
-      LUCk.Syntax.Extra
       LUCk.UC
       LUCk.UC.Shell
       LUCk.Games.Common

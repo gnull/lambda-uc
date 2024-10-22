@@ -1,8 +1,9 @@
-module LUCk.Syntax.Algo where
+module LUCk.Syntax.PrAlgo where
 
 import Data.Kind (Type)
 
 import Control.Monad.Free
+import Control.Monad.Writer
 
 import Control.Monad
 -- import Control.XMonad
@@ -16,16 +17,16 @@ import qualified Control.Monad.Trans.Class as Trans
 -- - Sample random values if `ra == True`,
 --
 -- Use `Control.Monad.Except.ExceptT` if you want algorithms with exceptions.
-newtype Algo a =
-    Algo { runAlgo :: Free AlgoActions a }
+newtype PrAlgo a =
+    PrAlgo { runAlgo :: Free AlgoActions a }
   deriving (Functor)
 
-instance Applicative Algo where
-  pure = Algo . pure
-  f <*> x = Algo $ runAlgo f <*> runAlgo x
+instance Applicative PrAlgo where
+  pure = PrAlgo . pure
+  f <*> x = PrAlgo $ runAlgo f <*> runAlgo x
 
-instance Monad Algo where
-  m >>= f = Algo $ runAlgo m >>= (runAlgo . f)
+instance Monad PrAlgo where
+  m >>= f = PrAlgo $ runAlgo m >>= (runAlgo . f)
 
 data AlgoActions (a :: Type) where
   RandAction :: (Bool -> a) -> AlgoActions a
@@ -35,31 +36,31 @@ instance Functor AlgoActions where
 
 -- Local
 
-instance Rand Algo where
-  rand = Algo $ liftF $ RandAction id
+instance MonadRand PrAlgo where
+  rand = PrAlgo $ liftF $ RandAction id
 
-class Monad m => Rand (m :: Type -> Type) where
+class Monad m => MonadRand (m :: Type -> Type) where
   -- |Sample a random value.
   rand :: m Bool
 
-instance (Trans.MonadTrans t, Rand m) => Rand (t m) where
+instance (Trans.MonadTrans t, MonadRand m) => MonadRand (t m) where
   rand = Trans.lift $ rand
 
-instance (XMonadTrans t, Rand m, bef ~ aft) => Rand (t m bef aft) where
+instance (XMonadTrans t, MonadRand m, bef ~ aft) => MonadRand (t m bef aft) where
   rand = xlift $ rand
 
-instance Rand IO where
+instance MonadRand IO where
   rand = Random.randomIO
 
 class UniformDist s where
   -- |Sample a uniformly random value from `s`
-  uniformDist :: forall m. Rand m => m s
+  uniformDist :: forall m. MonadRand m => m s
 
 instance UniformDist Bool where
   uniformDist = rand
 
 -- |Sample a random value from the given range of `Integer`
-rangeDist :: Rand m => Integer -> Integer -> m Integer
+rangeDist :: MonadRand m => Integer -> Integer -> m Integer
 rangeDist = \f t -> (f +) <$> rangeDist0 (t - f)
   where
     integerLog2Ceil x | x == 1 = 1
@@ -75,3 +76,21 @@ rangeDist = \f t -> (f +) <$> rangeDist0 (t - f)
         return nb
       else
         rangeDist0 n
+
+toMonadRand :: MonadRand m
+               => PrAlgo a
+               -> m a
+toMonadRand (PrAlgo (Pure v)) = pure v
+toMonadRand (PrAlgo (Free v)) =
+  case v of
+    RandAction cont -> rand >>= (\b -> toMonadRand $ PrAlgo $ cont b)
+
+toIO :: PrAlgo a -> IO a
+toIO = toMonadRand
+
+writerTtoIO :: WriterT [String] PrAlgo a
+                      -> IO a
+writerTtoIO m = do
+  (a, w) <- toMonadRand $ runWriterT m
+  putStrLn $ unlines w
+  pure a

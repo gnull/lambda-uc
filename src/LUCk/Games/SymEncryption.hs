@@ -3,7 +3,7 @@
 module LUCk.Games.SymEncryption where
 
 import LUCk.Types
-import LUCk.Syntax.Algo
+import LUCk.Syntax.PrAlgo
 import LUCk.Syntax.Async
 import LUCk.Syntax.Sync.Eval
 
@@ -21,8 +21,8 @@ import Control.Monad (MonadPlus(..))
 import LUCk.Games.Common
 
 data SymEncryptionScheme key mes ciph s = SymEncryptionScheme
-  { symEKey :: forall m. Rand m => m key
-  , symEEnc :: forall m. Rand m
+  { symEKey :: forall m. MonadRand m => m key
+  , symEEnc :: forall m. MonadRand m
             => key -> mes -> s -> m (Maybe (s, ciph))
             -- ^Probabilistic, stateful computation that may fail,
             --
@@ -39,7 +39,7 @@ data EncDecResp mes ciph = EncResp ciph | DecResp mes | RespError
 type EncDecIface mes ciph = P (EncDecReq mes ciph) (EncDecResp mes ciph)
 
 type AdvAlgo mes ciph
-  = OracleCaller Algo '[ EncDecIface mes ciph ] Bool
+  = OracleCaller PrAlgo '[ EncDecIface mes ciph ] Bool
 
 advantageIndCca2 :: forall key mes ciph s. (UniformDist mes, Default s)
                  => Integer
@@ -98,7 +98,7 @@ advantageIndCca3 sec sch adv = pr real - pr bogus
 oracleEncDec :: SymEncryptionScheme key mes ciph s
              -> key
              -> s
-             -> Oracle Algo (EncDecIface mes ciph) ()
+             -> Oracle PrAlgo (EncDecIface mes ciph) ()
 oracleEncDec sch' k s = M.do
   recvOne >>=: \case
     OracleReqHalt -> xreturn ()
@@ -119,7 +119,7 @@ oracleEncRandNoDec :: UniformDist mes
                    => SymEncryptionScheme key mes ciph s
                    -> key
                    -> s
-                   -> Oracle Algo (EncDecIface mes ciph) ()
+                   -> Oracle PrAlgo (EncDecIface mes ciph) ()
 oracleEncRandNoDec sch' k s = M.do
   recvOne >>=: \case
     OracleReqHalt -> xreturn ()
@@ -138,7 +138,7 @@ oracleEncRandDec :: UniformDist mes
                  => SymEncryptionScheme key mes ciph s
                  -> key
                  -> s
-                 -> Oracle Algo (EncDecIface mes ciph) ()
+                 -> Oracle PrAlgo (EncDecIface mes ciph) ()
 oracleEncRandDec sch' k s = M.do
   recvOne >>=: \case
     OracleReqHalt -> xreturn ()
