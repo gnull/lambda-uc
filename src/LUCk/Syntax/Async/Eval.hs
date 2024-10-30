@@ -267,10 +267,11 @@ execGuard :: forall l st m. ExecBuilder m (ExecIndexSome l st) (ExecIndexSome l 
 execGuard = xreturn ()
 
 execInvariantM
-  :: ExecBuilder m
+  :: (forall i res. (InitStatusIndexRetD st i res -> a))
+  -> ExecBuilder m
        (ExecIndexSome ach st) (ExecIndexSome ach st)
-       ((forall i res. (InitStatusIndexRetD st i res -> a)) -> a)
-execInvariantM = execInvariant <$> ExecBuilder look
+       a
+execInvariantM f = (\e -> execInvariant e f) <$> ExecBuilder look
 
 -- |Run an execution.
 --

@@ -40,25 +40,24 @@ type Log = [String]
 
 debugPrint x = tell [x]
 
-twoSum :: Int -> Int -> Exec '[] PrAlgo NextSend Int
+twoSum :: Int -> Int -> Exec '[] PrAlgo (InitPresent Int)
 twoSum x y =
   ExecLink Split0 Split0 $
-  ExecFork getForkIndexComp
-           (KnownLenS KnownLenZ)
-           (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ sender x)
-           (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ receiver y)
+  ExecFork getInitStatusCompD getKnownLenPrf
+    (ExecProc getInitStatusIndexRetD $ sender x)
+    (ExecProc getInitStatusIndexRetD $ receiver y)
 
-threeSum :: Int -> Int -> Int -> Exec '[] PrAlgo NextSend Int
+threeSum :: Int -> Int -> Int -> Exec '[] PrAlgo (InitPresent Int)
 threeSum x y z =
   ExecLink Split0 Split0 $
   ExecLink Split1 Split0 $
-  ExecFork getForkIndexComp getKnownLenPrf (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ sender2 x) $
+  ExecFork getInitStatusCompD getKnownLenPrf (ExecProc getInitStatusIndexRetD $ sender2 x) $
   ExecLink Split1 Split0 $
-  ExecFork getForkIndexComp getKnownLenPrf
-    (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ receiver2 y)
-    (ExecProc getSIndex getMayOnlyReturnAfterRecvPrf $ receiver2 z)
+  ExecFork getInitStatusCompD getKnownLenPrf
+    (ExecProc getInitStatusIndexRetD $ receiver2 y)
+    (ExecProc getInitStatusIndexRetD $ receiver2 z)
 
-threeSumWriter :: Int -> Int -> Int -> ExecBuilder PrAlgo ExecIndexInit (ExecIndexSome '[] NextSend Int) ()
+threeSumWriter :: Int -> Int -> Int -> ExecBuilder PrAlgo ExecIndexInit (ExecIndexSome '[] (InitPresent Int)) ()
 threeSumWriter x y z = M.do
   process $ receiver2 x
   execGuard @'[P Int Void, P Void Int]
@@ -155,7 +154,7 @@ guessingPlayer = M.do
             GT -> helper (mid + 1) t
           xreturn $ v + 1
 
-guessingExec :: ExecBuilder (WriterT Log PrAlgo) ExecIndexInit (ExecIndexSome '[] NextSend Integer) ()
+guessingExec :: ExecBuilder (WriterT Log PrAlgo) ExecIndexInit (ExecIndexSome '[] (InitPresent Integer)) ()
 guessingExec = M.do
   process $ guessingChallenger
   forkLeft $
@@ -206,23 +205,19 @@ useMaybeSends port = M.do
 -- |Link the first port to itself.
 --
 -- This is not a basic combinator and is derived using `fork` and `link`.
-linkSelf :: forall i a m x rest.
-               (Monad m, KnownIndex i, MayOnlyReturnAfterRecv i a)
-            => ExecBuilder m (ExecIndexSome (P x x : rest) i a) (ExecIndexSome rest i a) ()
-linkSelf = case lemma (getMayOnlyReturnAfterRecvPrf @i @a) getSIndex of
-    (Refl, Refl) -> M.do
-      forkRight $ process idProc
-      link Split0 Split0
+linkSelf :: forall m x st rest. (Monad m, KnownInitStatus st) =>
+   ExecBuilder m (ExecIndexSome (P x x : rest) st) (ExecIndexSome rest st) ()
+linkSelf = M.do
+    lemma >>=: \case
+      Refl -> M.do
+        forkRight $ process idProc
+        link Split0 Split0
   where
-    lemma :: forall i a.
-             MayOnlyReturnAfterRecvD i a
-          -> SIndex i
-          -> (ChooseRet NextRecv i Void a :~: a, ForkIndexOr NextRecv i :~: i)
-    lemma = \case
-      MayOnlyReturnType -> \_ -> (Refl, Refl)
-      MayOnlyReturnVoid -> \case
-        SNextRecv -> (Refl, Refl)
-        SNextSend -> (Refl, Refl)
+    lemma :: ExecBuilder m (ExecIndexSome l st) (ExecIndexSome l st)
+                           (InitStatusOr InitAbsent st :~: st)
+    lemma = execInvariantM $ \case
+      InitStatusIndexRetAbsent -> Refl
+      InitStatusIndexRetPresent -> Refl
 
 -- |Process that sends back everything it gets
 idProc :: Monad m
@@ -243,3 +238,21 @@ mergeProc = M.do
     SomeRxMess (There2 Here) x -> send Here x
     SomeRxMess (There3 contra) _ -> case contra of {}
   mergeProc
+
+pingServe :: String -> AsyncT '[P String ()] m NextRecv NextRecv Void
+pingServe hello = M.do
+  () <- recvOne
+  sendOne hello
+  pingServe hello
+
+pingRequest :: AsyncT '[P () String] m NextSend NextSend String
+pingRequest = M.do
+  sendOne ()
+  recvOne
+
+pingExecBuilder :: ExecBuilder m ExecIndexInit (ExecIndexSome '[] (InitPresent String)) ()
+pingExecBuilder = M.do
+  process $ pingServe "hey"
+  forkLeft $ M.do
+    process pingRequest
+  link SplitHere SplitHere
