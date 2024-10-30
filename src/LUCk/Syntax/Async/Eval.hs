@@ -59,50 +59,51 @@ import LUCk.Types
 -- Function `runExec` returns the result of the process that termiates in
 -- `NextSend`.
 
-data Exec ach m i a where
+data Exec ach m (i :: InitStatus) where
   -- |An execution consisting of one process.
-  ExecProc :: SIndex i
-           -- ^Index the process starts from
-           -> MayOnlyReturnAfterRecvD i a
+  ExecProc :: InitStatusIndexRetD st i res
            -- ^Proof of @a@ not being `Void` only if @i == `NextSend`@
-           -> AsyncT m ach i i a
+           -> AsyncT m ach i i res
            -- ^The code that the process will run
-           -> Exec m ach i a
+           -> Exec m ach st
   -- |Combine two executions.
-  ExecFork :: ForkIndexCompD i i'
+  ExecFork :: InitStatusCompD st st'
            -- ^Proof of @i@ and @i'@ not being `NextSend` at the same time
            -> KnownLenD ach
-           -> Exec ach m i a
+           -> Exec ach m st
            -- ^First forked process
-           -> Exec ach' m i' a'
+           -> Exec ach' m st'
            -- ^Second forked process
-           -> Exec (Concat ach ach') m (ForkIndexOr i i') (ChooseRet i i' a a')
+           -> Exec (Concat ach ach') m (InitStatusOr st st')
   -- |Swap positions of two adjacent free ports.
   ExecSwap :: ListSplitD l p (f:l')
            -- ^Proof of @l == p ++ (f:l')@
            -> ListSplitD l' p' (s:rest)
            -- ^Proof of @l' == p' ++ (s:rest)@
-           -> Exec l m i a
-           -> Exec (Concat p (s : Concat p' (f:rest))) m i a
+           -> Exec l m st
+           -> Exec (Concat p (s : Concat p' (f:rest))) m st
   -- |Link two adjacent free ports of a given execution (making them bound).
   ExecLink :: ListSplitD l p (P x y : l')
            -- ^ Proof of @l == p ++ [P x y] ++ l'@
            -> ListSplitD l' p' (P y x : rest)
            -- ^ Proof of @l' == p' ++ [P y x] ++ rest@
-           -> Exec l m i a
+           -> Exec l m st
            -- ^Exectuion where we want to link the ports
-           -> Exec (Concat p (Concat p' rest)) m i a
+           -> Exec (Concat p (Concat p' rest)) m st
 
-execInvariant :: Exec ach m i a
-              -> (SIndex i, MayOnlyReturnAfterRecvD i a)
-execInvariant = \case
-  ExecProc i prf _ -> (i, prf)
+execInvariant :: Exec ach m st
+              -> (forall i res. (InitStatusIndexRetD st i res -> a))
+              -> a
+execInvariant ex cont = case ex of
+  ExecProc prf _ -> case prf of
+    InitStatusIndexRetAbsent -> cont $ InitStatusIndexRetAbsent
+    InitStatusIndexRetPresent -> cont $ InitStatusIndexRetPresent
   ExecFork iPrf _ _ _ -> case iPrf of
-    ForkIndexCompNone -> (getSIndex, getMayOnlyReturnAfterRecvPrf)
-    ForkIndexCompFst -> (getSIndex, getMayOnlyReturnAfterRecvPrf)
-    ForkIndexCompSnd -> (getSIndex, getMayOnlyReturnAfterRecvPrf)
-  ExecSwap _ _ p -> execInvariant p
-  ExecLink _ _ p -> execInvariant p
+    InitStatusNone -> cont $ InitStatusIndexRetAbsent
+    InitStatusFst -> cont $ InitStatusIndexRetPresent
+    InitStatusSnd -> cont $ InitStatusIndexRetPresent
+  ExecSwap _ _ p -> execInvariant p cont
+  ExecLink _ _ p -> execInvariant p cont
 
 -- $writer
 --
@@ -134,7 +135,7 @@ execInvariant = \case
 data ExecIndex
   = ExecIndexInit
   -- ^We haven't started any executions
-  | ExecIndexSome [Port] Index Type
+  | ExecIndexSome [Port] InitStatus
   -- ^An execution with given @ach@, @i@, and @res@ is started
 
 -- |Mapping from the indices of `ExecBuilder` to the indices of internal indexed
@@ -142,7 +143,7 @@ data ExecIndex
 type MatchExecIndex :: (Type -> Type) -> ExecIndex -> Type
 type family MatchExecIndex m i where
   MatchExecIndex _ ExecIndexInit = ()
-  MatchExecIndex m (ExecIndexSome l i res) = Exec l m i res
+  MatchExecIndex m (ExecIndexSome l st) = Exec l m st
 
 -- Indexed writer that uses @`Exec` _ _ _ _ -> `Exec` _ _ _ _@ as internal indexed monoid.
 type ExecBuilder :: (Type -> Type) -> ExecIndex -> ExecIndex -> Type -> Type
@@ -168,8 +169,8 @@ instance XMonad (ExecBuilder m) where
 -- @`ExecBuilder` m `ExecIndexInit` (`ExecIndexSome` l i res)@ stores a function
 -- @() -> `Exec` m l i res@, which is isomorphic to just value @`Exec` m l i
 -- res@, which this functions extracts.
-runExecBuilder :: ExecBuilder m ExecIndexInit (ExecIndexSome l i res) ()
-                 -> MatchExecIndex m (ExecIndexSome l i res)
+runExecBuilder :: ExecBuilder m ExecIndexInit (ExecIndexSome l st) ()
+                 -> MatchExecIndex m (ExecIndexSome l st)
 runExecBuilder p = fst $ runXAccum (fromExecBuilder p) ()
 
 -- $actions
@@ -191,83 +192,84 @@ runExecBuilder p = fst $ runXAccum (fromExecBuilder p) ()
 -- take the proofs as explicit arguments instead of implicit typeclass
 -- constraints.
 
-process' :: SIndex i
-         -> MayOnlyReturnAfterRecvD i res
+process' :: InitStatusIndexRetD st i res
          -- ^Proof of @res@ not being `Void` only if @i == `NextSend`@
          -> AsyncT l m i i res
          -- ^The program that the created process will run
-         -> ExecBuilder m ExecIndexInit (ExecIndexSome l i res) ()
-process' i retPrf = ExecBuilder . add . const . ExecProc i retPrf
+         -> ExecBuilder m ExecIndexInit (ExecIndexSome l st) ()
+process' prf = ExecBuilder . add . const . ExecProc prf
 
-process :: (KnownIndex i, MayOnlyReturnAfterRecv i res)
+process :: (InitStatusIndexRet st i res)
         => AsyncT l m i i res
         -- ^The program that the created process will run
-        -> ExecBuilder m ExecIndexInit (ExecIndexSome l i res) ()
-process = process' getSIndex getMayOnlyReturnAfterRecvPrf
+        -> ExecBuilder m ExecIndexInit (ExecIndexSome l st) ()
+process = process' getInitStatusIndexRetD
 
-forkLeft' :: ForkIndexCompD i i'
+forkLeft' :: InitStatusCompD st st'
           -- ^Proof of @i@ and @i'@ not being `NextSend` both
           -> KnownLenD l
           -- ^Length of list `l` (left branch)
-          -> ExecBuilder m ExecIndexInit (ExecIndexSome l' i' res') ()
+          -> ExecBuilder m ExecIndexInit (ExecIndexSome l' st') ()
           -- ^Right branch of the fork
-          -> ExecBuilder m (ExecIndexSome l i res)
-                          (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
+          -> ExecBuilder m (ExecIndexSome l st)
+                          (ExecIndexSome (Concat l l') (InitStatusOr st st'))
                           ()
 forkLeft' fPrf prf p = ExecBuilder $ add $
   \e -> ExecFork fPrf prf e $ runExecBuilder p
 
-forkLeft :: ( ForkIndexComp i i'
+forkLeft :: ( InitStatusComp st st'
             , KnownLen l
             )
-         => ExecBuilder m ExecIndexInit (ExecIndexSome l' i' res') ()
+         => ExecBuilder m ExecIndexInit (ExecIndexSome l' st') ()
          -- ^Right branch of the fork
-         -> ExecBuilder m (ExecIndexSome l i res)
-                         (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
+         -> ExecBuilder m (ExecIndexSome l st)
+                         (ExecIndexSome (Concat l l') (InitStatusOr st st'))
                          ()
-forkLeft = forkLeft' getForkIndexComp getKnownLenPrf
+forkLeft = forkLeft' getInitStatusCompD getKnownLenPrf
 
-forkRight' :: ForkIndexCompD i i'
+forkRight' :: InitStatusCompD st st'
            -- ^Proof of @i@ and @i'@ not being `NextSend` both
            -> KnownLenD l
            -- ^Length of list `l` (left branch)
-           -> ExecBuilder m ExecIndexInit (ExecIndexSome l i res) ()
+           -> ExecBuilder m ExecIndexInit (ExecIndexSome l st) ()
            -- ^Left branch of the fork
-           -> ExecBuilder m (ExecIndexSome l' i' res')
-                           (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
+           -> ExecBuilder m (ExecIndexSome l' st')
+                           (ExecIndexSome (Concat l l') (InitStatusOr st st'))
                            ()
 forkRight' fPrf prf p = ExecBuilder $ add $
   \e -> ExecFork fPrf prf (runExecBuilder p) e
 
-forkRight :: ( ForkIndexComp i i'
+forkRight :: ( InitStatusComp st st'
              , KnownLen l
              )
-          => ExecBuilder m ExecIndexInit (ExecIndexSome l i res) ()
+          => ExecBuilder m ExecIndexInit (ExecIndexSome l st) ()
           -- ^Left branch of the fork
-          -> ExecBuilder m (ExecIndexSome l' i' res')
-                           (ExecIndexSome (Concat l l') (ForkIndexOr i i') (ChooseRet i i' res res'))
+          -> ExecBuilder m (ExecIndexSome l' st')
+                           (ExecIndexSome (Concat l l') (InitStatusOr st st'))
                            ()
-forkRight = forkRight' getForkIndexComp getKnownLenPrf
+forkRight = forkRight' getInitStatusCompD getKnownLenPrf
 
 link :: ListSplitD l p (P x y : l')
         -- ^ Proof of @l == p ++ [(x, y)] ++ l'@
         -> ListSplitD l' p' (P y x : rest)
         -- ^ Proof of @l' == p' ++ [(y, x)] ++ rest@
-        -> ExecBuilder m (ExecIndexSome l i res) (ExecIndexSome (Concat p (Concat p' rest)) i res) ()
+        -> ExecBuilder m (ExecIndexSome l st) (ExecIndexSome (Concat p (Concat p' rest)) st) ()
 link prf prf' = ExecBuilder $ add $ ExecLink prf prf'
 
 swap :: ListSplitD l p (f:l')
      -- ^Proof of @l == p ++ (f:l')@
      -> ListSplitD l' p' (s:rest)
      -- ^Proof of @l' == p' ++ (s:rest)@
-     -> ExecBuilder m (ExecIndexSome l i res) (ExecIndexSome (Concat p (s : Concat p' (f:rest))) i res) ()
+     -> ExecBuilder m (ExecIndexSome l st) (ExecIndexSome (Concat p (s : Concat p' (f:rest))) st) ()
 swap prf prf' = ExecBuilder $ add $ ExecSwap prf prf'
 
-execGuard :: forall l i res m. ExecBuilder m (ExecIndexSome l i res) (ExecIndexSome l i res) ()
+execGuard :: forall l st m. ExecBuilder m (ExecIndexSome l st) (ExecIndexSome l st) ()
 execGuard = xreturn ()
 
-execInvariantM :: ExecBuilder m (ExecIndexSome ach i a) (ExecIndexSome ach i a)
-                                (SIndex i, MayOnlyReturnAfterRecvD i a)
+execInvariantM
+  :: ExecBuilder m
+       (ExecIndexSome ach st) (ExecIndexSome ach st)
+       ((forall i res. (InitStatusIndexRetD st i res -> a)) -> a)
 execInvariantM = execInvariant <$> ExecBuilder look
 
 -- |Run an execution.
@@ -275,22 +277,24 @@ execInvariantM = execInvariant <$> ExecBuilder look
 -- Note that the list of free ports must be empty, i.e. all ports must be
 -- bound for an execution to be defined.
 runExec :: Monad m
-        => Exec '[] m NextSend a
+        => Exec '[] m (InitPresent a)
         -> m a
 runExec = escapeAsyncT . f
   where
     f :: Monad m
-      => Exec ach m i a
-      -> AsyncT ach m i i a
+      => Exec ach m st
+      -> AsyncT ach m (InitStatusIndex st) (InitStatusIndex st) (InitStatusRes st)
     f e = case e of
-      ExecProc _ _ p -> p
-      ExecFork fPrf prf l r -> let
-          (_, lPrf) = execInvariant l
-          (_, rPrf) = execInvariant r
-        in fork_ (ForkPremiseD fPrf fPrf lPrf rPrf) prf (f l) (f r)
-      ExecSwap k k' p -> case execInvariant e of
-        (SNextRecv, _) -> swap_ k k' $ f p
-        (SNextSend, _) -> swap_ k k' $ f p
-      ExecLink k k' p -> case execInvariant e of
-        (SNextRecv, prf) -> link_ prf k k' $ f p
-        (SNextSend, prf) -> link_ prf k k' $ f p
+      ExecProc prf p -> case prf of
+        InitStatusIndexRetAbsent -> p
+        InitStatusIndexRetPresent -> p
+      ExecFork fPrf prf l r -> case fPrf of
+          InitStatusNone -> fork_ getForkPremiseD prf (f l) (f r)
+          InitStatusFst -> fork_ getForkPremiseD prf (f l) (f r)
+          InitStatusSnd -> fork_ getForkPremiseD prf (f l) (f r)
+      ExecSwap k k' p -> execInvariant e $ \case
+        InitStatusIndexRetAbsent -> swap_ k k' $ f p
+        InitStatusIndexRetPresent -> swap_ k k' $ f p
+      ExecLink k k' p -> execInvariant e $ \case
+        InitStatusIndexRetAbsent -> link_ getMayOnlyReturnAfterRecvPrf k k' $ f p
+        InitStatusIndexRetPresent -> link_ getMayOnlyReturnAfterRecvPrf k k' $ f p

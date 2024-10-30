@@ -5,6 +5,7 @@ module LUCk.Types
   , module Data.Void
   , module Data.Kind
   , module Data.Type.Equality
+  , Continuation
   , Not
   , SBool(..)
   , SIndex(..)
@@ -50,6 +51,8 @@ import Data.Kind (Type, Constraint)
 import Data.HList
 
 import Data.Type.Equality ((:~:)(Refl))
+
+type Continuation x = forall a. (x -> a) -> a
 
 type Not (a :: Type) = a -> Void
 

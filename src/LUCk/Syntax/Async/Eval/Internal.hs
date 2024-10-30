@@ -11,15 +11,26 @@ module LUCk.Syntax.Async.Eval.Internal
   , permPorts
   -- *Helper functions and types
   -- $helpers
+  , InitStatus(..)
+  , InitStatusS(..)
+  , InitStatusIndexRetD(..)
+  , InitStatusIndexRet(..)
+  , InitStatusOr
+  , InitStatusCompD(..)
+  , InitStatusComp(..)
+  , ToInitStatus
+  , InitStatusIndex
+  , initStatusIndexS
+  , InitStatusRes
   , ForkPremiseD(..)
   , getForkPremiseD
+  , MayOnlyReturnAfterRecv(..)
   , ForkIndexComp(..)
   , getForkIndexSwap
   , getForkIndexRecv
   , ForkIndexCompD(..)
   , ForkIndexOr
-  , MayOnlyReturnAfterRecv(..)
-  , MayOnlyReturnAfterRecvD(..)
+  , KnownInitStatus(..)
   , ChooseRet
   ) where
 
@@ -61,19 +72,46 @@ getForkIndexSwap = \case
   ForkIndexCompFst -> ForkIndexCompSnd
   ForkIndexCompSnd -> ForkIndexCompFst
 
-type ForkIndexOr :: Index -> Index -> Index
-type family ForkIndexOr bef bef' where
-  ForkIndexOr NextSend NextRecv = NextSend
-  ForkIndexOr NextRecv i = i
+class InitStatusComp st st' where
+  getInitStatusCompD :: InitStatusCompD st st'
+
+instance KnownInitStatus st' => InitStatusComp InitAbsent st' where
+  getInitStatusCompD = case getKnownInitStatus @st' of
+    InitAbsentS -> InitStatusNone
+    InitPresentS -> InitStatusSnd
+
+instance (st' ~ InitAbsent) => InitStatusComp (InitPresent res) st' where
+  getInitStatusCompD = InitStatusFst
+
+data InitStatus = InitAbsent | InitPresent Type
+
+data InitStatusS (s :: InitStatus) where
+  InitAbsentS :: InitStatusS InitAbsent
+  InitPresentS :: InitStatusS (InitPresent a)
+
+class KnownInitStatus (st :: InitStatus) where
+  getKnownInitStatus :: InitStatusS st
+instance KnownInitStatus InitAbsent where
+  getKnownInitStatus = InitAbsentS
+instance KnownInitStatus (InitPresent a) where
+  getKnownInitStatus = InitPresentS
+
+data InitStatusIndexRetD (s :: InitStatus) (i :: Index) (res :: Type) where
+  InitStatusIndexRetAbsent :: InitStatusIndexRetD InitAbsent NextRecv Void
+  InitStatusIndexRetPresent :: InitStatusIndexRetD (InitPresent res) NextSend res
+
+class InitStatusIndexRet s i res where
+  getInitStatusIndexRetD :: InitStatusIndexRetD s i res
+
+instance (s ~ InitPresent res) => InitStatusIndexRet s NextSend res where
+  getInitStatusIndexRetD = InitStatusIndexRetPresent
+
+instance (s ~ InitAbsent, res ~ Void) => InitStatusIndexRet s NextRecv res where
+  getInitStatusIndexRetD = InitStatusIndexRetAbsent
 
 data MayOnlyReturnAfterRecvD (i :: Index) (a :: Type) where
   MayOnlyReturnVoid :: MayOnlyReturnAfterRecvD i Void
   MayOnlyReturnType :: MayOnlyReturnAfterRecvD NextSend a
-
-type family ChooseRet i i' a a' where
-  ChooseRet NextRecv NextRecv _ _ = Void
-  ChooseRet NextSend _ a _ = a
-  ChooseRet _ NextSend _ a' = a'
 
 type MayOnlyReturnAfterRecv :: Index -> Type -> Constraint
 class MayOnlyReturnAfterRecv i a where
@@ -82,6 +120,43 @@ instance MayOnlyReturnAfterRecv NextRecv Void where
   getMayOnlyReturnAfterRecvPrf = MayOnlyReturnVoid
 instance MayOnlyReturnAfterRecv NextSend a where
   getMayOnlyReturnAfterRecvPrf = MayOnlyReturnType
+
+type family ToInitStatus (i :: Index) (a :: Type) where
+  ToInitStatus NextSend a = InitPresent a
+  ToInitStatus NextRecv _ = InitAbsent
+
+type family InitStatusIndex (st :: InitStatus) where
+  InitStatusIndex InitAbsent = NextRecv
+  InitStatusIndex (InitPresent _) = NextSend
+
+initStatusIndexS :: InitStatusS st -> SIndex (InitStatusIndex st)
+initStatusIndexS = \case
+  InitAbsentS -> SNextRecv
+  InitPresentS -> SNextSend
+
+type family InitStatusRes (st :: InitStatus) where
+  InitStatusRes InitAbsent = Void
+  InitStatusRes (InitPresent res) = res
+
+type family InitStatusOr (s :: InitStatus) (s' :: InitStatus) where
+  InitStatusOr InitAbsent InitAbsent = InitAbsent
+  InitStatusOr (InitPresent a) InitAbsent = InitPresent a
+  InitStatusOr InitAbsent (InitPresent a) = InitPresent a
+
+data InitStatusCompD (st :: InitStatus) (st' :: InitStatus) where
+  InitStatusNone :: InitStatusCompD InitAbsent InitAbsent
+  InitStatusFst :: InitStatusCompD (InitPresent a) InitAbsent
+  InitStatusSnd :: InitStatusCompD InitAbsent (InitPresent a)
+
+type ForkIndexOr :: Index -> Index -> Index
+type family ForkIndexOr bef bef' where
+  ForkIndexOr NextSend NextRecv = NextSend
+  ForkIndexOr NextRecv i = i
+
+type family ChooseRet i i' a a' where
+  ChooseRet NextRecv NextRecv _ _ = Void
+  ChooseRet NextSend _ a _ = a
+  ChooseRet _ NextSend _ a' = a'
 
 -- |Given an index in the concatenation of @`Concat` ach ach'@, return the
 -- corresponding element's index either in @ach@ or in @ach'@.
@@ -153,7 +228,7 @@ getForkPremiseD =
 -- The return value of the fork_ is the same as return value of process that
 -- finishes in `NextSend`. If both finish in `NextRecv`, then fork_'s return
 -- value is `Void`.
-fork_ :: forall m ach ach' bef bef' aft aft' a a'.
+fork_ :: forall st st' m ach ach' bef bef' aft aft' a a'.
         (Monad m)
      => ForkPremiseD bef bef' aft aft' a a'
      -- ^Proof that this combination of indices and return values is valid

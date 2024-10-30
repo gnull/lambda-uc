@@ -34,21 +34,21 @@ data SubRespTree (m :: Type -> Type) (up :: Port) where
                 -> HList (SubRespTree m) down
                 -> SubRespTree m (P x y)
 
-mergeSendPorts :: forall l p s p' s' a m i res.
+mergeSendPorts :: forall l p s p' s' a m st.
                   ListSplitD l p ( OnlySendPort a : s)
                -> ListSplitD s p' ( OnlySendPort a : s')
-               -> ExecBuilder m (ExecIndexSome l i res) (ExecIndexSome (OnlySendPort a : Concat p (Concat p' s')) i res) ()
+               -> ExecBuilder m (ExecIndexSome l st) (ExecIndexSome (OnlySendPort a : Concat p (Concat p' s')) st) ()
 mergeSendPorts i i' = case (listSplitConcat i, listSplitConcat i') of
-    (Refl, Refl) -> execInvariantM >>=: \case
-        (iPrf, retPrf) -> M.do
-          forkRight' (getForkIndexRecv iPrf) getKnownLenPrf $ process sendMerger
-          link Split2 i
-          link Split1 (listSplitAdd (listSplitPopSuffix i) i')
-          -- We've done everything, now just prove this to the compiler
-          case (concatAssocPrf @p @p' @s' (listSplitPopSuffix i), iPrf, retPrf) of
-            (Refl, _, MayOnlyReturnType) -> xreturn ()
-            (Refl, SNextRecv, MayOnlyReturnVoid) -> xreturn ()
-            (Refl, SNextSend, MayOnlyReturnVoid) -> xreturn ()
+    (Refl, Refl) -> M.do
+      retPrf <- execInvariantM
+      forkRight' (getForkIndexRecv iPrf) getKnownLenPrf $ process sendMerger
+      link Split2 i
+      link Split1 (listSplitAdd (listSplitPopSuffix i) i')
+      -- We've done everything, now just prove this to the compiler
+      case (concatAssocPrf @p @p' @s' (listSplitPopSuffix i), iPrf, retPrf) of
+        (Refl, _, InitPresentS) -> xreturn ()
+        (Refl, SNextRecv, InitAbsentS) -> xreturn ()
+        (Refl, SNextSend, InitAbsentS) -> xreturn ()
   where
     sendMerger :: AsyncT '[ OnlySendPort a, OnlyRecvPort a, OnlyRecvPort a] m NextRecv NextRecv Void
     sendMerger = M.do
@@ -64,7 +64,7 @@ mergeSendPorts i i' = case (listSplitConcat i, listSplitConcat i') of
 subRespEval :: SubRespTree m iface
             -- ^The called protocol with its subroutines composed-in
             -> ExecBuilder m ExecIndexInit
-                  (ExecIndexSome '[PingSendPort, PortSwap iface] NextRecv Void) ()
+                  (ExecIndexSome '[PingSendPort, PortSwap iface] InitAbsent) ()
 subRespEval (MkSubRespTree p _ c) = M.do
     process p
     forEliminateHlist c $ \_ z -> M.do
@@ -79,11 +79,11 @@ subRespEval (MkSubRespTree p _ c) = M.do
       -> ( forall p z s.
              ListSplitD down p (z:s)
           -> SubRespTree m z
-          -> ExecBuilder m (ExecIndexSome (ping:w:z:s) NextRecv Void)
-                           (ExecIndexSome (ping:w:s) NextRecv Void) ()
+          -> ExecBuilder m (ExecIndexSome (ping:w:z:s) InitAbsent)
+                           (ExecIndexSome (ping:w:s) InitAbsent) ()
          )
-      -> ExecBuilder m (ExecIndexSome (ping:w:down) NextRecv Void)
-                       (ExecIndexSome '[ping, w] NextRecv Void) ()
+      -> ExecBuilder m (ExecIndexSome (ping:w:down) InitAbsent)
+                       (ExecIndexSome '[ping, w] InitAbsent) ()
     forEliminateHlist HNil _ = xreturn ()
     forEliminateHlist (HCons z zs) f = M.do
       f SplitHere z
@@ -91,7 +91,7 @@ subRespEval (MkSubRespTree p _ c) = M.do
 
 ucExec :: EnvProcess up m a
        -> SubRespTree m up
-       -> ExecBuilder m ExecIndexInit (ExecIndexSome '[] NextSend a) ()
+       -> ExecBuilder m ExecIndexInit (ExecIndexSome '[] (InitPresent a)) ()
 ucExec (MkEnvProcess e) p@(MkSubRespTree _ KnownPortD _) = M.do
   subRespEval p
   forkRight $ process e
