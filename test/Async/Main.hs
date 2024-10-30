@@ -34,6 +34,8 @@ tests = testGroup "async execution tests"
       toIO (runExec $ runExecBuilder $ threeSumWriter 100 10 1) >>= (@?= 111)
   , testCase "guessing game" $
       writerTtoIO (fmap (<= 7) $ runExec $ runExecBuilder guessingExec) >>= (@?= True)
+  , testCase "pingExecBuilder" $
+      toIO (runExec $ pingExec') >>= (@?= "hey")
   ]
 
 type Log = [String]
@@ -256,3 +258,6 @@ pingExecBuilder = M.do
   forkLeft $ M.do
     process pingRequest
   link SplitHere SplitHere
+
+pingExec' :: Exec '[] m (InitPresent String)
+pingExec' = runExecBuilder pingExecBuilder
