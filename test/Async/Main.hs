@@ -259,5 +259,20 @@ pingExecBuilder = M.do
     process pingRequest
   link SplitHere SplitHere
 
+pingExecBuilder' :: ExecBuilder m ExecIndexInit (ExecIndexSome '[] (InitPresent String)) ()
+pingExecBuilder' = M.do
+  process $ pingServe "hey"
+  execGuard @'[P String ()] @InitAbsent
+  -- ^One unlinked port, no initial process
+  forkLeft $ M.do
+    process pingRequest
+    execGuard @'[P () String]
+    -- ^One channel present
+  execGuard @_ @(InitPresent String)
+  -- ^Initial process with String result present
+  execGuard @'[P String (), P () String]
+  -- ^Two unlinked ports
+  link SplitHere SplitHere
+
 pingExec' :: Exec '[] m (InitPresent String)
 pingExec' = runExecBuilder pingExecBuilder
