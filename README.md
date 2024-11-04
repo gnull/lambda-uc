@@ -4,6 +4,7 @@
 —
 [Haddock](https://arrakeen-worm.xyz/haddock/haskell-uc/)
 
-To ender development enviornment, run `nix-shell` in this directory.
+To ender development enviornment, run `nix-shell` or `nix develop` in this directory
+  (this uses [Nix](https://nixos.org/)).
 
 From there, you can run `cabal build` or `cabal repl` to inspect the code.
