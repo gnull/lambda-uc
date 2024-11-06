@@ -40,15 +40,15 @@ mergeSendPorts :: forall l p s p' s' a m st.
                -> ExecBuilder m (ExecIndexSome l st) (ExecIndexSome (OnlySendPort a : Concat p (Concat p' s')) st) ()
 mergeSendPorts i i' = case (listSplitConcat i, listSplitConcat i') of
     (Refl, Refl) -> M.do
-      retPrf <- execInvariantM
-      forkRight' (getForkIndexRecv iPrf) getKnownLenPrf $ process sendMerger
+      SomeInitStatusIndexRetD retPrf <- execInvariantM
+      compPrf <- absentInitStatusComp
+      forkRight' compPrf getKnownLenPrf $ process sendMerger
       link Split2 i
       link Split1 (listSplitAdd (listSplitPopSuffix i) i')
       -- We've done everything, now just prove this to the compiler
-      case (concatAssocPrf @p @p' @s' (listSplitPopSuffix i), iPrf, retPrf) of
-        (Refl, _, InitPresentS) -> xreturn ()
-        (Refl, SNextRecv, InitAbsentS) -> xreturn ()
-        (Refl, SNextSend, InitAbsentS) -> xreturn ()
+      case (concatAssocPrf @p @p' @s' (listSplitPopSuffix i), retPrf) of
+        (Refl, InitStatusIndexRetAbsent) -> xreturn ()
+        (Refl, InitStatusIndexRetPresent) -> xreturn ()
   where
     sendMerger :: AsyncT '[ OnlySendPort a, OnlyRecvPort a, OnlyRecvPort a] m NextRecv NextRecv Void
     sendMerger = M.do
@@ -59,6 +59,11 @@ mergeSendPorts i i' = case (listSplitConcat i, listSplitConcat i') of
         SomeRxMess (There3 contra) _ -> case contra of {}
       send Here x
       sendMerger
+
+    absentInitStatusComp :: ExecBuilder m (ExecIndexSome l' st') (ExecIndexSome l' st') (InitStatusCompD InitAbsent st')
+    absentInitStatusComp = execInvariantM <&> \case
+      SomeInitStatusIndexRetD InitStatusIndexRetAbsent -> InitStatusNone
+      SomeInitStatusIndexRetD InitStatusIndexRetPresent -> InitStatusSnd
 
 -- |Run environment with a given protocol (no adversary yet).
 subRespEval :: SubRespTree m iface

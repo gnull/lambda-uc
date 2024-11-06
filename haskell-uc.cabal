@@ -69,7 +69,7 @@ library
       LUCk.Syntax.Async.SomeWT
       LUCk.Syntax.Sync
       LUCk.Syntax.Sync.Eval
-      -- LUCk.UC
+      LUCk.UC
       LUCk.UC.Shell
       LUCk.Games.Common
       LUCk.Games.SignatureScheme
