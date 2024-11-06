@@ -37,6 +37,7 @@ module LUCk.Types
   , KnownIndex(..)
   , KnownLenD(..)
   , KnownLen(..)
+  , PortsLenD(..)
   , KnownPortD(..)
   , SameLenD(..)
   , SameLen(..)
@@ -257,6 +258,10 @@ instance KnownLen '[] where
 
 instance KnownLen xs => KnownLen (x:xs) where
   getKnownLenPrf = KnownLenS $ getKnownLenPrf @_ @xs
+
+data PortsLenD (ports :: [Port]) where
+  PortsLenZ :: PortsLenD '[]
+  PortsLenS :: PortsLenD l -> PortsLenD (P x y : l)
 
 data SameLenD :: forall a b. [a] -> [b] -> Type where
   SameLenNil :: SameLenD '[] '[]

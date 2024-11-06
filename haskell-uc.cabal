@@ -70,7 +70,7 @@ library
       LUCk.Syntax.Sync
       LUCk.Syntax.Sync.Eval
       -- LUCk.UC
-      -- LUCk.UC.Shell
+      LUCk.UC.Shell
       LUCk.Games.Common
       LUCk.Games.SignatureScheme
       LUCk.Games.SymEncryption

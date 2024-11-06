@@ -267,6 +267,46 @@ multiSidIdealShell len lenPrf impl = helper Map.empty
         KnownLenS j -> \case
           SameLenCons k -> There $ sidIfaceListToZipMapMarked i j k
 
+spawnOnDemand :: forall l ports m. (Ord l, Monad m)
+              => PortsLenD ports
+              -> (l -> AsyncT ports m NextRecv NextRecv Void)
+              -> AsyncT (MapMarked l ports) m NextRecv NextRecv Void
+spawnOnDemand n impl = helper Map.empty
+  where
+    helper :: Map.Map l (AsyncT ports m NextRecv NextRecv Void)
+           -> AsyncT (MapMarked l ports) m NextRecv NextRecv Void
+    helper states = M.do
+      (l, m) <- unwrapMess n <$> recvAny
+      let st = Map.findWithDefault (impl l) l states
+      st' <- ($ m) . mayOnlyRecvVoidPrf <$> xlift (runTillRecv st)
+      (resp, st'') <- mayOnlySendVoidPrf <$> xlift (runTillSend st')
+      sendMess $ wrapMess l resp
+      helper $ Map.insert l st'' states
+
+    wrapMess :: forall ports'. l -> SomeTxMess ports'
+             -> SomeTxMess (MapMarked l ports')
+    wrapMess l (SomeTxMess i m) = SomeTxMess (wrapInList i) (l, m)
+
+    wrapInList :: PortInList x y ports'
+               -> PortInList (l, x) (l, y) (MapMarked l ports')
+    wrapInList = \case
+      Here -> Here
+      There i' -> There $ wrapInList i'
+
+    unwrapMess :: forall ports'.
+                  PortsLenD ports'
+               -> SomeRxMess (MapMarked l ports')
+               -> (l, SomeRxMess ports')
+    unwrapMess = \case
+      PortsLenZ -> \(SomeRxMess contra _) -> case contra of {}
+      PortsLenS n -> \(SomeRxMess i lm) -> case i of
+        Here -> let (l, m) = lm in (l, SomeRxMess Here m)
+        There i' -> second someRxMessThere $ unwrapMess n $ SomeRxMess i' lm
+
+    someRxMessThere :: SomeRxMess ports'
+                    -> SomeRxMess (x : ports')
+    someRxMessThere (SomeRxMess i m) = SomeRxMess (There i) m
+
 multiSidRealShell :: forall sid x y sids down m rest.
                  Monad m
               => KnownLenD sids
