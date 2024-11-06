@@ -92,18 +92,17 @@ data Exec ach m (i :: InitStatus) where
            -> Exec (Concat p (Concat p' rest)) m st
 
 execInvariant :: Exec ach m st
-              -> (forall i res. (InitStatusIndexRetD st i res -> a))
-              -> a
-execInvariant ex cont = case ex of
+              -> SomeInitStatusIndexRetD st
+execInvariant ex = case ex of
   ExecProc prf _ -> case prf of
-    InitStatusIndexRetAbsent -> cont $ InitStatusIndexRetAbsent
-    InitStatusIndexRetPresent -> cont $ InitStatusIndexRetPresent
+    InitStatusIndexRetAbsent -> SomeInitStatusIndexRetD $ InitStatusIndexRetAbsent
+    InitStatusIndexRetPresent -> SomeInitStatusIndexRetD $ InitStatusIndexRetPresent
   ExecFork iPrf _ _ _ -> case iPrf of
-    InitStatusNone -> cont $ InitStatusIndexRetAbsent
-    InitStatusFst -> cont $ InitStatusIndexRetPresent
-    InitStatusSnd -> cont $ InitStatusIndexRetPresent
-  ExecSwap _ _ p -> execInvariant p cont
-  ExecLink _ _ p -> execInvariant p cont
+    InitStatusNone -> SomeInitStatusIndexRetD $ InitStatusIndexRetAbsent
+    InitStatusFst -> SomeInitStatusIndexRetD $ InitStatusIndexRetPresent
+    InitStatusSnd -> SomeInitStatusIndexRetD $ InitStatusIndexRetPresent
+  ExecSwap _ _ p -> execInvariant p
+  ExecLink _ _ p -> execInvariant p
 
 -- $writer
 --
@@ -267,11 +266,10 @@ execGuard :: forall l st m. ExecBuilder m (ExecIndexSome l st) (ExecIndexSome l 
 execGuard = xreturn ()
 
 execInvariantM
-  :: (forall i res. (InitStatusIndexRetD st i res -> a))
-  -> ExecBuilder m
+  :: ExecBuilder m
        (ExecIndexSome ach st) (ExecIndexSome ach st)
-       a
-execInvariantM f = (\e -> execInvariant e f) <$> ExecBuilder look
+       (SomeInitStatusIndexRetD st)
+execInvariantM = execInvariant <$> ExecBuilder look
 
 -- |Run an execution.
 --
@@ -293,9 +291,13 @@ runExec = escapeAsyncT . f
           InitStatusNone -> fork_ getForkPremiseD prf (f l) (f r)
           InitStatusFst -> fork_ getForkPremiseD prf (f l) (f r)
           InitStatusSnd -> fork_ getForkPremiseD prf (f l) (f r)
-      ExecSwap k k' p -> execInvariant e $ \case
-        InitStatusIndexRetAbsent -> swap_ k k' $ f p
-        InitStatusIndexRetPresent -> swap_ k k' $ f p
-      ExecLink k k' p -> execInvariant e $ \case
-        InitStatusIndexRetAbsent -> link_ getMayOnlyReturnAfterRecvPrf k k' $ f p
-        InitStatusIndexRetPresent -> link_ getMayOnlyReturnAfterRecvPrf k k' $ f p
+      ExecSwap k k' p -> case execInvariant e of
+        SomeInitStatusIndexRetD InitStatusIndexRetAbsent
+          -> swap_ k k' $ f p
+        SomeInitStatusIndexRetD InitStatusIndexRetPresent
+          -> swap_ k k' $ f p
+      ExecLink k k' p -> case execInvariant e of
+        SomeInitStatusIndexRetD InitStatusIndexRetAbsent
+          -> link_ getMayOnlyReturnAfterRecvPrf k k' $ f p
+        SomeInitStatusIndexRetD InitStatusIndexRetPresent
+          -> link_ getMayOnlyReturnAfterRecvPrf k k' $ f p

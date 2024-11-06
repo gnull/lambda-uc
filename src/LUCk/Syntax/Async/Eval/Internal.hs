@@ -14,6 +14,7 @@ module LUCk.Syntax.Async.Eval.Internal
   , InitStatus(..)
   , InitStatusS(..)
   , InitStatusIndexRetD(..)
+  , SomeInitStatusIndexRetD(..)
   , InitStatusIndexRet(..)
   , InitStatusOr
   , InitStatusCompD(..)
@@ -99,6 +100,10 @@ instance KnownInitStatus (InitPresent a) where
 data InitStatusIndexRetD (s :: InitStatus) (i :: Index) (res :: Type) where
   InitStatusIndexRetAbsent :: InitStatusIndexRetD InitAbsent NextRecv Void
   InitStatusIndexRetPresent :: InitStatusIndexRetD (InitPresent res) NextSend res
+
+data SomeInitStatusIndexRetD s where
+  SomeInitStatusIndexRetD :: InitStatusIndexRetD s i res
+                          -> SomeInitStatusIndexRetD s
 
 class InitStatusIndexRet s i res where
   getInitStatusIndexRetD :: InitStatusIndexRetD s i res

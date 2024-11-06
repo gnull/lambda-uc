@@ -217,9 +217,9 @@ linkSelf = M.do
   where
     lemma :: ExecBuilder m (ExecIndexSome l st) (ExecIndexSome l st)
                            (InitStatusOr InitAbsent st :~: st)
-    lemma = execInvariantM $ \case
-      InitStatusIndexRetAbsent -> Refl
-      InitStatusIndexRetPresent -> Refl
+    lemma = execInvariantM >>=: \case
+      SomeInitStatusIndexRetD InitStatusIndexRetAbsent -> xreturn Refl
+      SomeInitStatusIndexRetD InitStatusIndexRetPresent -> xreturn Refl
 
 -- |Process that sends back everything it gets
 idProc :: Monad m
