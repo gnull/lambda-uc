@@ -17,6 +17,7 @@ import LUCk.Syntax.Async
 import LUCk.Syntax.Async.Eval
 import LUCk.Syntax.Async.Eval.Internal
 
+import LUCk.UC.Core
 import LUCk.UC.Shell
 
 data EnvProcess down m a where
