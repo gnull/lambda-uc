@@ -19,7 +19,6 @@ module LUCk.Types
   , KnownLenD(..)
   , KnownLen(..)
   , PortsLenD(..)
-  , KnownPortD(..)
   , SameLenD(..)
   , SameLen(..)
   , Index(..)

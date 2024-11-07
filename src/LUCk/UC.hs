@@ -31,7 +31,6 @@ data EnvProcess down m a where
 -- therefore, are not required and not exposed by a type parameter anymore).
 data SubRespTree (m :: Type -> Type) (up :: Port) where
   MkSubRespTree :: Proto (P x y) down m
-                -> KnownPortD (P x y)
                 -> HList (SubRespTree m) down
                 -> SubRespTree m (P x y)
 
@@ -71,12 +70,12 @@ subRespEval :: SubRespTree m iface
             -- ^The called protocol with its subroutines composed-in
             -> ExecBuilder m ExecIndexInit
                   (ExecIndexSome '[PingSendPort, PortSwap iface] InitAbsent) ()
-subRespEval (MkSubRespTree p _ c) = M.do
+subRespEval (MkSubRespTree p c) = M.do
     process p
     forEliminateHlist c $ \_ z -> M.do
       forkRight $ subRespEval z
       case z of
-        MkSubRespTree _ KnownPortD _ -> M.do
+        MkSubRespTree _ _ -> M.do
           link Split1 Split2
           mergeSendPorts Split0 Split0
   where
@@ -98,7 +97,7 @@ subRespEval (MkSubRespTree p _ c) = M.do
 ucExec :: EnvProcess up m a
        -> SubRespTree m up
        -> ExecBuilder m ExecIndexInit (ExecIndexSome '[] (InitPresent a)) ()
-ucExec (MkEnvProcess e) p@(MkSubRespTree _ KnownPortD _) = M.do
+ucExec (MkEnvProcess e) p@(MkSubRespTree _ _) = M.do
   subRespEval p
   forkRight $ process e
   link Split0 Split1
