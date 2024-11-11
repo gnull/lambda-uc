@@ -20,9 +20,8 @@ import LUCk.Syntax.Async.Eval.Internal
 import LUCk.UC.Core
 import LUCk.UC.Shell
 
-data EnvProcess down m a where
-  MkEnvProcess :: AsyncT '[PingRecvPort, down] m NextSend NextSend a
-               -> EnvProcess down m a
+type EnvProcess down m res =
+  ExecBuilder m ExecIndexInit (ExecIndexSome '[PingRecvPort, down] (InitPresent res)) ()
 
 -- |A tree of subroutine-respecting protocols.
 --
@@ -30,7 +29,7 @@ data EnvProcess down m a where
 -- required subroutine interfaces were filled with actual implementations (and,
 -- therefore, are not required and not exposed by a type parameter anymore).
 data SubRespTree (m :: Type -> Type) (up :: Port) where
-  MkSubRespTree :: Proto (P x y) down m
+  MkSubRespTree :: ExecBuilder m ExecIndexInit (ExecIndexSome (PingSendPort : PortSwap (P x y) : down) InitAbsent) ()
                 -> HList (SubRespTree m) down
                 -> SubRespTree m (P x y)
 
@@ -71,7 +70,7 @@ subRespEval :: SubRespTree m iface
             -> ExecBuilder m ExecIndexInit
                   (ExecIndexSome '[PingSendPort, PortSwap iface] InitAbsent) ()
 subRespEval (MkSubRespTree p c) = M.do
-    process p
+    p
     forEliminateHlist c $ \_ z -> M.do
       forkRight $ subRespEval z
       case z of
@@ -97,8 +96,8 @@ subRespEval (MkSubRespTree p c) = M.do
 ucExec :: EnvProcess up m a
        -> SubRespTree m up
        -> ExecBuilder m ExecIndexInit (ExecIndexSome '[] (InitPresent a)) ()
-ucExec (MkEnvProcess e) p@(MkSubRespTree _ _) = M.do
+ucExec e p@(MkSubRespTree _ _) = M.do
   subRespEval p
-  forkRight $ process e
+  forkRight $ e
   link Split0 Split1
   link Split0 Split0
