@@ -25,9 +25,10 @@ type EnvProcess down m res =
 
 -- |A tree of subroutine-respecting protocols.
 --
--- A `SubRespTree m up` is simply @IdealFunc up down m@ where the
--- required subroutine interfaces were filled with actual implementations (and,
--- therefore, are not required and not exposed by a type parameter anymore).
+-- A `SubRespTree m up` is either an ideal functionality or a protocol where
+-- the required subroutine interfaces were filled with actual implementations
+-- (and, therefore, are not required and not exposed by a type parameter
+-- anymore).
 data SubRespTree (m :: Type -> Type) (up :: Port) where
   MkSubRespTree :: ExecBuilder m ExecIndexInit (ExecIndexSome (PingSendPort : PortSwap (P x y) : down) InitAbsent) ()
                 -> HList (SubRespTree m) down
