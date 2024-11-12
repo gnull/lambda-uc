@@ -30,6 +30,46 @@ pattern There3 :: InList xs x -> InList (y0 : y1 : y2 : xs) x
 pattern There3 i = There (There2 i)
 {-# COMPLETE There3 #-}
 
+pattern There4 :: InList xs x -> InList (y0 : y1 : y2 : y3 : xs) x
+pattern There4 i = There (There3 i)
+{-# COMPLETE There4 #-}
+
+pattern There5 :: InList xs x -> InList (y0 : y1 : y2 : y3 : y4 : xs) x
+pattern There5 i = There (There4 i)
+{-# COMPLETE There5 #-}
+
+pattern There6 :: InList xs x -> InList (y0 : y1 : y2 : y3 : y4 : y5 : xs) x
+pattern There6 i = There (There5 i)
+{-# COMPLETE There6 #-}
+
+pattern InList0 :: InList (x : xs) x
+pattern InList0 = Here
+{-# COMPLETE InList0 #-}
+
+pattern InList1 :: InList (y0 : x : xs) x
+pattern InList1 = There Here
+{-# COMPLETE InList1 #-}
+
+pattern InList2 :: InList (y0 : y1 : x : xs) x
+pattern InList2 = There2 Here
+{-# COMPLETE InList2 #-}
+
+pattern InList3 :: InList (y0 : y1 : y2 : x : xs) x
+pattern InList3 = There3 Here
+{-# COMPLETE InList3 #-}
+
+pattern InList4 :: InList (y0 : y1 : y2 : y3 : x : xs) x
+pattern InList4 = There4 Here
+{-# COMPLETE InList4 #-}
+
+pattern InList5 :: InList (y0 : y1 : y2 : y3 : y4 : x : xs) x
+pattern InList5 = There5 Here
+{-# COMPLETE InList5 #-}
+
+pattern InList6 :: InList (y0 : y1 : y2 : y3 : y4 : y5 : x : xs) x
+pattern InList6 = There6 Here
+{-# COMPLETE InList6 #-}
+
 data SomeIndex xs where
     SomeIndex :: InList xs x -> SomeIndex xs
 
