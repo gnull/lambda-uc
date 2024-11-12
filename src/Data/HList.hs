@@ -51,26 +51,32 @@ padMessageIndex (SomeValue i' x') = SomeValue (There i') x'
 
 -- |A port is defined by a pair of types.
 --
--- @`P` A B@ allows sending values of type @A@ and receiving @B@.
-data Port = P Type Type
+-- - @A `:>` B@ allows asyncronously sending values of type @A@ and receiving @B@.
+-- - @A `:|>` B@ allows to do the same syncronously,
+-- - @A `:>|` B@ allows serving syncronous requests.
+data Port = Type :> Type
+          | Type :|> Type
+          | Type :>| Type
 
 type PortTxType :: Port -> Type
 type family PortTxType p where
-  PortTxType (P x _) = x
+  PortTxType (x :> _) = x
 
 type PortRxType :: Port -> Type
 type family PortRxType p where
-  PortRxType (P _ x) = x
+  PortRxType (_ :> x) = x
 
-type PortSwap :: Port -> Port
-type family PortSwap p where
-  PortSwap (P x y) = P y x
+type PortDual :: Port -> Port
+type family PortDual p where
+  PortDual (x :> y) = y :> x
+  PortDual (x :|> y) = y :>| x
+  PortDual (x :>| y) = y :|> x
 
 -- |A pointer into the list of ports @xs@.
 --
--- The @`PortInList` x y xs@ is a proof of @`P` x y@ being in @xs@.
+-- The @`PortInList` x y xs@ is a proof of @x `:>` y@ being in @xs@.
 type PortInList :: Type -> Type -> [Port] -> Type
-type PortInList x y xs = InList xs (P x y)
+type PortInList x y xs = InList xs (x :> y)
 
 type Fst :: forall a b. (a, b) -> a
 type family Fst p where
@@ -91,10 +97,10 @@ type family Zip l l' where
   Zip (x:xs) (y:ys) = '(x, y) : Zip xs ys
 
 data SomeRxMess xs where
-  SomeRxMess :: PortInList x y xs -> y -> SomeRxMess xs
+  SomeRxMess :: InList xs p -> PortRxType p -> SomeRxMess xs
 
 data SomeTxMess xs where
-  SomeTxMess :: PortInList x y xs -> x -> SomeTxMess xs
+  SomeTxMess :: InList xs p -> PortTxType p -> SomeTxMess xs
 
 -- * Heterogenous Lists
 --
@@ -122,10 +128,6 @@ instance KnownLen '[] where
 
 instance KnownLen xs => KnownLen (x:xs) where
   getKnownLenPrf = KnownLenS $ getKnownLenPrf @_ @xs
-
-data PortsLenD (ports :: [Port]) where
-  PortsLenZ :: PortsLenD '[]
-  PortsLenS :: PortsLenD l -> PortsLenD (P x y : l)
 
 data SameLenD :: forall a b. [a] -> [b] -> Type where
   SameLenNil :: SameLenD '[] '[]

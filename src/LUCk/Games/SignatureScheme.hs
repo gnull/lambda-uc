@@ -30,7 +30,7 @@ data SignatureScheme sk pk mes sig = SignatureScheme
 
 type SpSignatureScheme sk pk mes sig = Integer -> SignatureScheme sk pk mes sig
 
-type AdvAlgo pk mes sig = pk -> OracleCaller (SigAlgo True) '[P mes sig] (mes, sig)
+type AdvAlgo pk mes sig = pk -> OracleCaller (SigAlgo True) '[mes :> sig] (mes, sig)
 type SpAdvAlgo pk mes sig = Integer -> AdvAlgo pk mes sig
 
 -- |Existential Unforgeability under Chosen Message Attack, EU-CMA

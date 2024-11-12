@@ -165,10 +165,10 @@ type family ChooseRet i i' a a' where
 
 -- |Given an index in the concatenation of @`Concat` ach ach'@, return the
 -- corresponding element's index either in @ach@ or in @ach'@.
-portFromConcat :: forall (ach :: [Port]) ach' x y.
+portFromConcat :: forall (ach :: [Port]) ach' p.
                   KnownLenD ach
-               -> PortInList x y (Concat ach ach')
-               -> Either (PortInList x y ach) (PortInList x y ach')
+               -> InList (Concat ach ach') p
+               -> Either (InList ach p) (InList ach' p)
 portFromConcat = \case
   KnownLenZ -> Right
   KnownLenS rest -> \case
@@ -176,18 +176,18 @@ portFromConcat = \case
     There ch -> mapLeft There $ portFromConcat rest ch
 
 -- |Given an element's index in @ach@, return the same element's index in @`Concat` ach ach'@.
-fstToConcat :: forall ach ach' x y.
+fstToConcat :: forall ach ach' p.
                KnownLenD ach
-            -> PortInList x y ach
-            -> PortInList x y (Concat ach ach')
+            -> InList ach p
+            -> InList (Concat ach ach') p
 fstToConcat _ Here = Here
 fstToConcat (KnownLenS n) (There rest) = There $ fstToConcat @_ @(ach') n rest
 
 -- |Given an element's index in @ach'@, return the same element's index in @`Concat` ach ach'@.
-sndToConcat :: forall ach ach' x y.
+sndToConcat :: forall ach ach' p.
                KnownLenD ach
-            -> PortInList x y ach'
-            -> PortInList x y (Concat ach ach')
+            -> InList ach' p
+            -> InList (Concat ach ach') p
 sndToConcat KnownLenZ = id
 sndToConcat (KnownLenS n) = There . sndToConcat n
 
@@ -289,8 +289,8 @@ fork_ fPrf lPrf l r = case forkPremiseIndexCompBef fPrf of
 -- For a safe alternative, see `swap_`. That one is guaranteed to only permute
 -- ports and never cause bad behaviors.
 permPorts :: (KnownIndex bef, Monad m)
-         => (forall x y. PortInList x y l -> PortInList x y l')
-         -> (forall x y. PortInList x y l' -> PortInList x y l)
+         => (forall p. InList l p -> InList l' p)
+         -> (forall p. InList l' p -> InList l p)
          -> AsyncT l m bef aft a
          -> AsyncT l' m bef aft a
 permPorts f g cont = asyncGetIndex >>=: \case
@@ -333,8 +333,8 @@ swap_ prfF prfS cont = case (listSplitConcat prfF, listSplitConcat prfS) of
   where
     f :: ListSplitD l p (f:l')
       -> ListSplitD l' p' (s:rest)
-      -> PortInList x y l
-      -> PortInList x y (Concat p (s : Concat p' (f:rest)))
+      -> InList l xy
+      -> InList (Concat p (s : Concat p' (f:rest))) xy
     f p p' i = let
         (pInv, pInv') = listSplitSwap p p'
       in case (listSplitConcat p, listSplitConcat p') of
@@ -400,9 +400,9 @@ doesNotReturnInRecvPrf retPrf = \case
 -- removes from the free list.
 link_ :: (Monad m, KnownIndex bef)
         => MayOnlyReturnAfterRecvD aft a
-        -> ListSplitD l p (P x y : l')
+        -> ListSplitD l p (x :> y : l')
         -- ^ Proof of @l == p ++ [(x, y)] ++ l'@
-        -> ListSplitD l' p' (P y x : rest)
+        -> ListSplitD l' p' (y :> x : rest)
         -- ^ Proof of @l' == p' ++ [(y, x)] ++ rest@
         -> AsyncT l m bef aft a
         -- ^Exectuion where we want to link_ the ports
@@ -421,11 +421,11 @@ link_ retPrf prf prf' cont = case (listSplitConcat prf, listSplitConcat prf') of
         xlift (runTillSend cont) >>=: \case
           SrHalt res -> xreturn res
           SrSend (SomeTxMess i m) cont' -> case f prf prf' i of
-              SomeValue Here (Refl, Refl) -> M.do
+              SomeValue Here Refl -> M.do
                 cont'' <- doesNotReturnInRecvPrf retPrf <$> xlift (runTillRecv cont')
                 let i' = padLeftIndexSameSuff prf $ There $ padLeftIndexSameSuff prf' Here
                 link_ retPrf prf prf' $ cont'' $ SomeRxMess i' m
-              SomeValue (There Here) (Refl, Refl) -> M.do
+              SomeValue (There Here) Refl -> M.do
                 cont'' <- doesNotReturnInRecvPrf retPrf <$> xlift (runTillRecv cont')
                 let i' = padLeftIndexSameSuff prf Here
                 link_ retPrf prf prf' $ cont'' $ SomeRxMess i' m
@@ -435,28 +435,28 @@ link_ retPrf prf prf' cont = case (listSplitConcat prf, listSplitConcat prf') of
               SomeValue (There3 contra) _ -> case contra of {}
 
   where
-    f :: ListSplitD l p (P x' y' : l')
-      -> ListSplitD l' p' (P y' x' : rest)
-      -> PortInList x y l
-      -> SomeValue '[ (x :~: x', y :~: y')
-                    , (x :~: y', y :~: x')
-                    , PortInList x y (Concat p (Concat p' rest))
+    f :: ListSplitD l p (x' :> y' : l')
+      -> ListSplitD l' p' (y' :> x' : rest)
+      -> InList l xy
+      -> SomeValue '[ (xy :~: x' :> y')
+                    , (xy :~: y' :> x')
+                    , InList (Concat p (Concat p' rest)) xy
                     ]
     f p p' c = case (listSplitConcat p, listSplitConcat p') of
         (Refl, Refl) -> let
           (pInv, pInv') = listSplitSuff2 p p'
            in case findIndex p c of
           Left i -> SomeValue (There2 Here) $ padRightIndexSameSuff pInv i
-          Right Here -> SomeValue Here (Refl, Refl)
+          Right Here -> SomeValue Here Refl
           Right (There i) -> case findIndex p' i of
             Left i' -> SomeValue (There2 Here) $ padLeftIndex p $ padRightIndexSameSuff pInv' i'
-            Right Here -> SomeValue (There Here) (Refl, Refl)
+            Right Here -> SomeValue (There Here) Refl
             Right (There i') -> SomeValue (There2 Here) $ padLeftIndex p $ padLeftIndex p' i'
 
-    g :: ListSplitD l p (P x' y' : l')
-      -> ListSplitD l' p' (P y' x' : rest)
-      -> PortInList x y (Concat p (Concat p' rest))
-      -> PortInList x y l
+    g :: ListSplitD l p (x' :> y' : l')
+      -> ListSplitD l' p' (y' :> x' : rest)
+      -> InList (Concat p (Concat p' rest)) xy
+      -> InList l xy
     g p p' c = case (listSplitConcat p, listSplitConcat p') of
         (Refl, Refl) -> let
           (pInv, pInv') = listSplitSuff2 p p'

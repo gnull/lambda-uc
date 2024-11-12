@@ -83,10 +83,10 @@ data Exec ach m (i :: InitStatus) where
            -> Exec l m st
            -> Exec (Concat p (s : Concat p' (f:rest))) m st
   -- |Link two adjacent free ports of a given execution (making them bound).
-  ExecLink :: ListSplitD l p (P x y : l')
-           -- ^ Proof of @l == p ++ [P x y] ++ l'@
-           -> ListSplitD l' p' (P y x : rest)
-           -- ^ Proof of @l' == p' ++ [P y x] ++ rest@
+  ExecLink :: ListSplitD l p (x :> y : l')
+           -- ^ Proof of @l == p ++ [x :> y] ++ l'@
+           -> ListSplitD l' p' (y :> x : rest)
+           -- ^ Proof of @l' == p' ++ [y :> x] ++ rest@
            -> Exec l m st
            -- ^Exectuion where we want to link the ports
            -> Exec (Concat p (Concat p' rest)) m st
@@ -248,9 +248,9 @@ forkRight :: ( InitStatusComp st st'
                            ()
 forkRight = forkRight' getInitStatusCompD getKnownLenPrf
 
-link :: ListSplitD l p (P x y : l')
+link :: ListSplitD l p (x :> y : l')
         -- ^ Proof of @l == p ++ [(x, y)] ++ l'@
-        -> ListSplitD l' p' (P y x : rest)
+        -> ListSplitD l' p' (y :> x : rest)
         -- ^ Proof of @l' == p' ++ [(y, x)] ++ rest@
         -> ExecBuilder m (ExecIndexSome l st) (ExecIndexSome (Concat p (Concat p' rest)) st) ()
 link prf prf' = ExecBuilder $ add $ ExecLink prf prf'

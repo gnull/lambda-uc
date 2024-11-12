@@ -11,14 +11,14 @@ module LUCk.UC.Core where
 import LUCk.Syntax
 import LUCk.Types
 
-type OnlySendPort a = P a Void
-type OnlyRecvPort a = P Void a
+type OnlySendPort a = a :> Void
+type OnlyRecvPort a = Void :> a
 type PingSendPort = OnlySendPort ()
 type PingRecvPort = OnlyRecvPort ()
 
 type Marked :: Type -> Port -> Port
 type family Marked u c where
-  Marked u p = P (u, PortTxType p) (u, PortRxType p)
+  Marked u p = (u, PortTxType p) :> (u, PortRxType p)
 
 type MapMarked :: Type -> [Port] -> [Port]
 type family MapMarked u l where
@@ -93,7 +93,7 @@ instance Ord (HList SomeOrd l) where
 -- - @up@ interface to its callers,
 -- - @down@ interfaces to its subroutines,
 -- - a single `PingSendPort` interface to yield control to the environment.
-type Proto up down m = AsyncT (PingSendPort : PortSwap up : down) m NextRecv NextRecv Void
+type Proto up down m = AsyncT (PingSendPort : PortDual up : down) m NextRecv NextRecv Void
 
 -- |A `Proto` where @up@ and @down@ interfaces are appropriately marked
 -- with ESID and PID values to handle multiple sessions in one process.
@@ -124,7 +124,7 @@ matchZipMapPidMarked :: KnownLenD sids
                   -> ( forall s x y.
                          PortInList (HList SomeOrd '[Pid, s], x) (HList SomeOrd '[Pid, s], y)
                                     (ZipMapPidMarked sids down)
-                      -> P (HList SomeOrd '[Pid, s], x) (HList SomeOrd '[Pid, s], y) :~: p
+                      -> (HList SomeOrd '[Pid, s], x) :> (HList SomeOrd '[Pid, s], y) :~: p
                       -> a
                      )
                   -> a
@@ -139,7 +139,7 @@ matchZipMarked :: KnownLenD sids
                -> InList (ZipMarked sids down) p
                -> ( forall s x y.
                       PortInList (SomeOrd s, x) (SomeOrd s, y) (ZipMarked sids down)
-                   -> P (SomeOrd s, x) (SomeOrd s, y) :~: p
+                   -> (SomeOrd s, x) :> (SomeOrd s, y) :~: p
                    -> a
                   )
                -> a
@@ -156,7 +156,7 @@ matchPidSidIfaceList :: forall rest sids down p a.
                   -> ( forall s x y.
                          PortInList (HList SomeOrd (Pid:s:rest), x) (HList SomeOrd (Pid:s:rest), y)
                                     (PidSidIfaceList rest sids down)
-                      -> P (HList SomeOrd (Pid:s:rest), x) (HList SomeOrd (Pid:s:rest), y) :~: p
+                      -> (HList SomeOrd (Pid:s:rest), x) :> (HList SomeOrd (Pid:s:rest), y) :~: p
                       -> a
                      )
                   -> a
@@ -173,7 +173,7 @@ matchSidIfaceList :: forall rest sids down p a.
                   -> ( forall s x y.
                          PortInList (HList SomeOrd (s:rest), x) (HList SomeOrd (s:rest), y)
                                     (SidIfaceList rest sids down)
-                      -> P (HList SomeOrd (s:rest), x) (HList SomeOrd (s:rest), y) :~: p
+                      -> (HList SomeOrd (s:rest), x) :> (HList SomeOrd (s:rest), y) :~: p
                       -> a
                      )
                   -> a

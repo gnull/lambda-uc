@@ -62,31 +62,31 @@ threeSum x y z =
 threeSumWriter :: Int -> Int -> Int -> ExecBuilder PrAlgo ExecIndexInit (ExecIndexSome '[] (InitPresent Int)) ()
 threeSumWriter x y z = M.do
   process $ receiver2 x
-  execGuard @'[P Int Void, P Void Int]
+  execGuard @'[Int :> Void, Void :> Int]
   forkLeft $
     process $ receiver2 y
-  execGuard @'[P Int Void, P Void Int, P Int Void, P Void Int]
+  execGuard @'[Int :> Void, Void :> Int, Int :> Void, Void :> Int]
   link Split1 Split0
-  execGuard @'[P Int Void, P Void Int]
+  execGuard @'[Int :> Void, Void :> Int]
   forkLeft  $
     process $ sender2 z
-  execGuard @'[P Int Void, P Void Int, P Int Void, P Void Int]
+  execGuard @'[Int :> Void, Void :> Int,  Int :> Void, Void :> Int]
   link Split1 Split0
-  execGuard @'[P Int Void, P Void Int]
+  execGuard @'[Int :> Void, Void :> Int]
   link Split0 Split0
 
-sender :: Int -> AsyncT '[P Int Int] PrAlgo NextSend NextSend Int
+sender :: Int -> AsyncT '[Int :> Int] PrAlgo NextSend NextSend Int
 sender x = M.do
   sendOne x
   recvOne
 
-receiver :: Int -> AsyncT '[P Int Int] PrAlgo NextRecv NextRecv Void
+receiver :: Int -> AsyncT '[Int :> Int] PrAlgo NextRecv NextRecv Void
 receiver x = M.do
   m <- recvOne
   sendOne $ m + x
   receiver x
 
-sender2 :: Int -> AsyncT '[P Int Void, P Void Int] PrAlgo NextSend NextSend Int
+sender2 :: Int -> AsyncT '[Int :> Void, Void :> Int] PrAlgo NextSend NextSend Int
 sender2 x = M.do
   send Here x
   recvAny >>=: \case
@@ -94,7 +94,7 @@ sender2 x = M.do
     SomeRxMess (There Here) m -> xreturn m
     SomeRxMess (There2 contra) _ -> case contra of {}
 
-receiver2 :: Int -> AsyncT '[P Int Void, P Void Int] PrAlgo NextRecv NextRecv Void
+receiver2 :: Int -> AsyncT '[Int :> Void, Void :> Int] PrAlgo NextRecv NextRecv Void
 receiver2 x = M.do
   m <- recvAny >>=: \case
     SomeRxMess Here contra -> case contra of {}
@@ -114,13 +114,13 @@ receiver2 x = M.do
 --
 -- - Polymorphic monad
 guessingChallenger :: (MonadRand m, MonadWriter Log m)
-                   => AsyncT '[P Ordering Integer] m NextRecv NextRecv Void
+                   => AsyncT '[Ordering :> Integer] m NextRecv NextRecv Void
 guessingChallenger =  M.do
     secret <- rangeDist 0 100
     debugPrint $ "challenger picked secret " ++ show secret
     helper secret
   where
-    helper :: MonadWriter Log m => Integer -> AsyncT '[P Ordering Integer] m NextRecv NextRecv Void
+    helper :: MonadWriter Log m => Integer -> AsyncT '[Ordering :> Integer] m NextRecv NextRecv Void
     helper secret = M.do
       guess <- recvOne
       let res = secret `compare` guess
@@ -133,7 +133,7 @@ guessingChallenger =  M.do
 -- - ensuring that player is deterministic
 -- - using undefined to mark conditions that are not considered (assumed to never occur)
 guessingPlayer :: MonadWriter Log m
-               => AsyncT '[P Integer Ordering] m NextSend NextSend Integer
+               => AsyncT '[Integer :> Ordering] m NextSend NextSend Integer
 guessingPlayer = M.do
     n <- helper 0 100
     debugPrint $ "found result in " ++ show n ++ " attempts"
@@ -142,7 +142,7 @@ guessingPlayer = M.do
     helper :: MonadWriter Log m
            => Integer
            -> Integer
-           -> AsyncT '[P Integer Ordering] m NextSend NextSend Integer
+           -> AsyncT '[Integer :> Ordering] m NextSend NextSend Integer
     helper f t
       | f >= t = undefined
       | f == t - 1 = xreturn 0
@@ -164,7 +164,7 @@ guessingExec = M.do
   link Split0 Split0
 
 -- |Sends String s to the given port, waits for the other side to repond with
-test :: String -> AsyncT '[P String Int] m NextSend NextSend Int
+test :: String -> AsyncT '[String :> Int] m NextSend NextSend Int
 test s = M.do
   send Here s
   recvAny >>=: \case
@@ -208,7 +208,7 @@ useMaybeSends port = M.do
 --
 -- This is not a basic combinator and is derived using `fork` and `link`.
 linkSelf :: forall m x st rest. (Monad m, KnownInitStatus st) =>
-   ExecBuilder m (ExecIndexSome (P x x : rest) st) (ExecIndexSome rest st) ()
+   ExecBuilder m (ExecIndexSome (x :> x : rest) st) (ExecIndexSome rest st) ()
 linkSelf = M.do
     lemma >>=: \case
       Refl -> M.do
@@ -223,7 +223,7 @@ linkSelf = M.do
 
 -- |Process that sends back everything it gets
 idProc :: Monad m
-       => AsyncT '[P x x] m NextRecv NextRecv Void
+       => AsyncT '[x :> x] m NextRecv NextRecv Void
 idProc = M.do
   recvOne >>=: sendOne
   idProc
@@ -232,7 +232,7 @@ idProc = M.do
 --
 -- Any message that arrives on the merged ports is passed as is with no
 -- marking to tell what port it came from.
-mergeProc :: AsyncT '[P a Void, P Void a, P Void a] m NextRecv NextRecv Void
+mergeProc :: AsyncT '[a :> Void, Void :> a, Void :> a] m NextRecv NextRecv Void
 mergeProc = M.do
   () <- recvAny >>=: \case
     SomeRxMess Here contra -> case contra of {}
@@ -241,13 +241,13 @@ mergeProc = M.do
     SomeRxMess (There3 contra) _ -> case contra of {}
   mergeProc
 
-pingServe :: String -> AsyncT '[P String ()] m NextRecv NextRecv Void
+pingServe :: String -> AsyncT '[String :> ()] m NextRecv NextRecv Void
 pingServe hello = M.do
   () <- recvOne
   sendOne hello
   pingServe hello
 
-pingRequest :: AsyncT '[P () String] m NextSend NextSend String
+pingRequest :: AsyncT '[() :> String] m NextSend NextSend String
 pingRequest = M.do
   sendOne ()
   recvOne
@@ -262,15 +262,15 @@ pingExecBuilder = M.do
 pingExecBuilder' :: ExecBuilder m ExecIndexInit (ExecIndexSome '[] (InitPresent String)) ()
 pingExecBuilder' = M.do
   process $ pingServe "hey"
-  execGuard @'[P String ()] @InitAbsent
+  execGuard @'[String :> ()] @InitAbsent
   -- ^One unlinked port, no initial process
   forkLeft $ M.do
     process pingRequest
-    execGuard @'[P () String]
+    execGuard @'[() :> String]
     -- ^One channel present
   execGuard @_ @(InitPresent String)
   -- ^Initial process with String result present
-  execGuard @'[P String (), P () String]
+  execGuard @'[String :> (), () :> String]
   -- ^Two unlinked ports
   link SplitHere SplitHere
 

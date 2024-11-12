@@ -181,7 +181,7 @@ sendMess :: SomeTxMess ports -> AsyncT ports m NextSend NextRecv ()
 sendMess m = xfreeAsync $ SendAction m ()
 
 -- |Curried version of `sendMess`.
-send :: PortInList x y ports -> x -> AsyncT ports m NextSend NextRecv ()
+send :: InList ports p -> PortTxType p -> AsyncT ports m NextSend NextRecv ()
 send i m = sendMess $ SomeTxMess i m
 
 -- |Receive the next message which can arrive from any of `port` ports.
@@ -211,13 +211,13 @@ asyncGuard _ = xreturn ()
 --
 -- Some convenient shorthand operations built from basic ones.
 
-recvOne :: AsyncT '[P x y] m NextRecv NextSend y
+recvOne :: AsyncT '[x :> y] m NextRecv NextSend y
 recvOne = M.do
   recvAny >>=: \case
     SomeRxMess Here m -> xpure m
     SomeRxMess (There contra) _ -> case contra of {}
 
-sendOne :: x -> AsyncT '[P x y] m NextSend NextRecv ()
+sendOne :: x -> AsyncT '[x :> y] m NextSend NextRecv ()
 sendOne = send Here
 
 -- -- |An exception thrown if a message does not arrive from the expected sender.

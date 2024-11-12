@@ -49,7 +49,7 @@ type OracleCaller m down = SyncT down m
 -- |An algorithm serving oracle calls from parent, but not having access to
 -- any oracles of its own.
 type Oracle (m :: Type -> Type) (up :: Port) =
-  AsyncT '[P (PortRxType up) (OracleReq (PortTxType up))] m NextRecv NextSend
+  AsyncT '[PortRxType up :> OracleReq (PortTxType up)] m NextRecv NextSend
 
 -- |Version of `Oracle` that's wrapped in newtype, convenient for use with `HList2`.
 newtype OracleWrapper (m :: Type -> Type) (up :: Port) (ret :: Type) =
@@ -93,8 +93,8 @@ runWithOracles = \top bot -> Trans.lift (runTillCall top) >>= \case
       runWithOracles (cont r) bot'
   where
     oracleCall :: x
-               -> OracleWrapper m (P x y) s
-               -> MaybeT m (OracleWrapper m (P x y) s, y)
+               -> OracleWrapper m (x :> y) s
+               -> MaybeT m (OracleWrapper m (x :> y) s, y)
     oracleCall m (OracleWrapper bot) = Trans.lift (runTillRecv bot) >>= \case
       RrRecv cont -> Trans.lift (runTillSend $ cont $ SomeRxMess Here (OracleReq m)) >>= \case
         SrHalt _ -> mzero
@@ -121,17 +121,17 @@ runWithOracles = \top bot -> Trans.lift (runTillCall top) >>= \case
 
 -- |Version of `runWithOracles` that accepts only one oracle
 runWithOracles1 :: Monad m
-                => OracleCaller m '[P x y] a
-                -> OracleWrapper m (P x y) b
+                => OracleCaller m '[x :> y] a
+                -> OracleWrapper m (x :> y) b
                 -> MaybeT m (a, b)
 runWithOracles1 top bot = runWithOracles top (HList2Match1 bot) <&>
   \(a, HListMatch1 (Identity b)) -> (a, b)
 
 -- |Version of `runWithOracles` that accepts two oracles
 runWithOracles2 :: Monad m
-                => OracleCaller m '[P x y, P x' y'] a
-                -> OracleWrapper m (P x y) b
-                -> OracleWrapper m (P x' y') b'
+                => OracleCaller m '[x :> y, x' :> y'] a
+                -> OracleWrapper m (x :> y) b
+                -> OracleWrapper m (x' :> y') b'
                 -> MaybeT m (a, b, b')
 runWithOracles2 top bot bot' = runWithOracles top (HList2Match2 bot bot') <&>
   \(a, HListMatch2 (Identity b) (Identity b')) -> (a, b, b')

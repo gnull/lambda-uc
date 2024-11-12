@@ -18,12 +18,12 @@ multiSidIdealShell :: forall sid x y sids down m rest.
                  Monad m
               => KnownLenD sids
               -> SameLenD sids down
-              -> (sid -> SingleSidIdeal (P x y) sids down m)
-              -> MultSidIdeal rest sid (P x y) sids down m
+              -> (sid -> SingleSidIdeal (x :> y) sids down m)
+              -> MultSidIdeal rest sid (x :> y) sids down m
 multiSidIdealShell len lenPrf impl = helper Map.empty
   where
-    helper :: Map.Map (HList SomeOrd (sid:rest)) (SingleSidIdeal (P x y) sids down m)
-           -> MultSidIdeal rest sid (P x y) sids down m
+    helper :: Map.Map (HList SomeOrd (sid:rest)) (SingleSidIdeal (x :> y) sids down m)
+           -> MultSidIdeal rest sid (x :> y) sids down m
     helper m = M.do
       m' <- recvAny >>=: \case
         SomeRxMess Here contra -> case contra of {}
@@ -50,8 +50,8 @@ multiSidIdealShell len lenPrf impl = helper Map.empty
       helper m'
 
     handleResp :: HList SomeOrd (sid:rest)
-               -> SomeTxMess (PingSendPort : Marked Pid (P y x) : ZipMapPidMarked sids down)
-               -> AsyncT (PingSendPort : PidSidIface (sid:rest) (P y x) : PidSidIfaceList (sid:rest) sids down)
+               -> SomeTxMess (PingSendPort : Marked Pid (y :> x) : ZipMapPidMarked sids down)
+               -> AsyncT (PingSendPort : PidSidIface (sid:rest) (y :> x) : PidSidIfaceList (sid:rest) sids down)
                          m NextSend NextRecv ()
     handleResp k = \case
       SomeTxMess Here () ->
@@ -95,7 +95,7 @@ multiSidIdealShell len lenPrf impl = helper Map.empty
           SameLenCons k -> There $ sidIfaceListToZipMapMarked i j k
 
 spawnOnDemand :: forall l ports m. (Ord l, Monad m)
-              => PortsLenD ports
+              => KnownLenD ports
               -> (l -> AsyncT ports m NextRecv NextRecv Void)
               -> AsyncT (MapMarked l ports) m NextRecv NextRecv Void
 spawnOnDemand n impl = helper Map.empty
@@ -114,19 +114,19 @@ spawnOnDemand n impl = helper Map.empty
              -> SomeTxMess (MapMarked l ports')
     wrapMess l (SomeTxMess i m) = SomeTxMess (wrapInList i) (l, m)
 
-    wrapInList :: PortInList x y ports'
-               -> PortInList (l, x) (l, y) (MapMarked l ports')
+    wrapInList :: InList ports' p
+               -> InList (MapMarked l ports') (Marked l p)
     wrapInList = \case
       Here -> Here
       There i' -> There $ wrapInList i'
 
     unwrapMess :: forall ports'.
-                  PortsLenD ports'
+                  KnownLenD ports'
                -> SomeRxMess (MapMarked l ports')
                -> (l, SomeRxMess ports')
     unwrapMess = \case
-      PortsLenZ -> \(SomeRxMess contra _) -> case contra of {}
-      PortsLenS n -> \(SomeRxMess i lm) -> case i of
+      KnownLenZ -> \(SomeRxMess contra _) -> case contra of {}
+      KnownLenS n -> \(SomeRxMess i lm) -> case i of
         Here -> let (l, m) = lm in (l, SomeRxMess Here m)
         There i' -> second someRxMessThere $ unwrapMess n $ SomeRxMess i' lm
 
@@ -138,12 +138,12 @@ multiSidRealShell :: forall sid x y sids down m rest.
                  Monad m
               => KnownLenD sids
               -> SameLenD sids down
-              -> (Pid -> sid -> SingleSidReal (P x y) sids down m)
-              -> Pid -> MultSidReal rest sid (P x y) sids down m
+              -> (Pid -> sid -> SingleSidReal (x :> y) sids down m)
+              -> Pid -> MultSidReal rest sid (x :> y) sids down m
 multiSidRealShell len lenPrf impl pid = helper Map.empty
   where
-    helper :: Map.Map (HList SomeOrd (sid:rest)) (SingleSidReal (P x y) sids down m)
-           -> MultSidReal rest sid (P x y) sids down m
+    helper :: Map.Map (HList SomeOrd (sid:rest)) (SingleSidReal (x :> y) sids down m)
+           -> MultSidReal rest sid (x :> y) sids down m
     helper m = M.do
       m' <- recvAny >>=: \case
         SomeRxMess Here contra -> case contra of {}
@@ -169,8 +169,8 @@ multiSidRealShell len lenPrf impl pid = helper Map.empty
       helper m'
 
     handleResp :: HList SomeOrd (sid:rest)
-               -> SomeTxMess (PingSendPort : (P y x) : ZipMarked sids down)
-               -> AsyncT (PingSendPort : SidIface (sid:rest) (P y x) : SidIfaceList (sid:rest) sids down)
+               -> SomeTxMess (PingSendPort : y :> x : ZipMarked sids down)
+               -> AsyncT (PingSendPort : SidIface (sid:rest) (y :> x) : SidIfaceList (sid:rest) sids down)
                          m NextSend NextRecv ()
     handleResp k = \case
       SomeTxMess Here () ->
