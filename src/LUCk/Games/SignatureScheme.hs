@@ -17,11 +17,6 @@ import Control.Monad (MonadPlus(..))
 
 import LUCk.Games.Common
 
-type SigAlgo :: Bool -> Type -> Type
-type family SigAlgo ra where
-  SigAlgo True = PrAlgo
-  SigAlgo False = Identity
-
 data SignatureScheme sk pk mes sig = SignatureScheme
   { sigKey :: forall m. MonadRand m => m (sk, pk)
   , sigSign :: forall m. MonadRand m => sk -> mes -> m sig
@@ -30,7 +25,7 @@ data SignatureScheme sk pk mes sig = SignatureScheme
 
 type SpSignatureScheme sk pk mes sig = Integer -> SignatureScheme sk pk mes sig
 
-type AdvAlgo pk mes sig = pk -> OracleCaller (SigAlgo True) '[mes :> sig] (mes, sig)
+type AdvAlgo pk mes sig = pk -> OracleCaller '[mes :> sig] (mes, sig)
 type SpAdvAlgo pk mes sig = Integer -> AdvAlgo pk mes sig
 
 -- |Existential Unforgeability under Chosen Message Attack, EU-CMA
@@ -41,7 +36,7 @@ gameEuCma :: Eq mes
           -- ^Signature scheme
           -> SpAdvAlgo pk mes sig
           -- ^Adversary
-          -> SigAlgo True Bool
+          -> PrAlgo Bool
 gameEuCma sec sch adv = do
   let sch' = sch sec
   (sk, pk) <- sigKey sch'

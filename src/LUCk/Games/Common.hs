@@ -6,7 +6,7 @@ import LUCk.Syntax.Async
 import LUCk.Syntax.Sync.Eval
 
 import Control.XMonad
-import Control.XMonad.Trans
+-- import Control.XMonad.Trans
 import Control.Monad.Free
 -- import Control.XFreer.Join
 import qualified Control.XMonad.Do as M
@@ -18,9 +18,8 @@ import Control.Monad (MonadPlus(..))
 -- |Oracle that computes the given monadic function upon request. When
 -- requested to terminate, returns the list of all request-response pairs it
 -- got.
-oracleMapM :: (Monad m)
-           => (a -> m b)
-           -> OracleWrapper m (a :> b) [(a, b)]
+oracleMapM :: (a -> PrAlgo b)
+           -> OracleWrapper (a :> b) [(a, b)]
 oracleMapM f = OracleWrapper $ M.do
   recvOne >>=: \case
     OracleReqHalt -> xreturn []

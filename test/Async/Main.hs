@@ -27,29 +27,27 @@ main = defaultMain tests
 tests :: TestTree
 tests = testGroup "async execution tests"
   [ testCase "round trip 2 processes" $
-      toIO (runExec $ twoSum 10 1) >>= (@?= 11)
+      runIO (runExec $ twoSum 10 1) >>= (@?= 11)
   , testCase "round trip 3 processes" $
-      toIO (runExec $ threeSum 100 10 1) >>= (@?= 111)
+      runIO (runExec $ threeSum 100 10 1) >>= (@?= 111)
   , testCase "round trip 3 processes, monadic notation" $
-      toIO (runExec $ runExecBuilder $ threeSumWriter 100 10 1) >>= (@?= 111)
+      runIO (runExec $ runExecBuilder $ threeSumWriter 100 10 1) >>= (@?= 111)
   , testCase "guessing game" $
-      writerTtoIO (fmap (<= 7) $ runExec $ runExecBuilder guessingExec) >>= (@?= True)
+      runIO (fmap (<= 7) $ runExec $ runExecBuilder guessingExec) >>= (@?= True)
   , testCase "pingExecBuilder" $
-      toIO (runExec $ pingExec') >>= (@?= "hey")
+      runIO (runExec $ pingExec') >>= (@?= "hey")
   ]
 
 type Log = [String]
 
-debugPrint x = tell [x]
-
-twoSum :: Int -> Int -> Exec '[] PrAlgo (InitPresent Int)
+twoSum :: Int -> Int -> Exec '[] (InitPresent Int)
 twoSum x y =
   ExecLink Split0 Split0 $
   ExecFork getInitStatusCompD getKnownLenPrf
     (ExecProc getInitStatusIndexRetD $ sender x)
     (ExecProc getInitStatusIndexRetD $ receiver y)
 
-threeSum :: Int -> Int -> Int -> Exec '[] PrAlgo (InitPresent Int)
+threeSum :: Int -> Int -> Int -> Exec '[] (InitPresent Int)
 threeSum x y z =
   ExecLink Split0 Split0 $
   ExecLink Split1 Split0 $
@@ -59,7 +57,7 @@ threeSum x y z =
     (ExecProc getInitStatusIndexRetD $ receiver2 y)
     (ExecProc getInitStatusIndexRetD $ receiver2 z)
 
-threeSumWriter :: Int -> Int -> Int -> ExecBuilder PrAlgo ExecIndexInit (ExecIndexSome '[] (InitPresent Int)) ()
+threeSumWriter :: Int -> Int -> Int -> ExecBuilder ExecIndexInit (ExecIndexSome '[] (InitPresent Int)) ()
 threeSumWriter x y z = M.do
   process $ receiver2 x
   execGuard @'[Int :> Void, Void :> Int]
@@ -75,18 +73,18 @@ threeSumWriter x y z = M.do
   execGuard @'[Int :> Void, Void :> Int]
   link Split0 Split0
 
-sender :: Int -> AsyncT '[Int :> Int] PrAlgo NextSend NextSend Int
+sender :: Int -> AsyncT '[Int :> Int] NextSend NextSend Int
 sender x = M.do
   sendOne x
   recvOne
 
-receiver :: Int -> AsyncT '[Int :> Int] PrAlgo NextRecv NextRecv Void
+receiver :: Int -> AsyncT '[Int :> Int] NextRecv NextRecv Void
 receiver x = M.do
   m <- recvOne
   sendOne $ m + x
   receiver x
 
-sender2 :: Int -> AsyncT '[Int :> Void, Void :> Int] PrAlgo NextSend NextSend Int
+sender2 :: Int -> AsyncT '[Int :> Void, Void :> Int] NextSend NextSend Int
 sender2 x = M.do
   send Here x
   recvAny >>=: \case
@@ -94,7 +92,7 @@ sender2 x = M.do
     SomeRxMess (There Here) m -> xreturn m
     SomeRxMess (There2 contra) _ -> case contra of {}
 
-receiver2 :: Int -> AsyncT '[Int :> Void, Void :> Int] PrAlgo NextRecv NextRecv Void
+receiver2 :: Int -> AsyncT '[Int :> Void, Void :> Int] NextRecv NextRecv Void
 receiver2 x = M.do
   m <- recvAny >>=: \case
     SomeRxMess Here contra -> case contra of {}
@@ -113,18 +111,15 @@ receiver2 x = M.do
 --   alternation of `send` and `recvAny`.
 --
 -- - Polymorphic monad
-guessingChallenger :: (MonadRand m, MonadWriter Log m)
-                   => AsyncT '[Ordering :> Integer] m NextRecv NextRecv Void
+guessingChallenger :: AsyncT '[Ordering :> Integer] NextRecv NextRecv Void
 guessingChallenger =  M.do
     secret <- rangeDist 0 100
-    debugPrint $ "challenger picked secret " ++ show secret
     helper secret
   where
-    helper :: MonadWriter Log m => Integer -> AsyncT '[Ordering :> Integer] m NextRecv NextRecv Void
+    helper :: Integer -> AsyncT '[Ordering :> Integer] NextRecv NextRecv Void
     helper secret = M.do
       guess <- recvOne
       let res = secret `compare` guess
-      debugPrint $ "challenger response " ++ show res
       sendOne res
       helper secret
 
@@ -132,23 +127,19 @@ guessingChallenger =  M.do
 --
 -- - ensuring that player is deterministic
 -- - using undefined to mark conditions that are not considered (assumed to never occur)
-guessingPlayer :: MonadWriter Log m
-               => AsyncT '[Integer :> Ordering] m NextSend NextSend Integer
+guessingPlayer :: AsyncT '[Integer :> Ordering] NextSend NextSend Integer
 guessingPlayer = M.do
     n <- helper 0 100
-    debugPrint $ "found result in " ++ show n ++ " attempts"
     xreturn n
   where
-    helper :: MonadWriter Log m
-           => Integer
+    helper :: Integer
            -> Integer
-           -> AsyncT '[Integer :> Ordering] m NextSend NextSend Integer
+           -> AsyncT '[Integer :> Ordering] NextSend NextSend Integer
     helper f t
       | f >= t = undefined
       | f == t - 1 = xreturn 0
       | otherwise = M.do
           let mid = (f + t) `div` 2
-          debugPrint $ "guessing  " ++ show mid
           sendOne mid
           v <- recvOne >>=: \case
             LT -> helper f mid
@@ -156,7 +147,7 @@ guessingPlayer = M.do
             GT -> helper (mid + 1) t
           xreturn $ v + 1
 
-guessingExec :: ExecBuilder (WriterT Log PrAlgo) ExecIndexInit (ExecIndexSome '[] (InitPresent Integer)) ()
+guessingExec :: ExecBuilder ExecIndexInit (ExecIndexSome '[] (InitPresent Integer)) ()
 guessingExec = M.do
   process $ guessingChallenger
   forkLeft $
@@ -164,7 +155,7 @@ guessingExec = M.do
   link Split0 Split0
 
 -- |Sends String s to the given port, waits for the other side to repond with
-test :: String -> AsyncT '[String :> Int] m NextSend NextSend Int
+test :: String -> AsyncT '[String :> Int] NextSend NextSend Int
 test s = M.do
   send Here s
   recvAny >>=: \case
@@ -178,7 +169,7 @@ test s = M.do
 --
 -- 2. Inside @SomeWTM@, wrap each branch where your WT state is fixed in
 -- @decided@.
-maybeSends :: PortInList Bool Bool l -> SomeWT ex l m NextRecv Bool
+maybeSends :: PortInList Bool Bool l -> SomeWT ex l NextRecv Bool
 maybeSends port =
   ContFromAnyWT $ \cont -> M.do
   (SomeRxMess s msg) <- recvAny
@@ -189,7 +180,7 @@ maybeSends port =
     Nothing -> cont False
 
 useMaybeSends :: PortInList Bool Bool ach
-              -> AsyncT ach m NextRecv NextSend (SomeRxMess ach)
+              -> AsyncT ach NextRecv NextSend (SomeRxMess ach)
 useMaybeSends port = M.do
   -- Step #1: pass @maybeSends@ to dispatchSomeWT
   -- Step #2: pass it a continuation that starts from unknown WT state
@@ -207,23 +198,22 @@ useMaybeSends port = M.do
 -- |Link the first port to itself.
 --
 -- This is not a basic combinator and is derived using `fork` and `link`.
-linkSelf :: forall m x st rest. (Monad m, KnownInitStatus st) =>
-   ExecBuilder m (ExecIndexSome (x :> x : rest) st) (ExecIndexSome rest st) ()
+linkSelf :: forall m x st rest. (KnownInitStatus st) =>
+   ExecBuilder (ExecIndexSome (x :> x : rest) st) (ExecIndexSome rest st) ()
 linkSelf = M.do
     lemma >>=: \case
       Refl -> M.do
         forkRight $ process idProc
         link Split0 Split0
   where
-    lemma :: ExecBuilder m (ExecIndexSome l st) (ExecIndexSome l st)
-                           (InitStatusOr InitAbsent st :~: st)
+    lemma :: ExecBuilder (ExecIndexSome l st) (ExecIndexSome l st)
+                         (InitStatusOr InitAbsent st :~: st)
     lemma = execInvariantM >>=: \case
       SomeInitStatusIndexRetD InitStatusIndexRetAbsent -> xreturn Refl
       SomeInitStatusIndexRetD InitStatusIndexRetPresent -> xreturn Refl
 
 -- |Process that sends back everything it gets
-idProc :: Monad m
-       => AsyncT '[x :> x] m NextRecv NextRecv Void
+idProc :: AsyncT '[x :> x] NextRecv NextRecv Void
 idProc = M.do
   recvOne >>=: sendOne
   idProc
@@ -232,7 +222,7 @@ idProc = M.do
 --
 -- Any message that arrives on the merged ports is passed as is with no
 -- marking to tell what port it came from.
-mergeProc :: AsyncT '[a :> Void, Void :> a, Void :> a] m NextRecv NextRecv Void
+mergeProc :: AsyncT '[a :> Void, Void :> a, Void :> a] NextRecv NextRecv Void
 mergeProc = M.do
   () <- recvAny >>=: \case
     SomeRxMess Here contra -> case contra of {}
@@ -241,25 +231,25 @@ mergeProc = M.do
     SomeRxMess (There3 contra) _ -> case contra of {}
   mergeProc
 
-pingServe :: String -> AsyncT '[String :> ()] m NextRecv NextRecv Void
+pingServe :: String -> AsyncT '[String :> ()] NextRecv NextRecv Void
 pingServe hello = M.do
   () <- recvOne
   sendOne hello
   pingServe hello
 
-pingRequest :: AsyncT '[() :> String] m NextSend NextSend String
+pingRequest :: AsyncT '[() :> String] NextSend NextSend String
 pingRequest = M.do
   sendOne ()
   recvOne
 
-pingExecBuilder :: ExecBuilder m ExecIndexInit (ExecIndexSome '[] (InitPresent String)) ()
+pingExecBuilder :: ExecBuilder ExecIndexInit (ExecIndexSome '[] (InitPresent String)) ()
 pingExecBuilder = M.do
   process $ pingServe "hey"
   forkLeft $ M.do
     process pingRequest
   link SplitHere SplitHere
 
-pingExecBuilder' :: ExecBuilder m ExecIndexInit (ExecIndexSome '[] (InitPresent String)) ()
+pingExecBuilder' :: ExecBuilder ExecIndexInit (ExecIndexSome '[] (InitPresent String)) ()
 pingExecBuilder' = M.do
   process $ pingServe "hey"
   execGuard @'[String :> ()] @InitAbsent
@@ -274,5 +264,5 @@ pingExecBuilder' = M.do
   -- ^Two unlinked ports
   link SplitHere SplitHere
 
-pingExec' :: Exec '[] m (InitPresent String)
+pingExec' :: Exec '[] (InitPresent String)
 pingExec' = runExecBuilder pingExecBuilder

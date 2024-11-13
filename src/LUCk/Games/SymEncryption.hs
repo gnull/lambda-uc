@@ -8,7 +8,7 @@ import LUCk.Syntax.Async
 import LUCk.Syntax.Sync.Eval
 
 import Control.XMonad
-import Control.XMonad.Trans
+-- import Control.XMonad.Trans
 import Control.XFreer.Join
 import qualified Control.XMonad.Do as M
 
@@ -39,7 +39,7 @@ data EncDecResp mes ciph = EncResp ciph | DecResp mes | RespError
 type EncDecIface mes ciph = EncDecReq mes ciph :> EncDecResp mes ciph
 
 type AdvAlgo mes ciph
-  = OracleCaller PrAlgo '[ EncDecIface mes ciph ] Bool
+  = OracleCaller '[ EncDecIface mes ciph ] Bool
 
 advantageIndCca2 :: forall key mes ciph s. (UniformDist mes, Default s)
                  => Integer
@@ -98,7 +98,7 @@ advantageIndCca3 sec sch adv = pr real - pr bogus
 oracleEncDec :: SymEncryptionScheme key mes ciph s
              -> key
              -> s
-             -> Oracle PrAlgo (EncDecIface mes ciph) ()
+             -> Oracle (EncDecIface mes ciph) ()
 oracleEncDec sch' k s = M.do
   recvOne >>=: \case
     OracleReqHalt -> xreturn ()
@@ -119,7 +119,7 @@ oracleEncRandNoDec :: UniformDist mes
                    => SymEncryptionScheme key mes ciph s
                    -> key
                    -> s
-                   -> Oracle PrAlgo (EncDecIface mes ciph) ()
+                   -> Oracle (EncDecIface mes ciph) ()
 oracleEncRandNoDec sch' k s = M.do
   recvOne >>=: \case
     OracleReqHalt -> xreturn ()
@@ -138,7 +138,7 @@ oracleEncRandDec :: UniformDist mes
                  => SymEncryptionScheme key mes ciph s
                  -> key
                  -> s
-                 -> Oracle PrAlgo (EncDecIface mes ciph) ()
+                 -> Oracle (EncDecIface mes ciph) ()
 oracleEncRandDec sch' k s = M.do
   recvOne >>=: \case
     OracleReqHalt -> xreturn ()

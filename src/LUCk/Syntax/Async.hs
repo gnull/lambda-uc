@@ -20,6 +20,7 @@ module LUCk.Syntax.Async (
   , send
   , sendMess
   , recvAny
+  , xlift
   , asyncGetIndex
   , asyncGuard
   -- $derived
@@ -38,7 +39,7 @@ module LUCk.Syntax.Async (
   -- $lemmas
   , mayOnlyRecvVoidPrf
   , mayOnlySendVoidPrf
-  , toMonadRandAsyncT
+  -- , toMonadRandAsyncT
 ) where
 
 -- import Prelude hiding ((>>=), return)
@@ -48,7 +49,7 @@ import Control.XFreer.Join
 import Control.XApplicative
 import Control.XMonad
 import qualified Control.XMonad.Do as M
-import Control.XMonad.Trans
+-- import Control.XMonad.Trans
 -- import qualified Control.XMonad.Do as M
 
 import qualified LUCk.Syntax.PrAlgo as L
@@ -67,21 +68,21 @@ import LUCk.Types
 
 -- |@bef@ and @aft@ are the states before and after the given action. The
 -- meaning of possible states is as follows:
-data AsyncActions (ach :: [Port]) (m :: Type -> Type)
+data AsyncActions (ach :: [Port])
                   (bef :: Index) (aft :: Index) (a :: Type) where
   -- |Receive a message from some channel
   RecvAction :: (SomeRxMess ach -> a)
-             -> AsyncActions ach m NextRecv NextSend a
+             -> AsyncActions ach NextRecv NextSend a
   -- |Send a message to the chosen channel
   SendAction :: SomeTxMess ach
              -> a
-             -> AsyncActions ach m NextSend NextRecv a
+             -> AsyncActions ach NextSend NextRecv a
   -- |Run a local action in the inner monad.
-  LiftAction :: m x
+  LiftAction :: L.PrAlgo x
              -> (x -> a)
-             -> AsyncActions ach m b b a
+             -> AsyncActions ach b b a
 
-instance Functor (AsyncActions ach m bef aft) where
+instance Functor (AsyncActions ach bef aft) where
   fmap f (RecvAction cont) = RecvAction $ f . cont
   fmap f (SendAction m r) = SendAction m $ f r
   fmap f (LiftAction m cont) = LiftAction m $ f . cont
@@ -108,61 +109,42 @@ instance Functor (AsyncActions ach m bef aft) where
 -- `recvAny`. Any asyncronous algorithm will alternate between `send` and
 -- `recvAny` some number of times, until it terminates. Such algorithm's
 -- indices tell which of the two operations must be first and last.
-newtype AsyncT ach m bef aft a
-    = AsyncT { runInterT :: XFree (AsyncActions ach m) bef aft a }
+newtype AsyncT ach bef aft a
+    = AsyncT { runInterT :: XFree (AsyncActions ach) bef aft a }
   deriving (Functor)
 
-instance bef ~ aft => Applicative (AsyncT ach m bef aft) where
+instance bef ~ aft => Applicative (AsyncT ach bef aft) where
   f <*> m = AsyncT $ runInterT f <*> runInterT m
   pure = AsyncT . pure
 
-instance bef ~ aft => Monad (AsyncT ach m bef aft) where
+instance bef ~ aft => Monad (AsyncT ach bef aft) where
   m >>= f = AsyncT $ runInterT m Monad.>>= (runInterT . f)
 
-instance XApplicative (AsyncT ach m) where
+instance XApplicative (AsyncT ach) where
   xpure = AsyncT . xpure
   f <*>: x = AsyncT $ runInterT f <*>: runInterT x
 
-instance XMonad (AsyncT ach m) where
+instance XMonad (AsyncT ach) where
   m >>=: f = AsyncT $ runInterT m >>=: (runInterT . f)
+
+instance L.MonadRand (AsyncT ports i i) where
+  rand = xlift L.rand
 
 -- |Interactive action with no free ports can be interpreted as local.
 --
 -- Apply this function once you've bound all the free ports to run the execution.
-escapeAsyncT :: Monad m
-            => AsyncT '[] m NextSend NextSend a
-            -> m a
+escapeAsyncT :: AsyncT '[] NextSend NextSend a
+             -> L.PrAlgo a
 escapeAsyncT cont = runTillSend cont >>= \case
   SrSend (SomeTxMess contra _) _ -> case contra of {}
   SrHalt res -> pure res
 
-xfreeAsync :: AsyncActions ach m bef aft a -> AsyncT ach m bef aft a
+xfreeAsync :: AsyncActions ach bef aft a -> AsyncT ach bef aft a
 xfreeAsync = AsyncT . xfree
 
-instance XMonadTrans (AsyncT ach) where
-  xlift m = xfreeAsync $ LiftAction m id
-
--- xthrow :: InList ex '(e, b) -> e -> AsyncT ex ach m b b' a
--- xthrow i ex = xfreeAsync $ ThrowAction i ex
-
--- xcatch :: AsyncT ex ach m bef aft a
---       -- ^The computation that may throw an exception
---       -> (forall e b. InList ex '(e, b) -> e -> AsyncT ex' ach m b aft a)
---       -- ^How to handle the exception
---       -> AsyncT ex' ach m bef aft a
--- xcatch (AsyncT a) h = AsyncT $ xcatch' a $ \i e -> runInterT (h i e)
---   where
---     xcatch' :: XFree (AsyncActions ex ach m) bef aft a
---             -> (forall e b. InList ex '(e, b) -> e -> XFree (AsyncActions ex' ach m) b aft a)
---             -> XFree (AsyncActions ex' ach m) bef aft a
---     xcatch' (Pure x) _ = xreturn x
---     xcatch' (Join a') h' = case a' of
---         RecvAction cont -> Join $ RecvAction $ (`xcatch'` h') . cont
---         SendAction x r -> Join $ SendAction x $ r `xcatch'` h'
---         ThrowAction i e -> h' i e
---         LiftAction m cont -> Join $ LiftAction m $ (`xcatch'` h') . cont
-
-
+-- instance XMonadTrans (AsyncT ach) where
+xlift :: L.PrAlgo a -> AsyncT ports i i a
+xlift m = xfreeAsync $ LiftAction m id
 
 -- $async
 --
@@ -177,15 +159,15 @@ instance XMonadTrans (AsyncT ach) where
 -- time.
 
 -- |Send a message to the port it is marked with.
-sendMess :: SomeTxMess ports -> AsyncT ports m NextSend NextRecv ()
+sendMess :: SomeTxMess ports -> AsyncT ports NextSend NextRecv ()
 sendMess m = xfreeAsync $ SendAction m ()
 
 -- |Curried version of `sendMess`.
-send :: InList ports p -> PortTxType p -> AsyncT ports m NextSend NextRecv ()
+send :: InList ports p -> PortTxType p -> AsyncT ports NextSend NextRecv ()
 send i m = sendMess $ SomeTxMess i m
 
 -- |Receive the next message which can arrive from any of `port` ports.
-recvAny :: AsyncT ports m NextRecv NextSend (SomeRxMess ports)
+recvAny :: AsyncT ports NextRecv NextSend (SomeRxMess ports)
 recvAny = xfreeAsync $ RecvAction id
 
 -- $derived
@@ -211,13 +193,13 @@ asyncGuard _ = xreturn ()
 --
 -- Some convenient shorthand operations built from basic ones.
 
-recvOne :: AsyncT '[x :> y] m NextRecv NextSend y
+recvOne :: AsyncT '[x :> y] NextRecv NextSend y
 recvOne = M.do
   recvAny >>=: \case
     SomeRxMess Here m -> xpure m
     SomeRxMess (There contra) _ -> case contra of {}
 
-sendOne :: x -> AsyncT '[x :> y] m NextSend NextRecv ()
+sendOne :: x -> AsyncT '[x :> y] NextSend NextRecv ()
 sendOne = send Here
 
 -- -- |An exception thrown if a message does not arrive from the expected sender.
@@ -260,38 +242,36 @@ sendOne = send Here
 -- Interactive Turing Machine.
 
 -- |The result of `runTillSend`
-data SendRes ach m aft a where
+data SendRes ach aft a where
   -- |Algorithm called `send`.
   SrSend :: SomeTxMess ach
-         -> AsyncT ach m NextRecv aft a
-         -> SendRes ach m aft a
+         -> AsyncT ach NextRecv aft a
+         -> SendRes ach aft a
   -- |Algorithm called `sendFinal`.
-  SrHalt :: a -> SendRes ach m NextSend a
+  SrHalt :: a -> SendRes ach NextSend a
 
 -- |Given `AsyncT` action starting in `NextSend` state (holding write token),
 -- run it until it does `send` or halts.
-runTillSend :: Monad m
-            => AsyncT ach m NextSend b a
-            -> m (SendRes ach m b a)
+runTillSend :: AsyncT ach NextSend b a
+            -> L.PrAlgo (SendRes ach b a)
 runTillSend (AsyncT (Pure v)) = pure $ SrHalt v
 runTillSend (AsyncT (Join v)) = case v of
   SendAction x r -> pure $ SrSend x $ AsyncT r
   LiftAction m cont -> m >>= runTillSend . AsyncT . cont
 
 -- |The result of `runTillRecv`.
-data RecvRes ach m aft a where
+data RecvRes ach aft a where
   -- |Algorithm ran `recvAny`.
-  RrRecv :: (SomeRxMess ach -> AsyncT ach m NextSend aft a)
-         -> RecvRes ach m aft a
+  RrRecv :: (SomeRxMess ach -> AsyncT ach NextSend aft a)
+         -> RecvRes ach aft a
   -- |Algorithm has halted without accepting a message
   RrHalt :: a
-         -> RecvRes ach m NextRecv a
+         -> RecvRes ach NextRecv a
 
 -- |Given an action that starts in a `NextRecv` state (no write token), run it
 -- until it receives the write token via `recvAny` or halts.
-runTillRecv :: Monad m
-        => AsyncT ach m NextRecv b a
-        -> m (RecvRes ach m b a)
+runTillRecv :: AsyncT ach NextRecv b a
+            -> L.PrAlgo (RecvRes ach b a)
 runTillRecv (AsyncT (Pure v)) = pure $ RrHalt v
 runTillRecv (AsyncT (Join v)) = case v of
   RecvAction cont -> pure $ RrRecv $ AsyncT . cont
@@ -330,9 +310,9 @@ runTillRecv (AsyncT (Join v)) = case v of
 -- |Proof: A program with sync ports and return type `Void` may not
 -- terminate; if it starts from `NextRecv` state, it will inevitably request
 -- an rx message.
-mayOnlyRecvVoidPrf :: RecvRes ach m aft Void
+mayOnlyRecvVoidPrf :: RecvRes ach aft Void
                    -> SomeRxMess ach
-                   -> AsyncT ach m NextSend aft Void
+                   -> AsyncT ach NextSend aft Void
 mayOnlyRecvVoidPrf = \case
   RrHalt contra -> case contra of {}
   RrRecv x -> x
@@ -340,18 +320,18 @@ mayOnlyRecvVoidPrf = \case
 -- |Proof: A program with sync ports and return type `Void` may not
 -- terminate; if it starts from `NextSend` state, it will inevitably request to
 -- send a message.
-mayOnlySendVoidPrf :: SendRes ach m aft Void
-                   -> (SomeTxMess ach, AsyncT ach m NextRecv aft Void)
+mayOnlySendVoidPrf :: SendRes ach aft Void
+                   -> (SomeTxMess ach, AsyncT ach NextRecv aft Void)
 mayOnlySendVoidPrf = \case
   SrHalt contra -> case contra of {}
   SrSend m cont -> (m, cont)
 
-toMonadRandAsyncT :: L.MonadRand m
-                 => AsyncT ports L.PrAlgo bef aft a
-                 -> AsyncT ports m bef aft a
-toMonadRandAsyncT (AsyncT (Pure v)) = xreturn v
-toMonadRandAsyncT (AsyncT (Join v)) =
-    case v of
-      SendAction m r -> sendMess m >>: toMonadRandAsyncT (AsyncT r)
-      RecvAction cont -> recvAny >>=: toMonadRandAsyncT . AsyncT . cont
-      LiftAction m cont -> xlift (L.toMonadRand m) >>=: toMonadRandAsyncT . AsyncT . cont
+-- toMonadRandAsyncT :: L.MonadRand m
+--                  => AsyncT ports bef aft a
+--                  -> AsyncT ports bef aft a
+-- toMonadRandAsyncT (AsyncT (Pure v)) = xreturn v
+-- toMonadRandAsyncT (AsyncT (Join v)) =
+--     case v of
+--       SendAction m r -> sendMess m >>: toMonadRandAsyncT (AsyncT r)
+--       RecvAction cont -> recvAny >>=: toMonadRandAsyncT . AsyncT . cont
+--       LiftAction m cont -> xlift (L.toMonadRand m) >>=: toMonadRandAsyncT . AsyncT . cont

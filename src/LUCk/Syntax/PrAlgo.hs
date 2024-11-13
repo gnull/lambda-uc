@@ -23,8 +23,8 @@ module LUCk.Syntax.PrAlgo
   -- ** Impure
   -- $monadic
   , toMonadRand
-  , toIO
-  , writerTtoIO
+  , runIO
+  -- , writerTtoIO
   )
 where
 
@@ -168,10 +168,10 @@ toMonadRand (PrAlgo (Free (RandAction cont))) =
 -- |Run a probabilistic algorithm in `IO`.
 --
 -- The random bits are faithfully sampled using OS RNG.
-toIO :: PrAlgo a -> IO a
-toIO = toMonadRand
+runIO :: PrAlgo a -> IO a
+runIO = toMonadRand
 
--- |Same as `toIO`, but also allows printing debug messages.
+-- |Same as `runIO`, but also allows printing debug messages.
 writerTtoIO :: WriterT [String] PrAlgo a
             -> IO a
 writerTtoIO m = do

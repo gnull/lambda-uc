@@ -41,11 +41,11 @@ main = defaultMain tests
 tests :: TestTree
 tests = testGroup "dummy adversaries"
   [ testCase "adversary guessing: yes" $
-      toIO (gameEuCma 0 alwaysYesSch advGuess) >>= (@?= True)
+      runIO (gameEuCma 0 alwaysYesSch advGuess) >>= (@?= True)
   , testCase "adversary guessing: no" $
-      toIO (gameEuCma 0 alwaysNoSch advGuess) >>= (@?= False)
+      runIO (gameEuCma 0 alwaysNoSch advGuess) >>= (@?= False)
   , testCase "repeating adversary: no" $
-      toIO (gameEuCma 0 alwaysYesSch advRepeats) >>= (@?= False)
+      runIO (gameEuCma 0 alwaysYesSch advRepeats) >>= (@?= False)
   , testCase "repeating adversary: no" $
-      toIO (gameEuCma 0 alwaysNoSch advRepeats) >>= (@?= False)
+      runIO (gameEuCma 0 alwaysNoSch advRepeats) >>= (@?= False)
   ]

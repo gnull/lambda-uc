@@ -20,8 +20,8 @@ import LUCk.Syntax.Async.Eval.Internal
 import LUCk.UC.Core
 import LUCk.UC.Shell
 
-type EnvProcess down m res =
-  ExecBuilder m ExecIndexInit (ExecIndexSome '[PingRecvPort, down] (InitPresent res)) ()
+type EnvProcess down res =
+  ExecBuilder ExecIndexInit (ExecIndexSome '[PingRecvPort, down] (InitPresent res)) ()
 
 -- |A tree of subroutine-respecting protocols.
 --
@@ -29,15 +29,15 @@ type EnvProcess down m res =
 -- the required subroutine interfaces were filled with actual implementations
 -- (and, therefore, are not required and not exposed by a type parameter
 -- anymore).
-data SubRespTree (m :: Type -> Type) (up :: Port) where
-  MkSubRespTree :: ExecBuilder m ExecIndexInit (ExecIndexSome (PingSendPort : PortDual (x :> y) : down) InitAbsent) ()
-                -> HList (SubRespTree m) down
-                -> SubRespTree m (x :> y)
+data SubRespTree (up :: Port) where
+  MkSubRespTree :: ExecBuilder ExecIndexInit (ExecIndexSome (PingSendPort : PortDual (x :> y) : down) InitAbsent) ()
+                -> HList SubRespTree down
+                -> SubRespTree (x :> y)
 
-mergeSendPorts :: forall l p s p' s' a m st.
+mergeSendPorts :: forall l p s p' s' a st.
                   ListSplitD l p ( OnlySendPort a : s)
                -> ListSplitD s p' ( OnlySendPort a : s')
-               -> ExecBuilder m (ExecIndexSome l st) (ExecIndexSome (OnlySendPort a : Concat p (Concat p' s')) st) ()
+               -> ExecBuilder (ExecIndexSome l st) (ExecIndexSome (OnlySendPort a : Concat p (Concat p' s')) st) ()
 mergeSendPorts i i' = case (listSplitConcat i, listSplitConcat i') of
     (Refl, Refl) -> M.do
       SomeInitStatusIndexRetD retPrf <- execInvariantM
@@ -50,7 +50,7 @@ mergeSendPorts i i' = case (listSplitConcat i, listSplitConcat i') of
         (Refl, InitStatusIndexRetAbsent) -> xreturn ()
         (Refl, InitStatusIndexRetPresent) -> xreturn ()
   where
-    sendMerger :: AsyncT '[ OnlySendPort a, OnlyRecvPort a, OnlyRecvPort a] m NextRecv NextRecv Void
+    sendMerger :: AsyncT '[ OnlySendPort a, OnlyRecvPort a, OnlyRecvPort a] NextRecv NextRecv Void
     sendMerger = M.do
       x <- recvAny <&> \case
         SomeRxMess Here contra -> case contra of {}
@@ -60,15 +60,15 @@ mergeSendPorts i i' = case (listSplitConcat i, listSplitConcat i') of
       send Here x
       sendMerger
 
-    absentInitStatusComp :: ExecBuilder m (ExecIndexSome l' st') (ExecIndexSome l' st') (InitStatusCompD InitAbsent st')
+    absentInitStatusComp :: ExecBuilder (ExecIndexSome l' st') (ExecIndexSome l' st') (InitStatusCompD InitAbsent st')
     absentInitStatusComp = execInvariantM <&> \case
       SomeInitStatusIndexRetD InitStatusIndexRetAbsent -> InitStatusNone
       SomeInitStatusIndexRetD InitStatusIndexRetPresent -> InitStatusSnd
 
 -- |Run environment with a given protocol (no adversary yet).
-subRespEval :: SubRespTree m iface
+subRespEval :: SubRespTree iface
             -- ^The called protocol with its subroutines composed-in
-            -> ExecBuilder m ExecIndexInit
+            -> ExecBuilder ExecIndexInit
                   (ExecIndexSome '[PingSendPort, PortDual iface] InitAbsent) ()
 subRespEval (MkSubRespTree p c) = M.do
     p
@@ -80,23 +80,23 @@ subRespEval (MkSubRespTree p c) = M.do
           mergeSendPorts Split0 Split0
   where
     forEliminateHlist
-      :: HList (SubRespTree m) down
+      :: HList SubRespTree down
       -> ( forall p z s.
              ListSplitD down p (z:s)
-          -> SubRespTree m z
-          -> ExecBuilder m (ExecIndexSome (ping:w:z:s) InitAbsent)
-                           (ExecIndexSome (ping:w:s) InitAbsent) ()
+          -> SubRespTree z
+          -> ExecBuilder (ExecIndexSome (ping:w:z:s) InitAbsent)
+                         (ExecIndexSome (ping:w:s) InitAbsent) ()
          )
-      -> ExecBuilder m (ExecIndexSome (ping:w:down) InitAbsent)
-                       (ExecIndexSome '[ping, w] InitAbsent) ()
+      -> ExecBuilder (ExecIndexSome (ping:w:down) InitAbsent)
+                     (ExecIndexSome '[ping, w] InitAbsent) ()
     forEliminateHlist HNil _ = xreturn ()
     forEliminateHlist (HCons z zs) f = M.do
       f SplitHere z
       forEliminateHlist zs $ f . SplitThere
 
-ucExec :: EnvProcess up m a
-       -> SubRespTree m up
-       -> ExecBuilder m ExecIndexInit (ExecIndexSome '[] (InitPresent a)) ()
+ucExec :: EnvProcess up a
+       -> SubRespTree up
+       -> ExecBuilder ExecIndexInit (ExecIndexSome '[] (InitPresent a)) ()
 ucExec e p@(MkSubRespTree _ _) = M.do
   subRespEval p
   forkRight $ e

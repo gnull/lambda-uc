@@ -39,7 +39,7 @@ import Data.Either.Extra (mapLeft)
 
 import Control.Arrow
 import Control.XMonad
-import Control.XMonad.Trans
+-- import Control.XMonad.Trans
 import qualified Control.XMonad.Do as M
 
 import LUCk.Syntax
@@ -233,17 +233,16 @@ getForkPremiseD =
 -- The return value of the fork_ is the same as return value of process that
 -- finishes in `NextSend`. If both finish in `NextRecv`, then fork_'s return
 -- value is `Void`.
-fork_ :: forall st st' m ach ach' bef bef' aft aft' a a'.
-        (Monad m)
-     => ForkPremiseD bef bef' aft aft' a a'
+fork_ :: forall st st' ach ach' bef bef' aft aft' a a'.
+        ForkPremiseD bef bef' aft aft' a a'
      -- ^Proof that this combination of indices and return values is valid
      -> KnownLenD ach
      -- ^Depdendent length of free ports list in left branch
-     -> AsyncT ach m bef aft a
+     -> AsyncT ach bef aft a
      -- ^Left branch of the fork_
-     -> AsyncT ach' m bef' aft' a'
+     -> AsyncT ach' bef' aft' a'
      -- ^Right branch of the fork_
-     -> AsyncT (Concat ach ach') m (ForkIndexOr bef bef') (ForkIndexOr aft aft') (ChooseRet aft aft' a a')
+     -> AsyncT (Concat ach ach') (ForkIndexOr bef bef') (ForkIndexOr aft aft') (ChooseRet aft aft' a a')
 fork_ fPrf lPrf l r = case forkPremiseIndexCompBef fPrf of
   ForkIndexCompNone -> M.do
     SomeRxMess i m <- recvAny
@@ -288,11 +287,11 @@ fork_ fPrf lPrf l r = case forkPremiseIndexCompBef fPrf of
 --
 -- For a safe alternative, see `swap_`. That one is guaranteed to only permute
 -- ports and never cause bad behaviors.
-permPorts :: (KnownIndex bef, Monad m)
+permPorts :: (KnownIndex bef)
          => (forall p. InList l p -> InList l' p)
          -> (forall p. InList l' p -> InList l p)
-         -> AsyncT l m bef aft a
-         -> AsyncT l' m bef aft a
+         -> AsyncT l bef aft a
+         -> AsyncT l' bef aft a
 permPorts f g cont = asyncGetIndex >>=: \case
   SNextRecv -> M.do
     xlift (runTillRecv cont) >>=: \case
@@ -318,14 +317,13 @@ permPorts f g cont = asyncGetIndex >>=: \case
 -- The `ListSplitD` arguments can often be derived automatically if `p` `p'`
 -- and `rest` are fully known.
 swap_ :: ( KnownIndex bef
-         , Monad m
          )
      => ListSplitD l p (f:l')
      -- ^Proof of @l == p ++ (f:l')@
      -> ListSplitD l' p' (s:rest)
      -- ^Proof of @l' == p' ++ (s:rest)@
-     -> AsyncT l m bef aft a
-     -> AsyncT (Concat p (s : Concat p' (f:rest))) m bef aft a
+     -> AsyncT l bef aft a
+     -> AsyncT (Concat p (s : Concat p' (f:rest))) bef aft a
 swap_ prfF prfS cont = case (listSplitConcat prfF, listSplitConcat prfS) of
     (Refl, Refl) -> permPorts (f prfF prfS)
                               (uncurry f $ listSplitSwap prfF prfS)
@@ -387,9 +385,9 @@ findIndex (SplitThere j) (There i) = case findIndex j i of
 -- |Proof that an action that's only allowed to return in `NextSend` state will
 -- not do so in `NextRecv` state.
 doesNotReturnInRecvPrf :: MayOnlyReturnAfterRecvD aft a
-                       -> RecvRes ach m aft a
+                       -> RecvRes ach aft a
                        -- ^Result of running `runTillRecv`
-                       -> (SomeRxMess ach -> AsyncT ach m NextSend aft a)
+                       -> (SomeRxMess ach -> AsyncT ach NextSend aft a)
                        -- ^The continutation that tells how the process chose to receive the message
 doesNotReturnInRecvPrf retPrf = \case
   RrHalt contra -> case retPrf of
@@ -398,15 +396,15 @@ doesNotReturnInRecvPrf retPrf = \case
 
 -- |Link two adjacent free ports with each other. This binds them and
 -- removes from the free list.
-link_ :: (Monad m, KnownIndex bef)
+link_ :: (KnownIndex bef)
         => MayOnlyReturnAfterRecvD aft a
         -> ListSplitD l p (x :> y : l')
         -- ^ Proof of @l == p ++ [(x, y)] ++ l'@
         -> ListSplitD l' p' (y :> x : rest)
         -- ^ Proof of @l' == p' ++ [(y, x)] ++ rest@
-        -> AsyncT l m bef aft a
+        -> AsyncT l bef aft a
         -- ^Exectuion where we want to link_ the ports
-        -> AsyncT (Concat p (Concat p' rest)) m bef aft a
+        -> AsyncT (Concat p (Concat p' rest)) bef aft a
 link_ retPrf prf prf' cont = case (listSplitConcat prf, listSplitConcat prf') of
   (Refl, Refl) -> let
     in

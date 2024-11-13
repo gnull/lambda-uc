@@ -93,30 +93,30 @@ instance Ord (HList SomeOrd l) where
 -- - @up@ interface to its callers,
 -- - @down@ interfaces to its subroutines,
 -- - a single `PingSendPort` interface to yield control to the environment.
-type Proto up down m = AsyncT (PingSendPort : PortDual up : down) m NextRecv NextRecv Void
+type Proto up down = AsyncT (PingSendPort : PortDual up : down) NextRecv NextRecv Void
 
 -- |A `Proto` where @up@ and @down@ interfaces are appropriately marked
 -- with ESID and PID values to handle multiple sessions in one process.
 --
 -- This is used by `multiSidIdealShell` to implement multiple sessions of
 -- `SingleSidIdeal` inside.
-type MultSidIdeal rest sid up sids down m =
-  Proto (PidSidIface (sid:rest) up) (PidSidIfaceList (sid:rest) sids down) m
+type MultSidIdeal rest sid up sids down =
+  Proto (PidSidIface (sid:rest) up) (PidSidIfaceList (sid:rest) sids down)
 
 -- |A `Proto` that implements a single session. The interface it provides
 -- to its caller is maked only with PID values.
 --
 -- Use this with `multiSidIdealShell` to get a multi-session extension.
-type SingleSidIdeal up sids down m =
-  Proto (Marked Pid up) (ZipMapPidMarked sids down) m
+type SingleSidIdeal up sids down =
+  Proto (Marked Pid up) (ZipMapPidMarked sids down)
 
 -- |A `Proto` that implements a single process in a real (multi-session) protocol.
-type MultSidReal rest sid up sids down m =
-  Proto (SidIface (sid:rest) up) (SidIfaceList (sid:rest) sids down) m
+type MultSidReal rest sid up sids down =
+  Proto (SidIface (sid:rest) up) (SidIfaceList (sid:rest) sids down)
 
 -- |A `Proto` that implements a single process in a real (single-session) protocol.
-type SingleSidReal up sids down m =
-  Proto up (ZipMarked sids down) m
+type SingleSidReal up sids down =
+  Proto up (ZipMarked sids down)
 
 matchZipMapPidMarked :: KnownLenD sids
                   -> SameLenD sids down
