@@ -68,21 +68,21 @@ import LUCk.Types
 
 -- |@bef@ and @aft@ are the states before and after the given action. The
 -- meaning of possible states is as follows:
-data AsyncActions (ach :: [Port])
+data AsyncActions (ports :: [Port])
                   (bef :: Index) (aft :: Index) (a :: Type) where
   -- |Receive a message from some channel
-  RecvAction :: (SomeRxMess ach -> a)
-             -> AsyncActions ach NextRecv NextSend a
+  RecvAction :: (SomeRxMess ports -> a)
+             -> AsyncActions ports NextRecv NextSend a
   -- |Send a message to the chosen channel
-  SendAction :: SomeTxMess ach
+  SendAction :: SomeTxMess ports
              -> a
-             -> AsyncActions ach NextSend NextRecv a
+             -> AsyncActions ports NextSend NextRecv a
   -- |Run a local action in the inner monad.
   LiftAction :: L.PrAlgo x
              -> (x -> a)
-             -> AsyncActions ach b b a
+             -> AsyncActions ports b b a
 
-instance Functor (AsyncActions ach bef aft) where
+instance Functor (AsyncActions ports bef aft) where
   fmap f (RecvAction cont) = RecvAction $ f . cont
   fmap f (SendAction m r) = SendAction m $ f r
   fmap f (LiftAction m cont) = LiftAction m $ f . cont
@@ -94,9 +94,8 @@ instance Functor (AsyncActions ach bef aft) where
 -- By instantiating `AsyncT` with different parameters, you can finely
 -- control what side-effects you allow:
 --
--- - Local computations in Monad @`stInner` st@.
 -- - Asynchronous (`send` and `recvAny`) communcation over
---   interfaces defined in @`stAsync` st@.
+--   interfaces defined in @ports@.
 --
 -- Asynchronous communcation depends on the `Index` state of `AsyncT`. There
 -- are two possible index states which are interpreted as follows.
@@ -109,22 +108,24 @@ instance Functor (AsyncActions ach bef aft) where
 -- `recvAny`. Any asyncronous algorithm will alternate between `send` and
 -- `recvAny` some number of times, until it terminates. Such algorithm's
 -- indices tell which of the two operations must be first and last.
-newtype AsyncT ach bef aft a
-    = AsyncT { runInterT :: XFree (AsyncActions ach) bef aft a }
+--
+-- Additionally, you may sample random values in `AsyncT` using @`L.rand`@.
+newtype AsyncT ports bef aft a
+    = AsyncT { runInterT :: XFree (AsyncActions ports) bef aft a }
   deriving (Functor)
 
-instance bef ~ aft => Applicative (AsyncT ach bef aft) where
+instance bef ~ aft => Applicative (AsyncT ports bef aft) where
   f <*> m = AsyncT $ runInterT f <*> runInterT m
   pure = AsyncT . pure
 
-instance bef ~ aft => Monad (AsyncT ach bef aft) where
+instance bef ~ aft => Monad (AsyncT ports bef aft) where
   m >>= f = AsyncT $ runInterT m Monad.>>= (runInterT . f)
 
-instance XApplicative (AsyncT ach) where
+instance XApplicative (AsyncT ports) where
   xpure = AsyncT . xpure
   f <*>: x = AsyncT $ runInterT f <*>: runInterT x
 
-instance XMonad (AsyncT ach) where
+instance XMonad (AsyncT ports) where
   m >>=: f = AsyncT $ runInterT m >>=: (runInterT . f)
 
 instance L.MonadRand (AsyncT ports i i) where
@@ -139,10 +140,10 @@ escapeAsyncT cont = runTillSend cont >>= \case
   SrSend (SomeTxMess contra _) _ -> case contra of {}
   SrHalt res -> pure res
 
-xfreeAsync :: AsyncActions ach bef aft a -> AsyncT ach bef aft a
+xfreeAsync :: AsyncActions ports bef aft a -> AsyncT ports bef aft a
 xfreeAsync = AsyncT . xfree
 
--- instance XMonadTrans (AsyncT ach) where
+-- instance XMonadTrans (AsyncT ports) where
 xlift :: L.PrAlgo a -> AsyncT ports i i a
 xlift m = xfreeAsync $ LiftAction m id
 
@@ -242,36 +243,36 @@ sendOne = send Here
 -- Interactive Turing Machine.
 
 -- |The result of `runTillSend`
-data SendRes ach aft a where
+data SendRes ports aft a where
   -- |Algorithm called `send`.
-  SrSend :: SomeTxMess ach
-         -> AsyncT ach NextRecv aft a
-         -> SendRes ach aft a
+  SrSend :: SomeTxMess ports
+         -> AsyncT ports NextRecv aft a
+         -> SendRes ports aft a
   -- |Algorithm called `sendFinal`.
-  SrHalt :: a -> SendRes ach NextSend a
+  SrHalt :: a -> SendRes ports NextSend a
 
 -- |Given `AsyncT` action starting in `NextSend` state (holding write token),
 -- run it until it does `send` or halts.
-runTillSend :: AsyncT ach NextSend b a
-            -> L.PrAlgo (SendRes ach b a)
+runTillSend :: AsyncT ports NextSend b a
+            -> L.PrAlgo (SendRes ports b a)
 runTillSend (AsyncT (Pure v)) = pure $ SrHalt v
 runTillSend (AsyncT (Join v)) = case v of
   SendAction x r -> pure $ SrSend x $ AsyncT r
   LiftAction m cont -> m >>= runTillSend . AsyncT . cont
 
 -- |The result of `runTillRecv`.
-data RecvRes ach aft a where
+data RecvRes ports aft a where
   -- |Algorithm ran `recvAny`.
-  RrRecv :: (SomeRxMess ach -> AsyncT ach NextSend aft a)
-         -> RecvRes ach aft a
+  RrRecv :: (SomeRxMess ports -> AsyncT ports NextSend aft a)
+         -> RecvRes ports aft a
   -- |Algorithm has halted without accepting a message
   RrHalt :: a
-         -> RecvRes ach NextRecv a
+         -> RecvRes ports NextRecv a
 
 -- |Given an action that starts in a `NextRecv` state (no write token), run it
 -- until it receives the write token via `recvAny` or halts.
-runTillRecv :: AsyncT ach NextRecv b a
-            -> L.PrAlgo (RecvRes ach b a)
+runTillRecv :: AsyncT ports NextRecv b a
+            -> L.PrAlgo (RecvRes ports b a)
 runTillRecv (AsyncT (Pure v)) = pure $ RrHalt v
 runTillRecv (AsyncT (Join v)) = case v of
   RecvAction cont -> pure $ RrRecv $ AsyncT . cont
@@ -310,9 +311,9 @@ runTillRecv (AsyncT (Join v)) = case v of
 -- |Proof: A program with sync ports and return type `Void` may not
 -- terminate; if it starts from `NextRecv` state, it will inevitably request
 -- an rx message.
-mayOnlyRecvVoidPrf :: RecvRes ach aft Void
-                   -> SomeRxMess ach
-                   -> AsyncT ach NextSend aft Void
+mayOnlyRecvVoidPrf :: RecvRes ports aft Void
+                   -> SomeRxMess ports
+                   -> AsyncT ports NextSend aft Void
 mayOnlyRecvVoidPrf = \case
   RrHalt contra -> case contra of {}
   RrRecv x -> x
@@ -320,8 +321,8 @@ mayOnlyRecvVoidPrf = \case
 -- |Proof: A program with sync ports and return type `Void` may not
 -- terminate; if it starts from `NextSend` state, it will inevitably request to
 -- send a message.
-mayOnlySendVoidPrf :: SendRes ach aft Void
-                   -> (SomeTxMess ach, AsyncT ach NextRecv aft Void)
+mayOnlySendVoidPrf :: SendRes ports aft Void
+                   -> (SomeTxMess ports, AsyncT ports NextRecv aft Void)
 mayOnlySendVoidPrf = \case
   SrHalt contra -> case contra of {}
   SrSend m cont -> (m, cont)
