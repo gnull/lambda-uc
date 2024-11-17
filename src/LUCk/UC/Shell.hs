@@ -3,12 +3,14 @@ module LUCk.UC.Shell where
 import qualified Control.XMonad.Do as M
 import Control.XMonad
 
-import Control.Arrow
+import Control.Arrow (second)
 
 -- import Control.XMonad.Trans
 
 import LUCk.Syntax
 import LUCk.Types
+
+import qualified Data.HList as HList
 
 import LUCk.UC.Core
 
@@ -93,45 +95,141 @@ multiSidIdealShell len lenPrf impl = helper Map.empty
         KnownLenS j -> \case
           SameLenCons k -> There $ sidIfaceListToZipMapMarked i j k
 
-spawnOnDemand :: forall l ports m. (Ord l)
-              => KnownLenD ports
-              -> (l -> AsyncT ports NextRecv NextRecv Void)
-              -> AsyncT (MapMarked l ports) NextRecv NextRecv Void
-spawnOnDemand n impl = helper Map.empty
+type family MapConcat l r ports where
+  MapConcat _ _ '[] = '[]
+  MapConcat l r ((HListPair SomeOrd lx rx) :> (HListPair SomeOrd ly ry) : ports)
+    = (HListPair SomeOrd (Concat l lx) (Concat r rx)) :> (HListPair SomeOrd (Concat l ly) (Concat r ry))
+      : MapConcat l r ports
+
+spawnOnDemand :: forall l r ports.
+                 KnownHPPortsD SomeOrd ports
+              -> KnownLenD l
+              -> KnownLenD r
+              -> ((HListPair SomeOrd l r) -> AsyncT ports NextRecv NextRecv Void)
+              -> AsyncT (MapConcat l r ports) NextRecv NextRecv Void
+spawnOnDemand n lLen rLen impl = helper Map.empty
   where
-    helper :: Map.Map l (AsyncT ports NextRecv NextRecv Void)
-           -> AsyncT (MapMarked l ports) NextRecv NextRecv Void
+    helper :: Map.Map (HList SomeOrd l, HList SomeOrd r) (AsyncT ports NextRecv NextRecv Void)
+           -> AsyncT (MapConcat l r ports) NextRecv NextRecv Void
     helper states = M.do
-      (l, m) <- unwrapMess n <$> recvAny
+      (l, m) <- unwrapMess n lLen rLen <$> recvAny
       let st = Map.findWithDefault (impl l) l states
       st' <- ($ m) . mayOnlyRecvVoidPrf <$> xlift (runTillRecv st)
       (resp, st'') <- mayOnlySendVoidPrf <$> xlift (runTillSend st')
-      sendMess $ wrapMess l resp
+      sendMess $ wrapMess n l resp
       helper $ Map.insert l st'' states
 
-    wrapMess :: forall ports'. l -> SomeTxMess ports'
-             -> SomeTxMess (MapMarked l ports')
-    wrapMess l (SomeTxMess i m) = SomeTxMess (wrapInList i) (l, m)
+    wrapMess :: forall ports'. KnownHPPortsD SomeOrd ports'
+             -> (HList SomeOrd l, HList SomeOrd r)
+             -> SomeTxMess ports'
+             -> SomeTxMess (MapConcat l r ports')
+    wrapMess len l (SomeTxMess i m) = inListMatch len i $ \Refl ->
+      SomeTxMess (wrapInList len i) (l +++ m)
 
-    wrapInList :: InList ports' p
-               -> InList (MapMarked l ports') (Marked l p)
-    wrapInList = \case
+    inListMatch :: KnownHPPortsD SomeOrd ports'
+                -> InList ports' p
+                -> (forall lx rx ly ry.
+                     ((HList SomeOrd lx, HList SomeOrd rx) :> (HList SomeOrd ly, HList SomeOrd ry) :~: p ) -> a)
+                -> a
+    inListMatch KnownHPPortsZ contra _ = case contra of {}
+    inListMatch (KnownHPPortsS n') i cont = case i of
+      Here -> cont Refl
+      There i' -> inListMatch n' i' $ cont
+
+    wrapInList :: forall ports' lx rx ly ry.
+                  KnownHPPortsD SomeOrd ports'
+               -> InList ports' ((HList SomeOrd lx, HList SomeOrd rx) :> (HList SomeOrd ly, HList SomeOrd ry))
+               -> InList (MapConcat l r ports')
+                         ((HList SomeOrd (Concat l lx), HList SomeOrd (Concat r rx))
+                           :> (HList SomeOrd (Concat l ly), HList SomeOrd (Concat r ry)))
+    wrapInList KnownHPPortsZ = \case {}
+    wrapInList (KnownHPPortsS n') = \case
       Here -> Here
-      There i' -> There $ wrapInList i'
+      (There i') -> There $ wrapInList n' i'
 
     unwrapMess :: forall ports'.
-                  KnownLenD ports'
-               -> SomeRxMess (MapMarked l ports')
-               -> (l, SomeRxMess ports')
-    unwrapMess = \case
-      KnownLenZ -> \(SomeRxMess contra _) -> case contra of {}
-      KnownLenS n -> \(SomeRxMess i lm) -> case i of
-        Here -> let (l, m) = lm in (l, SomeRxMess Here m)
-        There i' -> second someRxMessThere $ unwrapMess n $ SomeRxMess i' lm
+                  KnownHPPortsD SomeOrd ports'
+               -> KnownLenD l
+               -> KnownLenD r
+               -> SomeRxMess (MapConcat l r ports')
+               -> ((HList SomeOrd l, HList SomeOrd r), SomeRxMess ports')
+    unwrapMess len lLen rLen = case len of
+      KnownHPPortsZ -> \(SomeRxMess contra _) -> case contra of {}
+      KnownHPPortsS n' -> \case
+        (SomeRxMess i fs) -> case i of
+          Here -> let
+              (f, s) = fs
+              (fl, fr) = splitHList (knownLenToSplit lLen) f
+              (sl, sr) = splitHList (knownLenToSplit rLen) s
+            in ((fl, sl), SomeRxMess Here (fr, sr))
+          There i' -> second someRxMessThere $ unwrapMess n' lLen rLen $ SomeRxMess i' fs
 
-    someRxMessThere :: SomeRxMess ports'
-                    -> SomeRxMess (x : ports')
-    someRxMessThere (SomeRxMess i m) = SomeRxMess (There i) m
+knownLenToSplit :: KnownLenD p
+                -> ListSplitD (Concat p s) p s
+knownLenToSplit KnownLenZ = SplitHere
+knownLenToSplit (KnownLenS i) = SplitThere $ knownLenToSplit i
+
+splitHList :: ListSplitD l p s
+           -> HList f l
+           -> (HList f p, HList f s)
+splitHList SplitHere l = (HNil, l)
+splitHList (SplitThere i) (HCons x xs) = (HCons x p, s)
+  where (p, s) = splitHList i xs
+
+someRxMessThere :: SomeRxMess ports'
+                -> SomeRxMess (x : ports')
+someRxMessThere (SomeRxMess i m) = SomeRxMess (There i) m
+
+-- multiSidRealToIdeal :: forall sids down rest sid x y.
+--                        KnownLenD sids
+--                     -> SameLenD sids down
+--                     -> (Pid -> MultSidReal rest sid (x :> y) sids down)
+--                     -> MultSidIdeal rest sid (x :> y) sids down
+-- multiSidRealToIdeal len lenPrf impl = helper Map.empty
+  -- where
+  --   helper :: Map.Map Pid (MultSidReal rest sid (x :> y) sids down)
+  --          -> MultSidIdeal rest sid (x :> y) sids down
+  --   helper states = M.do
+  --     (l, m) <- unwrapMess <$> recvAny
+  --     let st = Map.findWithDefault (impl l) l states
+  --     st' <- ($ m) . mayOnlyRecvVoidPrf <$> xlift (runTillRecv st)
+  --     (resp, st'') <- mayOnlySendVoidPrf <$> xlift (runTillSend st')
+  --     sendMess $ wrapMess l resp
+  --     helper $ Map.insert l st'' states
+
+  --   unwrapMess
+  --     :: SomeRxMess
+  --            (PingSendPort
+  --               : ((HList SomeOrd (Pid : sid : rest), y) :> (HList SomeOrd (Pid : sid : rest), x))
+  --               : PidSidIfaceList (sid : rest) sids down)
+  --          -> (Pid,
+  --              SomeRxMess
+  --                (PingSendPort
+  --                   : ((HList SomeOrd (sid : rest), y) :> (HList SomeOrd (sid : rest), x))
+  --                   : SidIfaceList (sid : rest) sids down))
+  --   unwrapMess (SomeRxMess i m) = case i of
+  --     Here -> case m of {}
+  --     There Here -> case m of
+  --       (HCons (SomeOrd pid) sidRest, m') -> (pid, SomeRxMess (There Here) (sidRest, m'))
+  --     There2 i' -> second (someRxMessThere . someRxMessThere) $ unwrapPidSidIfaceList i' m
+
+  --   unwrapPidSidIfaceList :: InList (PidSidIfaceList (sid : rest) sids down) p
+  --                         -> PortRxType p
+  --                         -> (Pid, SomeRxMess (SidIfaceList (sid : rest) sids down))
+  --   unwrapPidSidIfaceList = _
+
+  --   wrapMess
+  --     :: Pid
+  --     -> SomeTxMess
+  --          (PingSendPort
+  --             : ((HList SomeOrd (sid : rest), y) :> (HList SomeOrd (sid : rest), x))
+  --             : SidIfaceList (sid : rest) sids down)
+  --     -> SomeTxMess
+  --          (PingSendPort
+  --             : ((HList SomeOrd (Pid : sid : rest), y) :> (HList SomeOrd (Pid : sid : rest), x))
+  --             : PidSidIfaceList (sid : rest) sids down)
+  --   wrapMess = _
+
 
 multiSidRealShell :: forall sid x y sids down rest.
                  KnownLenD sids

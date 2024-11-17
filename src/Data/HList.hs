@@ -2,7 +2,7 @@
 
 module Data.HList where
 
-import Prelude hiding ((!!))
+import Prelude hiding ((!!), (++))
 
 import Data.Kind (Type, Constraint)
 import Data.Type.Equality ((:~:)(Refl), TestEquality(..))
@@ -95,8 +95,8 @@ padMessageIndex (SomeValue i' x') = SomeValue (There i') x'
 -- - @A `:|>` B@ allows to do the same syncronously,
 -- - @A `:>|` B@ allows serving syncronous requests.
 data Port = Type :> Type
-          | Type :|> Type
-          | Type :>| Type
+          -- | Type :|> Type
+          -- | Type :>| Type
 
 type PortTxType :: Port -> Type
 type family PortTxType p where
@@ -109,8 +109,8 @@ type family PortRxType p where
 type PortDual :: Port -> Port
 type family PortDual p where
   PortDual (x :> y) = y :> x
-  PortDual (x :|> y) = y :>| x
-  PortDual (x :>| y) = y :|> x
+  -- PortDual (x :|> y) = y :>| x
+  -- PortDual (x :>| y) = y :|> x
 
 -- |A pointer into the list of ports @xs@.
 --
@@ -152,6 +152,32 @@ type HList :: forall a. (a -> Type) -> [a] -> Type
 data HList f (types :: [a]) where
     HNil :: HList f '[]
     HCons :: f t -> HList f ts -> HList f (t : ts)
+
+data KnownHPPortsD f ports where
+  KnownHPPortsZ :: KnownHPPortsD f '[]
+  KnownHPPortsS :: KnownHPPortsD f ports
+              -> KnownHPPortsD f ((HListPair f xl xr) :> (HListPair f yl yr) : ports)
+
+type HListPair f l r = (HList f l, HList f r)
+
+(++) :: HList f l -> HList f r -> HList f (Concat l r)
+HNil ++ ys = ys
+HCons x xs ++ ys = HCons x $ xs ++ ys
+
+(+++) :: HListPair f l r
+      -> HListPair f l' r'
+      -> HListPair f (Concat l l') (Concat r r')
+(l, r) +++ (l', r') = (l ++ l', r ++ r')
+
+class KnownHPPorts f ports where
+  getKnownHPPorts :: KnownHPPortsD f ports
+
+instance KnownHPPorts f '[] where
+  getKnownHPPorts = KnownHPPortsZ
+
+instance (KnownHPPorts f ports, p ~ (HList f xl, HList f xr) :> (HList f yl, HList f yr))
+  => KnownHPPorts f (p:ports) where
+    getKnownHPPorts = KnownHPPortsS getKnownHPPorts
 
 -- |Signleton type to express the list structure (length) but not the contents.
 data KnownLenD :: forall a. [a] -> Type where
