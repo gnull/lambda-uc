@@ -7,6 +7,8 @@ import Prelude hiding ((!!), (++))
 import Data.Kind (Type, Constraint)
 import Data.Type.Equality ((:~:)(Refl), TestEquality(..))
 
+import Data.Functor.Identity
+
 import Control.Arrow (first, second)
 
 -- * Dependent pointer into a list
@@ -156,17 +158,17 @@ data HList f (types :: [a]) where
 data KnownHPPortsD f ports where
   KnownHPPortsZ :: KnownHPPortsD f '[]
   KnownHPPortsS :: KnownHPPortsD f ports
-              -> KnownHPPortsD f ((HListPair f xl xr) :> (HListPair f yl yr) : ports)
+              -> KnownHPPortsD f ((HListPair xl xr) :> (HListPair yl yr) : ports)
 
-type HListPair f l r = (HList f l, HList f r)
+type HListPair l r = (HList Identity l, HList Identity r)
 
 (++) :: HList f l -> HList f r -> HList f (Concat l r)
 HNil ++ ys = ys
 HCons x xs ++ ys = HCons x $ xs ++ ys
 
-(+++) :: HListPair f l r
-      -> HListPair f l' r'
-      -> HListPair f (Concat l l') (Concat r r')
+(+++) :: HListPair l r
+      -> HListPair l' r'
+      -> HListPair (Concat l l') (Concat r r')
 (l, r) +++ (l', r') = (l ++ l', r ++ r')
 
 class KnownHPPorts f ports where
@@ -175,7 +177,7 @@ class KnownHPPorts f ports where
 instance KnownHPPorts f '[] where
   getKnownHPPorts = KnownHPPortsZ
 
-instance (KnownHPPorts f ports, p ~ (HList f xl, HList f xr) :> (HList f yl, HList f yr))
+instance (KnownHPPorts f ports, p ~ HListPair xl xr :> HListPair yl yr)
   => KnownHPPorts f (p:ports) where
     getKnownHPPorts = KnownHPPortsS getKnownHPPorts
 
