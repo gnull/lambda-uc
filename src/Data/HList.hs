@@ -437,3 +437,50 @@ homogenize
   -> [a]
 homogenize _ HNil = []
 homogenize g (HCons x xs) = g Here x : homogenize (g . There) xs
+
+knownLenToSplit :: KnownLenD p
+                -> ListSplitD (Concat p s) p s
+knownLenToSplit KnownLenZ = SplitHere
+knownLenToSplit (KnownLenS i) = SplitThere $ knownLenToSplit i
+
+splitHList :: ListSplitD l p s
+           -> HList f l
+           -> (HList f p, HList f s)
+splitHList SplitHere l = (HNil, l)
+splitHList (SplitThere i) (HCons x xs) = (HCons x p, s)
+  where (p, s) = splitHList i xs
+
+someRxMessThere :: SomeRxMess ports'
+                -> SomeRxMess (x : ports')
+someRxMessThere (SomeRxMess i m) = SomeRxMess (There i) m
+
+
+data ConstrAllD (c :: Type -> Constraint) (l :: [Type]) where
+  ConstrAllNil :: ConstrAllD c '[]
+  ConstrAllCons :: c t
+                => ConstrAllD c l
+                -> ConstrAllD c (t:l)
+
+class ConstrAll c l where
+  getConstrAllD :: ConstrAllD c l
+
+instance ConstrAll c '[] where
+  getConstrAllD = ConstrAllNil
+
+instance (c t, ConstrAll c l) => ConstrAll c (t:l) where
+  getConstrAllD = ConstrAllCons getConstrAllD
+
+data HListShow l where
+  HListShow :: ConstrAllD Ord l
+            -> HList Identity l
+            -> HListShow l
+
+instance Eq (HListShow l) where
+  x == y = compare x y == EQ
+
+instance Ord (HListShow l) where
+  compare (HListShow xPrf xs) (HListShow yPrf ys) = case (xs, xPrf, ys, yPrf) of
+    (HNil, _, HNil, _) -> EQ
+    (HCons x xs', ConstrAllCons xPrf', HCons y ys', ConstrAllCons yPrf') ->
+         x `compare` y
+      <> HListShow xPrf' xs' `compare` HListShow yPrf' ys'
