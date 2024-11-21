@@ -32,21 +32,19 @@ type family AppendSids sids p where
   AppendSids sids p = Concat2 sids '[] p
 
 type family MapAppendSids sids ports where
-  MapAppendSids _ '[] = '[]
-  MapAppendSids sids (p:ports) = AppendSids sids p : MapAppendSids sids ports
+  MapAppendSids sids ports = MapConcat sids '[] ports
 
 type family ZipAppendSid sids down where
   ZipAppendSid '[] '[] = '[]
   ZipAppendSid (s:sids) (p : down)
-    = (AppendSids '[s] p)
+    = (HListPair '[s] '[p])
     : ZipAppendSid sids down
 
 type family AppendPid p where
   AppendPid p = Concat2 '[] '[Pid] p
 
 type family MapAppendPid ports where
-  MapAppendPid '[] = '[]
-  MapAppendPid (p:ports) = AppendPid p : MapAppendPid ports
+  MapAppendPid ports = MapConcat '[] '[Pid] ports
 
 -- |An interactive algorithm with that we use for defining ideal
 -- functionalities and protocols.
@@ -56,7 +54,7 @@ type family MapAppendPid ports where
 -- - @up@ interface to its callers,
 -- - @down@ interfaces to its subroutines,
 -- - a single `PingSendPort` interface to yield control to the environment.
-type Proto up down = AsyncT (PingSendPort : PortDual up : down) NextRecv NextRecv Void
+type Proto up down = AsyncT (PortDual up : down) NextRecv NextRecv Void
 
 -- |A `Proto` where @up@ and @down@ interfaces are appropriately marked
 -- with ESID and PID values to handle multiple sessions in one process.
@@ -64,8 +62,8 @@ type Proto up down = AsyncT (PingSendPort : PortDual up : down) NextRecv NextRec
 -- This is used by `multiSidIdealShell` to implement multiple sessions of
 -- `SingleSidIdeal` inside.
 type MultSidIdeal rest sid up down =
-  Proto (AppendPid (AppendSids (sid:rest) up))
-        (MapAppendPid (MapAppendSids (sid:rest) down))
+  Proto (AppendSids (sid:rest) (AppendPid up))
+        (MapAppendSids (sid:rest) (MapAppendPid down))
 
 -- |A `Proto` that implements a single process in a real (multi-session) protocol.
 type MultSidReal rest sid up down =

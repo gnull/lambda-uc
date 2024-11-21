@@ -155,10 +155,10 @@ data HList f (types :: [a]) where
     HNil :: HList f '[]
     HCons :: f t -> HList f ts -> HList f (t : ts)
 
-data KnownHPPortsD f ports where
-  KnownHPPortsZ :: KnownHPPortsD f '[]
-  KnownHPPortsS :: KnownHPPortsD f ports
-              -> KnownHPPortsD f ((HListPair xl xr) :> (HListPair yl yr) : ports)
+data KnownHPPortsD ports where
+  KnownHPPortsZ :: KnownHPPortsD '[]
+  KnownHPPortsS :: KnownHPPortsD ports
+              -> KnownHPPortsD ((HListPair xl xr) :> (HListPair yl yr) : ports)
 
 type HListPair l r = (HList Identity l, HList Identity r)
 
@@ -171,14 +171,14 @@ HCons x xs ++ ys = HCons x $ xs ++ ys
       -> HListPair (Concat l l') (Concat r r')
 (l, r) +++ (l', r') = (l ++ l', r ++ r')
 
-class KnownHPPorts f ports where
-  getKnownHPPorts :: KnownHPPortsD f ports
+class KnownHPPorts ports where
+  getKnownHPPorts :: KnownHPPortsD ports
 
-instance KnownHPPorts f '[] where
+instance KnownHPPorts '[] where
   getKnownHPPorts = KnownHPPortsZ
 
-instance (KnownHPPorts f ports, p ~ HListPair xl xr :> HListPair yl yr)
-  => KnownHPPorts f (p:ports) where
+instance (KnownHPPorts ports, p ~ HListPair xl xr :> HListPair yl yr)
+  => KnownHPPorts (p:ports) where
     getKnownHPPorts = KnownHPPortsS getKnownHPPorts
 
 -- |Signleton type to express the list structure (length) but not the contents.
@@ -346,6 +346,10 @@ hlistDrop :: ListSplitD l p s
 hlistDrop SplitHere xs = xs
 hlistDrop (SplitThere i) (HCons _ xs) = hlistDrop i xs
 
+hlistTakeHead :: HList f (x:xs)
+          -> HList f '[x]
+hlistTakeHead (HCons x _) = HCons x HNil
+
 pattern HListMatch0 :: HList f '[]
 pattern HListMatch0 = HNil
 {-# COMPLETE HListMatch0 #-}
@@ -460,6 +464,10 @@ data ConstrAllD (c :: Type -> Constraint) (l :: [Type]) where
   ConstrAllCons :: c t
                 => ConstrAllD c l
                 -> ConstrAllD c (t:l)
+
+knownLenfromConstrAllD :: ConstrAllD c l -> KnownLenD l
+knownLenfromConstrAllD ConstrAllNil = KnownLenZ
+knownLenfromConstrAllD (ConstrAllCons xs) = KnownLenS $ knownLenfromConstrAllD xs
 
 class ConstrAll c l where
   getConstrAllD :: ConstrAllD c l
