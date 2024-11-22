@@ -88,11 +88,6 @@ spawnOnDemand lOrdPrf rOrdPrf n lLen rLen impl = helper Map.empty
 
 type HListPort x y = HListPair '[] '[x] :> HListPair '[] '[y]
 
-knownHPPortsAppendPid :: KnownHPPortsD down
-                      -> KnownHPPortsD (MapAppendPid down)
-knownHPPortsAppendPid KnownHPPortsZ = KnownHPPortsZ
-knownHPPortsAppendPid (KnownHPPortsS i) = KnownHPPortsS $ knownHPPortsAppendPid i
-
 idealToMultSid :: ConstrAllD Ord (sid:rest)
                -> KnownHPPortsD down
                -> SingleSidIdeal sid (HListPort x y) down
@@ -116,8 +111,7 @@ protoToFunc downLen f (sid, HNil) = spawnOnDemand getConstrAllD
                     getKnownLenPrf
                     wrapper
   where
-    wrapper :: HListPair '[] '[Pid] -> Proto (HListPort x y)
-                                             down
+    wrapper :: HListPair '[] '[Pid] -> Proto (HListPort x y) down
     wrapper (HNil, pid) = f (sid, pid)
 
 realToMultSid :: forall sid rest down x y.

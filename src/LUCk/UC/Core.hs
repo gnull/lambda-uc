@@ -46,6 +46,11 @@ type family AppendPid p where
 type family MapAppendPid ports where
   MapAppendPid ports = MapConcat '[] '[Pid] ports
 
+knownHPPortsAppendPid :: KnownHPPortsD down
+                      -> KnownHPPortsD (MapAppendPid down)
+knownHPPortsAppendPid KnownHPPortsZ = KnownHPPortsZ
+knownHPPortsAppendPid (KnownHPPortsS i) = KnownHPPortsS $ knownHPPortsAppendPid i
+
 -- |An interactive algorithm with that we use for defining ideal
 -- functionalities and protocols.
 --
