@@ -86,8 +86,6 @@ spawnOnDemand lOrdPrf rOrdPrf n lLen rLen impl = helper Map.empty
             in ((fl, sl), SomeRxMess Here (fr, sr))
           There i' -> second someRxMessThere $ unwrapMess n' lLen rLen $ SomeRxMess i' fs
 
-type HListPort x y = HListPair '[] '[x] :> HListPair '[] '[y]
-
 idealToMultSid :: forall sid rest down x y.
                   ConstrAllD Ord (sid:rest)
                -> KnownHPPortsD down
@@ -96,7 +94,7 @@ idealToMultSid :: forall sid rest down x y.
 idealToMultSid restLen downLen f = case mapConcatCompL @(sid:rest) @'[Pid] downLen of
     Refl -> spawnOnDemand restLen
                           ConstrAllNil
-                          (KnownHPPortsS $ knownHPPortsAppendPid downLen)
+                          (KnownHPPortsS $ KnownHPPortsS $ knownHPPortsAppendPid downLen)
                           (knownLenfromConstrAllD restLen)
                           getKnownLenPrf
                           $ \(l, r) -> f (hlistTakeHead l, r)
@@ -108,7 +106,7 @@ protoToFunc :: forall sid x y down.
 protoToFunc downLen f (sid, HNil) = case mapConcatId downLen of
     Refl -> spawnOnDemand getConstrAllD
                           getConstrAllD
-                          (KnownHPPortsS downLen)
+                          (KnownHPPortsS $ KnownHPPortsS downLen)
                           getKnownLenPrf
                           getKnownLenPrf
                           wrapper
@@ -124,7 +122,7 @@ realToMultSid :: forall sid rest down x y.
 realToMultSid restLen downLen f (HNil, pid) = case mapConcatId downLen of
     Refl -> spawnOnDemand restLen
                           getConstrAllD
-                          (KnownHPPortsS downLen)
+                          (KnownHPPortsS $ KnownHPPortsS downLen)
                           (knownLenfromConstrAllD restLen)
                           getKnownLenPrf
                           wrapper

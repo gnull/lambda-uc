@@ -53,7 +53,7 @@ mergeSendPorts i i' = case (listSplitConcat i, listSplitConcat i') of
     sendMerger :: AsyncT '[ OnlySendPort a, OnlyRecvPort a, OnlyRecvPort a] NextRecv NextRecv Void
     sendMerger = M.do
       x <- recvAny <&> \case
-        SomeRxMess Here contra -> case contra of {}
+        SomeRxMess Here (HNil, HCons contra HNil) -> case contra of {}
         SomeRxMess (There Here) x -> x
         SomeRxMess (There2 Here) x -> x
         SomeRxMess (There3 contra) _ -> case contra of {}

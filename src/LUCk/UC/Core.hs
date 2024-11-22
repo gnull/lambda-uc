@@ -11,8 +11,10 @@ module LUCk.UC.Core where
 import LUCk.Syntax
 import LUCk.Types
 
-type OnlySendPort a = a :> Void
-type OnlyRecvPort a = Void :> a
+type HListPort x y = HListPair '[] '[x] :> HListPair '[] '[y]
+
+type OnlySendPort a = HListPort a Void
+type OnlyRecvPort a = HListPort Void a
 type PingSendPort = OnlySendPort ()
 type PingRecvPort = OnlyRecvPort ()
 
@@ -58,7 +60,7 @@ mapConcatId (KnownHPPortsS i) = case mapConcatId i of
 -- - @down@ interfaces to its subroutines,
 -- - a single `PingSendPort` interface to yield control to the environment.
 type Proto l r up down =
-  AsyncT (MapConcat2 l r ((PortDual up) : down))
+  AsyncT (MapConcat2 l r (PingSendPort : (PortDual up) : down))
          NextRecv NextRecv Void
 
 -- |A `Proto` where @up@ and @down@ interfaces are appropriately marked
