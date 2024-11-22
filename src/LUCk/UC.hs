@@ -1,3 +1,5 @@
+{-# LANGUAGE UndecidableInstances #-}
+
 module LUCk.UC
   ( EnvProcess(..)
   , SubRespTree(..)
@@ -22,6 +24,22 @@ import LUCk.UC.Shell
 
 type EnvProcess down res =
   ExecBuilder ExecIndexInit (ExecIndexSome '[PingRecvPort, down] (InitPresent res)) ()
+
+data ProtoOrFunc adv up down where
+  Proto :: SingleSidIdeal sid (z :> w) (x :> y) down
+        -> ProtoOrFunc (z :> w) (x :> y) down
+  Func :: SingleSidReal sid (z :> w) (x :> y) down
+       -> ProtoOrFunc (z :> w) (x :> y) down
+
+type family ConcatAll l where
+  ConcatAll '[] = '[]
+  ConcatAll (x:xs) = Concat x (ConcatAll xs)
+
+data UcProtocolTree (advs :: [Port]) (up :: Port) where
+  UcProtocolTree :: HList2 UcProtocolTree advss down
+                 -> ProtoOrFunc adv up down
+                 -> UcProtocolTree (adv : ConcatAll advss) up
+
 
 -- |A tree of subroutine-respecting protocols.
 --

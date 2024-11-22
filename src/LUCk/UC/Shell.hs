@@ -111,7 +111,7 @@ protoToFunc downLen f (sid, HNil) = case mapConcatId downLen of
                           getKnownLenPrf
                           wrapper
   where
-    wrapper :: HListPair '[] '[Pid] -> Proto '[] '[] (HListPort x y) (HListPort x y) down
+    wrapper :: HListPair '[] '[Pid] -> UcProcess '[] '[] (HListPort x y) (HListPort x y) down
     wrapper (HNil, pid) = f (sid, pid)
 
 realToMultSid :: forall sid rest down x y.
@@ -127,5 +127,5 @@ realToMultSid restLen downLen f (HNil, pid) = case mapConcatId downLen of
                           getKnownLenPrf
                           wrapper
   where
-    wrapper :: HListPair (sid:rest) '[] -> Proto '[] '[] (HListPort x y) (HListPort x y) down
+    wrapper :: HListPair (sid:rest) '[] -> UcProcess '[] '[] (HListPort x y) (HListPort x y) down
     wrapper (HCons sid _, HNil) = f (HCons sid HNil, pid)

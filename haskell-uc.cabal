@@ -74,6 +74,7 @@ library
       LUCk.UC.Shell
       LUCk.Games.Common
       LUCk.Games.SignatureScheme
+      LUCk.Games.UCSignatureScheme
       LUCk.Games.SymEncryption
   other-modules:
   hs-source-dirs:
