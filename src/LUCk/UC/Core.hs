@@ -59,8 +59,8 @@ mapConcatId (KnownHPPortsS i) = case mapConcatId i of
 -- - @up@ interface to its callers,
 -- - @down@ interfaces to its subroutines,
 -- - a single `PingSendPort` interface to yield control to the environment.
-type Proto l r up down =
-  AsyncT (MapConcat2 l r (PingSendPort : (PortDual up) : down))
+type Proto l r adv up down =
+  AsyncT (MapConcat2 l r (PingSendPort : PortDual adv : PortDual up : down))
          NextRecv NextRecv Void
 
 -- |A `Proto` where @up@ and @down@ interfaces are appropriately marked
@@ -68,19 +68,19 @@ type Proto l r up down =
 --
 -- This is used by `multiSidIdealShell` to implement multiple sessions of
 -- `SingleSidIdeal` inside.
-type MultSidIdeal rest sid up down = Proto (sid:rest) '[Pid] up down
+type MultSidIdeal rest sid adv up down = Proto (sid:rest) '[Pid] adv up down
 
 -- |A `Proto` that implements a single process in a real (multi-session) protocol.
-type MultSidReal rest sid up down =
-  HListPair '[] '[Pid] -> Proto (sid:rest) '[] up down
+type MultSidReal rest sid adv up down =
+  HListPair '[] '[Pid] -> Proto (sid:rest) '[] adv up down
 
 -- |A `Proto` that implements a single session. The interface it provides
 -- to its caller is maked only with PID values.
 --
 -- Use this with `multiSidIdealShell` to get a multi-session extension.
-type SingleSidIdeal sid up down =
-  HListPair '[sid] '[] -> Proto '[] '[Pid] up down
+type SingleSidIdeal sid adv up down =
+  HListPair '[sid] '[] -> Proto '[] '[Pid] adv up down
 
 -- |A `Proto` that implements a single process in a real (single-session) protocol.
-type SingleSidReal sid up down =
-  HListPair '[sid] '[Pid] -> Proto '[] '[] up down
+type SingleSidReal sid adv up down =
+  HListPair '[sid] '[Pid] -> Proto '[] '[] adv up down
