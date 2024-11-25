@@ -4,6 +4,7 @@ import qualified Control.XMonad.Do as M
 import Control.XMonad
 
 import Data.Functor.Identity
+import Data.List (find)
 
 import LUCk.Types
 import LUCk.Syntax
@@ -52,39 +53,45 @@ signatureIF (SidMess sid) = M.do
     loopHelper scheme [] sk pk
   where
     initHelper = tryRerun $ M.do
-      tmp <- myRecvOne (There2 Here)
+      tmp <- myRecvOne InList2
       let (PidMess pid req) = tmp
       case req of
         KGen -> M.do
-          send (There Here) (PidMess pid Started)
-          tmp <- myRecvOne (There Here)
+          send InList1 $ PidMess pid Started
+          tmp <- myRecvOne InList1
           let (PidMess _ scheme) = tmp
           (sk, pk) <- xlift $ sigKey scheme
-          send (There2 Here) (PidMess pid $ RespKGen pk)
+          send InList2 (PidMess pid $ RespKGen pk)
           xreturn (scheme, sk, pk)
         _ -> xthrow Here ()
 
     loopHelper scheme trace sk pk = M.do
       trace' <- tryRerun $ M.do
-        tmp <- myRecvOne $ There2 Here
+        tmp <- myRecvOne InList2
         let (PidMess pid req) = tmp
         case req of
           KGen -> xthrow Here ()
           Sign m -> M.do
             sig <- xlift $ sigSign scheme sk m
             let resp = if (m, sig, pk, False) `elem` trace then RespErr else RespSign sig
-            send (There2 Here) (PidMess pid resp)
+            send InList2 $ PidMess pid resp
             xreturn ((m, sig, pk, True):trace)
           Ver pk' m sig -> M.do
-            let verd = sigVer scheme pk m sig
-            let resp = RespVer verd
+            let resp = RespVer $ case pk' == pk of
+                  True -> case (m, sig, pk, True) `elem` trace of
+                    True -> True
+                    False -> False
+                  False -> case find (\(m_, sig_, pk_, _) -> (m_, sig_, pk_) == (m, sig, pk)) trace of
+                    Just (_, _, _, b) -> b
+                    Nothing -> sigVer scheme pk m sig
+            -- let resp = RespVer verd
             -- TODO: check more conditions here
-            send (There2 Here) (PidMess pid resp)
-            let trace' = case resp of
+            send InList2 $ PidMess pid resp
+            let trace'' = case resp of
                   RespVer b -> (m, sig, pk, b) : trace
                   _ -> trace
-            xreturn trace'
-      loopHelper scheme trace sk pk
+            xreturn trace''
+      loopHelper scheme trace' sk pk
 
     myRecvOne :: PortInList x y ports
               -> AsyncExT '[() :@ NextSend] ports NextRecv NextSend y
