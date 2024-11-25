@@ -3,7 +3,9 @@
 module LUCk.Syntax.Async (
   -- * Interactive Algorithm Monad
   -- $monad
-    AsyncT(..)
+    AsyncT
+  , AsyncExT(..)
+  , Exception(..)
   , Index
   , escapeAsyncT
   , xfreeAsync
@@ -12,7 +14,7 @@ module LUCk.Syntax.Async (
   , AsyncActions(..)
   -- * Interactive Computations
   -- $interactive
-  , Index
+  -- , Index
   -- , xthrow
   -- , xcatch
   -- ** Asynchronous Interaction
@@ -21,9 +23,12 @@ module LUCk.Syntax.Async (
   , sendMess
   , recvAny
   , xlift
+  , xthrow
+  , xcatch
   , asyncGetIndex
   , asyncGuard
   -- $derived
+  , recvOneEx
   , recvOne
   , sendOne
   -- , ExBadSender(..)
@@ -61,31 +66,38 @@ import LUCk.Types
 
 -- import Data.Type.Equality ((:~:)(Refl))
 
+data Exception = Type :@ Index
+
 -- $actions
 --
 -- Actions are given in Free monad syntax.
 
-
 -- |@bef@ and @aft@ are the states before and after the given action. The
 -- meaning of possible states is as follows:
-data AsyncActions (ports :: [Port])
+data AsyncActions (ex :: [Exception]) (ports :: [Port])
                   (bef :: Index) (aft :: Index) (a :: Type) where
   -- |Receive a message from some channel
   RecvAction :: (SomeRxMess ports -> a)
-             -> AsyncActions ports NextRecv NextSend a
+             -> AsyncActions ex ports NextRecv NextSend a
   -- |Send a message to the chosen channel
   SendAction :: SomeTxMess ports
              -> a
-             -> AsyncActions ports NextSend NextRecv a
+             -> AsyncActions ex ports NextSend NextRecv a
   -- |Run a local action in the inner monad.
   LiftAction :: L.PrAlgo x
              -> (x -> a)
-             -> AsyncActions ports b b a
+             -> AsyncActions ex ports b b a
 
-instance Functor (AsyncActions ports bef aft) where
+  -- |Throw one of the allowed exceptions
+  ThrowAction :: InList ex (e :@ i)
+              -> e
+              -> AsyncActions ex ports i j a
+
+instance Functor (AsyncActions ex ports bef aft) where
   fmap f (RecvAction cont) = RecvAction $ f . cont
   fmap f (SendAction m r) = SendAction m $ f r
   fmap f (LiftAction m cont) = LiftAction m $ f . cont
+  fmap _ (ThrowAction i e) = ThrowAction i e
 
 -- $monad
 
@@ -110,26 +122,35 @@ instance Functor (AsyncActions ports bef aft) where
 -- indices tell which of the two operations must be first and last.
 --
 -- Additionally, you may sample random values in `AsyncT` using @`L.rand`@.
-newtype AsyncT ports bef aft a
-    = AsyncT { runInterT :: XFree (AsyncActions ports) bef aft a }
+newtype AsyncExT ex ports bef aft a
+    = AsyncExT { runInterT :: XFree (AsyncActions ex ports) bef aft a }
   deriving (Functor)
 
-instance bef ~ aft => Applicative (AsyncT ports bef aft) where
-  f <*> m = AsyncT $ runInterT f <*> runInterT m
-  pure = AsyncT . pure
+instance bef ~ aft => Applicative (AsyncExT ex ports bef aft) where
+  f <*> m = AsyncExT $ runInterT f <*> runInterT m
+  pure = AsyncExT . pure
 
-instance bef ~ aft => Monad (AsyncT ports bef aft) where
-  m >>= f = AsyncT $ runInterT m Monad.>>= (runInterT . f)
+instance bef ~ aft => Monad (AsyncExT ex ports bef aft) where
+  m >>= f = AsyncExT $ runInterT m Monad.>>= (runInterT . f)
 
-instance XApplicative (AsyncT ports) where
-  xpure = AsyncT . xpure
-  f <*>: x = AsyncT $ runInterT f <*>: runInterT x
+instance XApplicative (AsyncExT ex ports) where
+  xpure = AsyncExT . xpure
+  f <*>: x = AsyncExT $ runInterT f <*>: runInterT x
 
-instance XMonad (AsyncT ports) where
-  m >>=: f = AsyncT $ runInterT m >>=: (runInterT . f)
+instance XMonad (AsyncExT ex ports) where
+  m >>=: f = AsyncExT $ runInterT m >>=: (runInterT . f)
 
-instance L.MonadRand (AsyncT ports i i) where
+instance L.MonadRand (AsyncExT ex ports i i) where
   rand = xlift L.rand
+
+xfreeAsync :: AsyncActions ex ports bef aft a -> AsyncExT ex ports bef aft a
+xfreeAsync = AsyncExT . xfree
+
+-- instance XMonadTrans (AsyncT ports) where
+xlift :: L.PrAlgo a -> AsyncExT ex ports i i a
+xlift m = xfreeAsync $ LiftAction m id
+
+type AsyncT = AsyncExT '[]
 
 -- |Interactive action with no free ports can be interpreted as local.
 --
@@ -139,13 +160,6 @@ escapeAsyncT :: AsyncT '[] NextSend NextSend a
 escapeAsyncT cont = runTillSend cont >>= \case
   SrSend (SomeTxMess contra _) _ -> case contra of {}
   SrHalt res -> pure res
-
-xfreeAsync :: AsyncActions ports bef aft a -> AsyncT ports bef aft a
-xfreeAsync = AsyncT . xfree
-
--- instance XMonadTrans (AsyncT ports) where
-xlift :: L.PrAlgo a -> AsyncT ports i i a
-xlift m = xfreeAsync $ LiftAction m id
 
 -- $async
 --
@@ -160,16 +174,39 @@ xlift m = xfreeAsync $ LiftAction m id
 -- time.
 
 -- |Send a message to the port it is marked with.
-sendMess :: SomeTxMess ports -> AsyncT ports NextSend NextRecv ()
+sendMess :: SomeTxMess ports -> AsyncExT ex ports NextSend NextRecv ()
 sendMess m = xfreeAsync $ SendAction m ()
 
 -- |Curried version of `sendMess`.
-send :: InList ports p -> PortTxType p -> AsyncT ports NextSend NextRecv ()
+send :: InList ports p -> PortTxType p -> AsyncExT ex ports NextSend NextRecv ()
 send i m = sendMess $ SomeTxMess i m
 
 -- |Receive the next message which can arrive from any of `port` ports.
-recvAny :: AsyncT ports NextRecv NextSend (SomeRxMess ports)
+recvAny :: AsyncExT ex ports NextRecv NextSend (SomeRxMess ports)
 recvAny = xfreeAsync $ RecvAction id
+
+xthrow :: InList ex (e :@ i)
+       -> e
+       -> AsyncExT ex ports i j a
+xthrow i e = xfreeAsync $ ThrowAction i e
+
+xcatch :: forall ex ex' ports bef aft a.
+         AsyncExT ex ports bef aft a
+      -- ^The computation that may throw an exception
+      -> (forall e b. InList ex (e :@ b) -> e -> AsyncExT ex' ports b aft a)
+      -- ^How to handle the exception
+      -> AsyncExT ex' ports bef aft a
+xcatch (AsyncExT a) h = AsyncExT $ xcatch' a $ \i e -> runInterT (h i e)
+  where
+    xcatch' :: XFree (AsyncActions ex ports) bef' aft a
+            -> (forall e b. InList ex (e :@ b) -> e -> XFree (AsyncActions ex' ports) b aft a)
+            -> XFree (AsyncActions ex' ports) bef' aft a
+    xcatch' (Pure x) _ = xreturn x
+    xcatch' (Join a') h' = case a' of
+        RecvAction cont -> Join $ RecvAction $ (`xcatch'` h') . cont
+        SendAction x r -> Join $ SendAction x $ r `xcatch'` h'
+        ThrowAction i e -> h' i e
+        LiftAction m cont -> Join $ LiftAction m $ (`xcatch'` h') . cont
 
 -- $derived
 -- The following definitions specialize `AsyncT` for narrower use-cases. These
@@ -194,14 +231,24 @@ asyncGuard _ = xreturn ()
 --
 -- Some convenient shorthand operations built from basic ones.
 
-recvOne :: AsyncT '[x :> y] NextRecv NextSend y
+recvOne :: AsyncExT ex '[x :> y] NextRecv NextSend y
 recvOne = M.do
   recvAny >>=: \case
     SomeRxMess Here m -> xpure m
     SomeRxMess (There contra) _ -> case contra of {}
 
-sendOne :: x -> AsyncT '[x :> y] NextSend NextRecv ()
+sendOne :: x -> AsyncExT ex '[x :> y] NextSend NextRecv ()
 sendOne = send Here
+
+recvOneEx :: InList ex (e :@ NextSend)
+          -> e
+          -> PortInList x y ports
+          -> AsyncExT ex ports NextRecv NextSend y
+recvOneEx i e j =
+  recvAny >>=: \case
+    SomeRxMess j' m -> case testEquality j j' of
+      Just Refl -> xreturn m
+      Nothing -> xthrow i e
 
 -- -- |An exception thrown if a message does not arrive from the expected sender.
 -- data ExBadSender = ExBadSender
@@ -255,10 +302,11 @@ data SendRes ports aft a where
 -- run it until it does `send` or halts.
 runTillSend :: AsyncT ports NextSend b a
             -> L.PrAlgo (SendRes ports b a)
-runTillSend (AsyncT (Pure v)) = pure $ SrHalt v
-runTillSend (AsyncT (Join v)) = case v of
-  SendAction x r -> pure $ SrSend x $ AsyncT r
-  LiftAction m cont -> m >>= runTillSend . AsyncT . cont
+runTillSend (AsyncExT (Pure v)) = pure $ SrHalt v
+runTillSend (AsyncExT (Join v)) = case v of
+  SendAction x r -> pure $ SrSend x $ AsyncExT r
+  LiftAction m cont -> m >>= runTillSend . AsyncExT . cont
+  ThrowAction contra _ -> case contra of {}
 
 -- |The result of `runTillRecv`.
 data RecvRes ports aft a where
@@ -273,10 +321,11 @@ data RecvRes ports aft a where
 -- until it receives the write token via `recvAny` or halts.
 runTillRecv :: AsyncT ports NextRecv b a
             -> L.PrAlgo (RecvRes ports b a)
-runTillRecv (AsyncT (Pure v)) = pure $ RrHalt v
-runTillRecv (AsyncT (Join v)) = case v of
-  RecvAction cont -> pure $ RrRecv $ AsyncT . cont
-  LiftAction a cont -> a >>= runTillRecv . AsyncT . cont
+runTillRecv (AsyncExT (Pure v)) = pure $ RrHalt v
+runTillRecv (AsyncExT (Join v)) = case v of
+  RecvAction cont -> pure $ RrRecv $ AsyncExT . cont
+  LiftAction a cont -> a >>= runTillRecv . AsyncExT . cont
+  ThrowAction contra _ -> case contra of {}
 
 -- $lemmas
 --
