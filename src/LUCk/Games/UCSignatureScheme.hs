@@ -18,14 +18,19 @@ import LUCk.Games.SignatureScheme (SpSignatureScheme, SignatureScheme(..))
 
 import qualified Data.Map as Map
 
-data SignReq pk mess sig
-  = KGen
-  | Sign mess
-  | Ver pk mess sig
+type Message = String
+type Pk = String
+type Sk = String
+type Sign = String
 
-data SignResp pk mess sig
-  = RespKGen pk
-  | RespSign sig
+data SignReq
+  = KGen
+  | Sign Message
+  | Ver Pk Message Sign
+
+data SignResp
+  = RespKGen Pk
+  | RespSign Sign
   | RespVer Bool
   | RespErr
 
@@ -44,61 +49,71 @@ pattern SidMess :: sid -> HListPair '[sid] '[]
 pattern SidMess sid = (HCons (Identity sid) HNil, HNil)
 {-# COMPLETE SidMess #-}
 
-signatureIF :: SingleSidIdeal SignSid
-                              (HListPort (SignatureScheme String String String String) Started)
-                              (HListPort (SignReq String String String) (SignResp String String String))
-                              '[]
-signatureIF (SidMess sid) = M.do
-    (scheme, sk, pk) <- initHelper
-    loopHelper scheme [] sk pk
-  where
-    initHelper = tryRerun $ M.do
-      tmp <- myRecvOne InList2
-      let (PidMess pid req) = tmp
-      case req of
-        KGen -> M.do
-          send InList1 $ PidMess pid Started
-          tmp <- myRecvOne InList1
-          let (PidMess _ scheme) = tmp
-          (sk, pk) <- xlift $ sigKey scheme
-          send InList2 (PidMess pid $ RespKGen pk)
-          xreturn (scheme, sk, pk)
-        _ -> xthrow Here ()
+type SignatureScheme' = SignatureScheme String String String String
 
-    loopHelper scheme trace sk pk = M.do
-      trace' <- tryRerun $ M.do
-        tmp <- myRecvOne InList2
-        let (PidMess pid req) = tmp
-        case req of
-          KGen -> xthrow Here ()
+data SingatureIFConfig = NotInitialized
+                       | Initialized SignatureScheme' Sk Pk
+
+signatureIF :: SingleSidIdeal SignSid
+                              (HListPort SignatureScheme' Started)
+                              (HListPort SignReq SignResp)
+                              '[]
+signatureIF (SidMess (SignSid {signSidSigner} )) = M.do
+    m <- tryRerun $ myRecvOne InList2
+    (scheme, sk, pk) <- initHelper
+    state <- xcatch (processReq scheme sk pk m Map.empty) $ oneException $ M.do
+      send Here (PidMess "" ())
+      xreturn Map.empty
+    loopHelper scheme sk pk state
+  where
+
+    initHelper = M.do
+      send InList1 $ PidMess "" Started
+      tmp' <- tryRerun $ myRecvOne InList1
+      let (PidMess _ scheme) = tmp'
+      (sk, pk) <- xlift $ sigKey scheme
+      xreturn (scheme, sk, pk)
+
+    loopHelper scheme sk pk state = M.do
+      state' <- tryRerun $ M.do
+        m <- myRecvOne InList2
+        processReq scheme sk pk m state
+      loopHelper scheme sk pk state'
+
+    processReq scheme sk pk (PidMess pid req) state = case req of
+          KGen -> M.do
+            send InList2 (PidMess pid $ RespKGen pk)
+            xreturn state
           Sign m -> M.do
             sig <- xlift $ sigSign scheme sk m
-            let resp = if (m, sig, pk, False) `elem` trace then RespErr else RespSign sig
+            let resp = case (m, sig, pk) `Map.lookup` state == Just False
+                            || pid /= signSidSigner
+                       of
+                  True -> RespErr
+                  False -> RespSign sig
             send InList2 $ PidMess pid resp
-            xreturn ((m, sig, pk, True):trace)
+            xreturn $ Map.insert (m, sig, pk) True state
           Ver pk' m sig -> M.do
-            let resp = RespVer $ case pk' == pk of
-                  True -> case (m, sig, pk, True) `elem` trace of
-                    True -> True
-                    False -> False
-                  False -> case find (\(m_, sig_, pk_, _) -> (m_, sig_, pk_) == (m, sig, pk)) trace of
-                    Just (_, _, _, b) -> b
-                    Nothing -> sigVer scheme pk m sig
-            -- let resp = RespVer verd
-            -- TODO: check more conditions here
-            send InList2 $ PidMess pid resp
-            let trace'' = case resp of
-                  RespVer b -> (m, sig, pk, b) : trace
-                  _ -> trace
-            xreturn trace''
-      loopHelper scheme trace' sk pk
+            let resp = case (pk' == pk, (m, sig, pk') `Map.lookup` state) of
+                    (True, Just True) -> True
+                    (True, Nothing) -> False
+                    -- ^This condition needs to be modified if we include corruptions
+                    (_, Just b) -> b
+                    (_, Nothing) -> sigVer scheme pk' m sig
+            send InList2 $ PidMess pid $ RespVer resp
+            xreturn $ Map.insert (m, sig, pk') resp state
 
     myRecvOne :: PortInList x y ports
               -> AsyncExT '[() :@ NextSend] ports NextRecv NextSend y
     myRecvOne = recvOneEx Here ()
 
-    tryRerun :: AsyncExT '[() :@ NextSend] (Concat2 '[] '[Pid] PingSendPort : ports) NextRecv NextRecv a
-             -> AsyncT (Concat2 '[] '[Pid] PingSendPort : ports) NextRecv NextRecv a
+    oneException :: AsyncT ports i j a
+                 -> InList '[() :@ i] (e :@ b) -> e -> AsyncT ports b j a
+    oneException f Here = \() -> f
+    oneException _ (There contra) = case contra of {}
+
+    tryRerun :: AsyncExT '[() :@ NextSend] (Concat2 '[] '[Pid] PingSendPort : ports) NextRecv i a
+             -> AsyncT (Concat2 '[] '[Pid] PingSendPort : ports) NextRecv i a
     tryRerun f = (f `xcatch`) $ \case
       Here -> \() -> M.do
         send Here (PidMess "" ())
