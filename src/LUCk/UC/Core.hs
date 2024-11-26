@@ -60,7 +60,10 @@ mapConcatId (KnownHPPortsS i) = case mapConcatId i of
 -- - @down@ interfaces to its subroutines,
 -- - a single `PingSendPort` interface to yield control to the environment.
 type UcProcess l r adv up down =
-  AsyncT (MapConcat2 l r (PingSendPort : PortDual adv : PortDual up : down))
+  AsyncT ( Concat2 l r PingSendPort
+         : PortDual adv
+         : MapConcat2 l r (PortDual up : down)
+         )
          NextRecv NextRecv Void
 
 -- |A `UcProcess` where @up@ and @down@ interfaces are appropriately marked
@@ -68,19 +71,19 @@ type UcProcess l r adv up down =
 --
 -- This is used by `multiSidIdealShell` to implement multiple sessions of
 -- `SingleSidIdeal` inside.
-type MultSidIdeal rest sid adv up down = UcProcess (sid:rest) '[Pid] adv up down
+type MultSidIdeal rest sid adv up down = UcProcess (sid:rest) '[Pid] (Concat2 (sid:rest) '[Pid] adv) up down
 
 -- |A `UcProcess` that implements a single process in a real (multi-session) protocol.
 type MultSidReal rest sid adv up down =
-  HListPair '[] '[Pid] -> UcProcess (sid:rest) '[] adv up down
+  HListPair '[] '[Pid] -> UcProcess (sid:rest) '[] (Concat2 (sid:rest) '[] adv) up down
 
 -- |A `UcProcess` that implements a single session. The interface it provides
 -- to its caller is maked only with PID values.
 --
 -- Use this with `multiSidIdealShell` to get a multi-session extension.
 type SingleSidIdeal sid adv up down =
-  HListPair '[sid] '[] -> UcProcess '[] '[Pid] adv up down
+  HListPair '[sid] '[] -> UcProcess '[] '[Pid] (Concat2 '[] '[Pid] adv) up down
 
 -- |A `UcProcess` that implements a single process in a real (single-session) protocol.
 type SingleSidReal sid adv up down =
-  HListPair '[sid] '[Pid] -> UcProcess '[] '[] adv up down
+  HListPair '[sid] '[Pid] -> UcProcess '[] '[] (Concat2 '[] '[] adv) up down
