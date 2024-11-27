@@ -11,6 +11,7 @@ import LUCk.Syntax
 
 import LUCk.UC
 import LUCk.UC.Core
+import LUCk.UC.Flatten
 
 import Data.Type.Equality
 
@@ -41,40 +42,27 @@ data SignSid = SignSid
   , signSid' :: String
   }
 
-pattern JustMess :: m -> HListPair '[] '[m]
-pattern JustMess m = (HNil, HListMatch1 (Identity m))
-{-# COMPLETE JustMess #-}
-
-pattern PidMess :: Pid -> m -> HListPair '[] '[Pid, m]
-pattern PidMess pid m = (HNil, HListMatch2 (Identity pid) (Identity m))
-{-# COMPLETE PidMess #-}
-
-pattern SidMess :: sid -> HListPair '[sid] '[]
-pattern SidMess sid = (HCons (Identity sid) HNil, HNil)
-{-# COMPLETE SidMess #-}
-
 type SignatureScheme' = SignatureScheme String String String String
 
 data UnexpectedSenderEx = UnexpectedSenderEx
 
-signatureIF :: SingleSidIdeal SignSid
-                              (HListPort SignatureScheme' Started)
-                              (HListPort SignReq SignResp)
-                              '[]
-signatureIF (SidMess (SignSid {signSidSigner} )) = M.do
+signatureIF :: SingleSidIdeal' SignSid
+                               (HListPort SignatureScheme' Started)
+                               (HListPort SignReq SignResp)
+                               '[]
+signatureIF (Sid (SignSid {signSidSigner} )) = M.do
     m <- tryRerun $ myRecvOne InList2
     (scheme, sk, pk) <- initHelper
-    state <- xcatch (processReq scheme sk pk m Map.empty) $ oneExceptionH $ M.do
-      send Here (PidMess "" ())
+    state <- xcatch (processReq scheme sk pk m Map.empty) $ handleOne $ M.do
+      send Here $ PidMess "" ()
       xreturn Map.empty
     loopHelper scheme sk pk state
 
   where
 
     initHelper = M.do
-      send InList1 $ JustMess Started
-      tmp' <- tryRerun $ myRecvOne InList1
-      let (JustMess scheme) = tmp'
+      send InList1 $ Started
+      scheme <- tryRerun $ myRecvOne InList1
       (sk, pk) <- xlift $ sigKey scheme
       xreturn (scheme, sk, pk)
 
@@ -111,13 +99,13 @@ signatureIF (SidMess (SignSid {signSidSigner} )) = M.do
               -> AsyncExT '[UnexpectedSenderEx :@ NextSend] ports NextRecv NextSend y
     myRecvOne = recvOneEx Here UnexpectedSenderEx
 
-    oneExceptionH :: AsyncT ports i j a
-                 -> InList '[UnexpectedSenderEx :@ i] (e :@ b) -> e -> AsyncT ports b j a
-    oneExceptionH f Here = \UnexpectedSenderEx -> f
-    oneExceptionH _ (There contra) = case contra of {}
+    handleOne :: AsyncT ports i j a
+              -> InList '[e' :@ i] (e :@ b) -> e -> AsyncT ports b j a
+    handleOne f Here = \_ -> f
+    handleOne _ (There contra) = case contra of {}
 
-    tryRerun :: AsyncExT '[UnexpectedSenderEx :@ NextSend] (Concat2 '[] '[Pid] PingSendPort : ports) NextRecv i a
-             -> AsyncT (Concat2 '[] '[Pid] PingSendPort : ports) NextRecv i a
+    tryRerun :: AsyncExT '[UnexpectedSenderEx :@ NextSend] (PidMess () :> PidMess Void : ports) NextRecv i a
+             -> AsyncT (PidMess () :> PidMess Void : ports) NextRecv i a
     tryRerun f = (f `xcatch`) $ \case
       Here -> \UnexpectedSenderEx -> M.do
         send Here (PidMess "" ())

@@ -71,6 +71,7 @@ library
       LUCk.Syntax.Sync.Eval
       LUCk.UC
       LUCk.UC.Core
+      LUCk.UC.Flatten
       LUCk.UC.Shell
       LUCk.Games.Common
       LUCk.Games.SignatureScheme
