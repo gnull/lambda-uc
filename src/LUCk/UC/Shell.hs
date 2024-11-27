@@ -99,20 +99,20 @@ idealToMultSid restLen downLen f = case mapConcatCompL @(sid:rest) @'[Pid] downL
                           getKnownLenPrf
                           $ \(l, r) -> f (hlistTakeHead l, r)
 
-protoToFunc :: forall sid x y down.
-               KnownHPPortsD down
-            -> SingleSidReal sid (HListPort x y) (HListPort x y) down
-            -> SingleSidIdeal sid (HListPort x y) (HListPort x y) down
-protoToFunc downLen f (sid, HNil) = case mapConcatId downLen of
-    Refl -> spawnOnDemand getConstrAllD
-                          getConstrAllD
-                          (KnownHPPortsS $ KnownHPPortsS $ KnownHPPortsS downLen)
-                          getKnownLenPrf
-                          getKnownLenPrf
-                          wrapper
-  where
-    wrapper :: HListPair '[] '[Pid] -> UcProcess '[] '[] (HListPort x y) (HListPort x y) down
-    wrapper (HNil, pid) = f (sid, pid)
+-- protoToFunc :: forall sid x y down.
+--                KnownHPPortsD down
+--             -> SingleSidReal sid (HListPort x y) (HListPort x y) down
+--             -> SingleSidIdeal sid (HListPort x y) (HListPort x y) down
+-- protoToFunc downLen f (sid, HNil) = case mapConcatId downLen of
+--     Refl -> spawnOnDemand getConstrAllD
+--                           getConstrAllD
+--                           (KnownHPPortsS $ KnownHPPortsS $ KnownHPPortsS downLen)
+--                           getKnownLenPrf
+--                           getKnownLenPrf
+--                           wrapper
+--   where
+--     wrapper :: HListPair '[] '[Pid] -> UcProcess '[] '[] (HListPort x y) (HListPort x y) down
+--     wrapper (HNil, pid) = f (sid, pid)
 
 realToMultSid :: forall sid rest down x y.
                  ConstrAllD Ord (sid:rest)

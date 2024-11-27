@@ -71,7 +71,7 @@ type UcProcess l r adv up down =
 --
 -- This is used by `multiSidIdealShell` to implement multiple sessions of
 -- `SingleSidIdeal` inside.
-type MultSidIdeal rest sid adv up down = UcProcess (sid:rest) '[Pid] (Concat2 (sid:rest) '[Pid] adv) up down
+type MultSidIdeal rest sid adv up down = UcProcess (sid:rest) '[Pid] (Concat2 (sid:rest) '[] adv) up down
 
 -- |A `UcProcess` that implements a single process in a real (multi-session) protocol.
 type MultSidReal rest sid adv up down =
@@ -82,7 +82,7 @@ type MultSidReal rest sid adv up down =
 --
 -- Use this with `multiSidIdealShell` to get a multi-session extension.
 type SingleSidIdeal sid adv up down =
-  HListPair '[sid] '[] -> UcProcess '[] '[Pid] (Concat2 '[] '[Pid] adv) up down
+  HListPair '[sid] '[] -> UcProcess '[] '[Pid] (Concat2 '[] '[] adv) up down
 
 -- |A `UcProcess` that implements a single process in a real (single-session) protocol.
 type SingleSidReal sid adv up down =

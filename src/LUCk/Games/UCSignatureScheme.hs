@@ -41,6 +41,10 @@ data SignSid = SignSid
   , signSid' :: String
   }
 
+pattern JustMess :: m -> HListPair '[] '[m]
+pattern JustMess m = (HNil, HListMatch1 (Identity m))
+{-# COMPLETE JustMess #-}
+
 pattern PidMess :: Pid -> m -> HListPair '[] '[Pid, m]
 pattern PidMess pid m = (HNil, HListMatch2 (Identity pid) (Identity m))
 {-# COMPLETE PidMess #-}
@@ -51,8 +55,7 @@ pattern SidMess sid = (HCons (Identity sid) HNil, HNil)
 
 type SignatureScheme' = SignatureScheme String String String String
 
-data SingatureIFConfig = NotInitialized
-                       | Initialized SignatureScheme' Sk Pk
+data UnexpectedSenderEx = UnexpectedSenderEx
 
 signatureIF :: SingleSidIdeal SignSid
                               (HListPort SignatureScheme' Started)
@@ -61,16 +64,17 @@ signatureIF :: SingleSidIdeal SignSid
 signatureIF (SidMess (SignSid {signSidSigner} )) = M.do
     m <- tryRerun $ myRecvOne InList2
     (scheme, sk, pk) <- initHelper
-    state <- xcatch (processReq scheme sk pk m Map.empty) $ oneException $ M.do
+    state <- xcatch (processReq scheme sk pk m Map.empty) $ oneExceptionH $ M.do
       send Here (PidMess "" ())
       xreturn Map.empty
     loopHelper scheme sk pk state
+
   where
 
     initHelper = M.do
-      send InList1 $ PidMess "" Started
+      send InList1 $ JustMess Started
       tmp' <- tryRerun $ myRecvOne InList1
-      let (PidMess _ scheme) = tmp'
+      let (JustMess scheme) = tmp'
       (sk, pk) <- xlift $ sigKey scheme
       xreturn (scheme, sk, pk)
 
@@ -81,41 +85,41 @@ signatureIF (SidMess (SignSid {signSidSigner} )) = M.do
       loopHelper scheme sk pk state'
 
     processReq scheme sk pk (PidMess pid req) state = case req of
-          KGen -> M.do
-            send InList2 (PidMess pid $ RespKGen pk)
-            xreturn state
-          Sign m -> M.do
-            sig <- xlift $ sigSign scheme sk m
-            let resp = case (m, sig, pk) `Map.lookup` state == Just False
-                            || pid /= signSidSigner
-                       of
-                  True -> RespErr
-                  False -> RespSign sig
-            send InList2 $ PidMess pid resp
-            xreturn $ Map.insert (m, sig, pk) True state
-          Ver pk' m sig -> M.do
-            let resp = case (pk' == pk, (m, sig, pk') `Map.lookup` state) of
-                    (True, Just True) -> True
-                    (True, Nothing) -> False
-                    -- ^This condition needs to be modified if we include corruptions
-                    (_, Just b) -> b
-                    (_, Nothing) -> sigVer scheme pk' m sig
-            send InList2 $ PidMess pid $ RespVer resp
-            xreturn $ Map.insert (m, sig, pk') resp state
+      KGen -> M.do
+        send InList2 (PidMess pid $ RespKGen pk)
+        xreturn state
+      Sign m -> M.do
+        sig <- xlift $ sigSign scheme sk m
+        let resp = case (m, sig, pk) `Map.lookup` state == Just False
+                        || pid /= signSidSigner
+                   of
+              True -> RespErr
+              False -> RespSign sig
+        send InList2 $ PidMess pid resp
+        xreturn $ Map.insert (m, sig, pk) True state
+      Ver pk' m sig -> M.do
+        let resp = case (pk' == pk, (m, sig, pk') `Map.lookup` state) of
+                (True, Just True) -> True
+                (True, Nothing) -> False
+                -- ^This condition needs to be modified if we include corruptions
+                (_, Just b) -> b
+                (_, Nothing) -> sigVer scheme pk' m sig
+        send InList2 $ PidMess pid $ RespVer resp
+        xreturn $ Map.insert (m, sig, pk') resp state
 
     myRecvOne :: PortInList x y ports
-              -> AsyncExT '[() :@ NextSend] ports NextRecv NextSend y
-    myRecvOne = recvOneEx Here ()
+              -> AsyncExT '[UnexpectedSenderEx :@ NextSend] ports NextRecv NextSend y
+    myRecvOne = recvOneEx Here UnexpectedSenderEx
 
-    oneException :: AsyncT ports i j a
-                 -> InList '[() :@ i] (e :@ b) -> e -> AsyncT ports b j a
-    oneException f Here = \() -> f
-    oneException _ (There contra) = case contra of {}
+    oneExceptionH :: AsyncT ports i j a
+                 -> InList '[UnexpectedSenderEx :@ i] (e :@ b) -> e -> AsyncT ports b j a
+    oneExceptionH f Here = \UnexpectedSenderEx -> f
+    oneExceptionH _ (There contra) = case contra of {}
 
-    tryRerun :: AsyncExT '[() :@ NextSend] (Concat2 '[] '[Pid] PingSendPort : ports) NextRecv i a
+    tryRerun :: AsyncExT '[UnexpectedSenderEx :@ NextSend] (Concat2 '[] '[Pid] PingSendPort : ports) NextRecv i a
              -> AsyncT (Concat2 '[] '[Pid] PingSendPort : ports) NextRecv i a
     tryRerun f = (f `xcatch`) $ \case
-      Here -> \() -> M.do
+      Here -> \UnexpectedSenderEx -> M.do
         send Here (PidMess "" ())
         tryRerun f
       There contra -> case contra of {}
