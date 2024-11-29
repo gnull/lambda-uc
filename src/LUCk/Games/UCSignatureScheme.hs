@@ -54,15 +54,19 @@ signatureIF (Sid (SignSid {signSidSigner} )) = M.do
     m <- tryRerun $ myRecvOne InList2
     (scheme, sk, pk) <- initHelper
     state <- xcatch (processReq scheme sk pk m Map.empty) $ handleOne $ M.do
-      send Here $ PidMess "" ()
+      send pingAddr $ PidMess "" ()
       xreturn Map.empty
     loopHelper scheme sk pk state
 
   where
 
+    pingAddr = InList0
+    advAddr = InList1
+    callerAddr = InList2
+
     initHelper = M.do
-      send InList1 $ Started
-      scheme <- tryRerun $ myRecvOne InList1
+      send advAddr $ Started
+      scheme <- tryRerun $ myRecvOne advAddr
       (sk, pk) <- xlift $ sigKey scheme
       xreturn (scheme, sk, pk)
 
@@ -74,7 +78,7 @@ signatureIF (Sid (SignSid {signSidSigner} )) = M.do
 
     processReq scheme sk pk (PidMess pid req) state = case req of
       KGen -> M.do
-        send InList2 (PidMess pid $ RespKGen pk)
+        send callerAddr $ PidMess pid $ RespKGen pk
         xreturn state
       Sign m -> M.do
         sig <- xlift $ sigSign scheme sk m
@@ -83,7 +87,7 @@ signatureIF (Sid (SignSid {signSidSigner} )) = M.do
                    of
               True -> RespErr
               False -> RespSign sig
-        send InList2 $ PidMess pid resp
+        send callerAddr $ PidMess pid resp
         xreturn $ Map.insert (m, sig, pk) True state
       Ver pk' m sig -> M.do
         let resp = case (pk' == pk, (m, sig, pk') `Map.lookup` state) of
@@ -92,7 +96,7 @@ signatureIF (Sid (SignSid {signSidSigner} )) = M.do
                 -- ^This condition needs to be modified if we include corruptions
                 (_, Just b) -> b
                 (_, Nothing) -> sigVer scheme pk' m sig
-        send InList2 $ PidMess pid $ RespVer resp
+        send callerAddr $ PidMess pid $ RespVer resp
         xreturn $ Map.insert (m, sig, pk') resp state
 
     myRecvOne :: PortInList x y ports
@@ -108,6 +112,6 @@ signatureIF (Sid (SignSid {signSidSigner} )) = M.do
              -> AsyncT (PidMess () :> PidMess Void : ports) NextRecv i a
     tryRerun f = (f `xcatch`) $ \case
       Here -> \UnexpectedSenderEx -> M.do
-        send Here (PidMess "" ())
+        send pingAddr $ PidMess "" ()
         tryRerun f
       There contra -> case contra of {}
