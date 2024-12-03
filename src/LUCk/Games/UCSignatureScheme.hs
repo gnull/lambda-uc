@@ -108,10 +108,11 @@ signatureIF (Sid (SignSid {signSidSigner} )) = M.do
     handleOne f Here = \_ -> f
     handleOne _ (There contra) = case contra of {}
 
-    tryRerun :: AsyncExT '[UnexpectedSenderEx :@ NextSend] (PidMess () :> PidMess Void : ports) NextRecv i a
-             -> AsyncT (PidMess () :> PidMess Void : ports) NextRecv i a
-    tryRerun f = (f `xcatch`) $ \case
-      Here -> \UnexpectedSenderEx -> M.do
-        send pingAddr $ PidMess "" ()
-        tryRerun f
-      There contra -> case contra of {}
+    tryRerun :: AsyncExT '[UnexpectedSenderEx :@ NextSend]
+                         (PidMess () :> PidMess Void : ports)
+                         NextRecv i a
+             -> AsyncT (PidMess () :> PidMess Void : ports)
+                       NextRecv i a
+    tryRerun f = xcatch f $ handleOne $ M.do
+      send pingAddr $ PidMess "" ()
+      tryRerun f
