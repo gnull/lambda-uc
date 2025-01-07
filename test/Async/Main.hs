@@ -169,7 +169,7 @@ test s = M.do
 --
 -- 2. Inside @SomeWTM@, wrap each branch where your WT state is fixed in
 -- @decided@.
-maybeSends :: PortInList Bool Bool l -> SomeWT ex l NextRecv Bool
+maybeSends :: PortInList Bool Bool l -> SomeWT l NextRecv Bool
 maybeSends port =
   ContFromAnyWT $ \cont -> M.do
   (SomeRxMess s msg) <- recvAny
