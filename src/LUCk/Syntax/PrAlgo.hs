@@ -31,7 +31,7 @@ where
 import Data.Kind (Type)
 
 import Control.Monad.Free
-import Control.Monad.Writer
+-- import Control.Monad.Writer
 
 import Control.Monad
 -- import Control.XMonad
@@ -77,10 +77,10 @@ class Monad m => MonadRand (m :: Type -> Type) where
   rand :: m Bool
 
 instance (Trans.MonadTrans t, MonadRand m) => MonadRand (t m) where
-  rand = Trans.lift $ rand
+  rand = Trans.lift rand
 
 instance (XMonadTrans t, MonadRand m, bef ~ aft) => MonadRand (t m bef aft) where
-  rand = xlift $ rand
+  rand = xlift rand
 
 instance MonadRand IO where
   rand = Random.randomIO
@@ -101,14 +101,14 @@ rangeDist :: MonadRand m => Integer -> Integer -> m Integer
 rangeDist = \f t -> (f +) <$> rangeDist0 (t - f)
   where
     integerLog2Ceil x | x == 1 = 1
-                      | x `mod` 2 == 0 = 1 + integerLog2Ceil (x `div` 2)
+                      | even x = 1 + integerLog2Ceil (x `div` 2)
                       | otherwise = integerLog2Ceil $ x + 1
 
-    fromBase2 l = sum $ zipWith (*) l $ map (2^) [0..]
+    fromBase2 l = sum $ zipWith (*) l $ map (2^) [0 :: Integer ..]
 
     rangeDist0 n = do
       let p = integerLog2Ceil n
-      nb <- fmap fromBase2 $ fmap (map $ toInteger . fromEnum) $ replicateM p $ uniformDist @Bool
+      nb <- fmap (fromBase2 . map (toInteger . fromEnum)) (replicateM p $ uniformDist @Bool)
       if nb < n then
         return nb
       else
@@ -163,18 +163,10 @@ toMonadRand :: MonadRand m
             -> m a
 toMonadRand (PrAlgo (Pure v)) = pure v
 toMonadRand (PrAlgo (Free (RandAction cont))) =
-  rand >>= (\b -> toMonadRand $ PrAlgo $ cont b)
+  rand >>= (toMonadRand . PrAlgo . cont)
 
 -- |Run a probabilistic algorithm in `IO`.
 --
 -- The random bits are faithfully sampled using OS RNG.
 runIO :: PrAlgo a -> IO a
 runIO = toMonadRand
-
--- |Same as `runIO`, but also allows printing debug messages.
-writerTtoIO :: WriterT [String] PrAlgo a
-            -> IO a
-writerTtoIO m = do
-  (a, w) <- toMonadRand $ runWriterT m
-  putStrLn $ unlines w
-  pure a
