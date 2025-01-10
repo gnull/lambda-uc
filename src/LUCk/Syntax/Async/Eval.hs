@@ -18,14 +18,17 @@ module LUCk.Syntax.Async.Eval
   , forkRight
   , link
   , swap
+  , spawnOnDemand
   , execGuard
   , execInvariantM
   -- $explicit
   , process'
   , forkLeft'
   , forkRight'
+  , spawnOnDemand'
   -- * Helper functions
   , getForkIndexSwap
+  , InitStatus(..)
   )
 where
 
@@ -67,6 +70,14 @@ data Exec ach (i :: InitStatus) where
            -> AsyncT ach i i res
            -- ^The code that the process will run
            -> Exec ach st
+  ExecSpawnOnDemand :: forall l r ports.
+                       ConstrAllD Ord l
+                    -> ConstrAllD Ord r
+                    -> KnownHPPortsD ports
+                    -> KnownLenD l
+                    -> KnownLenD r
+                    -> (HListPair l r -> Exec ports InitAbsent)
+                    -> Exec (MapConcat2 l r ports) InitAbsent
   -- |Combine two executions.
   ExecFork :: InitStatusCompD st st'
            -- ^Proof of @i@ and @i'@ not being `NextSend` at the same time
@@ -96,12 +107,13 @@ execInvariant :: Exec ach st
               -> SomeInitStatusIndexRetD st
 execInvariant ex = case ex of
   ExecProc prf _ -> case prf of
-    InitStatusIndexRetAbsent -> SomeInitStatusIndexRetD $ InitStatusIndexRetAbsent
-    InitStatusIndexRetPresent -> SomeInitStatusIndexRetD $ InitStatusIndexRetPresent
+    InitStatusIndexRetAbsent -> SomeInitStatusIndexRetD InitStatusIndexRetAbsent
+    InitStatusIndexRetPresent -> SomeInitStatusIndexRetD InitStatusIndexRetPresent
+  ExecSpawnOnDemand {} -> SomeInitStatusIndexRetD InitStatusIndexRetAbsent
   ExecFork iPrf _ _ _ -> case iPrf of
-    InitStatusNone -> SomeInitStatusIndexRetD $ InitStatusIndexRetAbsent
-    InitStatusFst -> SomeInitStatusIndexRetD $ InitStatusIndexRetPresent
-    InitStatusSnd -> SomeInitStatusIndexRetD $ InitStatusIndexRetPresent
+    InitStatusNone -> SomeInitStatusIndexRetD InitStatusIndexRetAbsent
+    InitStatusFst -> SomeInitStatusIndexRetD InitStatusIndexRetPresent
+    InitStatusSnd -> SomeInitStatusIndexRetD InitStatusIndexRetPresent
   ExecSwap _ _ p -> execInvariant p
   ExecLink _ _ p -> execInvariant p
 
@@ -263,6 +275,25 @@ swap :: ListSplitD l p (f:l')
      -> ExecBuilder (ExecIndexSome l st) (ExecIndexSome (Concat p (s : Concat p' (f:rest))) st) ()
 swap prf prf' = ExecBuilder $ add $ ExecSwap prf prf'
 
+spawnOnDemand :: (ConstrAll Ord l, ConstrAll Ord r, KnownHPPorts ports, KnownLen l, KnownLen r)
+              => (HListPair l r -> ExecBuilder ExecIndexInit (ExecIndexSome ports InitAbsent) ())
+              -> ExecBuilder ExecIndexInit (ExecIndexSome (MapConcat2 l r ports) InitAbsent) ()
+spawnOnDemand = spawnOnDemand' getConstrAllD getConstrAllD getKnownHPPorts getKnownLenPrf getKnownLenPrf
+
+spawnOnDemand' :: forall l r ports.
+                  ConstrAllD Ord l
+               -> ConstrAllD Ord r
+               -> KnownHPPortsD ports
+               -> KnownLenD l
+               -> KnownLenD r
+               -> (HListPair l r -> ExecBuilder ExecIndexInit (ExecIndexSome ports InitAbsent) ())
+               -> ExecBuilder ExecIndexInit (ExecIndexSome (MapConcat2 l r ports) InitAbsent) ()
+spawnOnDemand' a b c d e f
+  = ExecBuilder
+  $ add
+  $ \() -> ExecSpawnOnDemand a b c d e
+  $ runExecBuilder . f
+
 execGuard :: forall l st. ExecBuilder (ExecIndexSome l st) (ExecIndexSome l st) ()
 execGuard = xreturn ()
 
@@ -286,6 +317,7 @@ runExec = escapeAsyncT . f
       ExecProc prf p -> case prf of
         InitStatusIndexRetAbsent -> p
         InitStatusIndexRetPresent -> p
+      ExecSpawnOnDemand a b c d e' f' -> spawnOnDemand_ a b c d e' $ f . f'
       ExecFork fPrf prf l r -> case fPrf of
           InitStatusNone -> fork_ getForkPremiseD prf (f l) (f r)
           InitStatusFst -> fork_ getForkPremiseD prf (f l) (f r)

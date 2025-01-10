@@ -9,6 +9,7 @@ module LUCk.UC.Core where
 -- import Control.XMonad.Trans
 
 import LUCk.Syntax
+import LUCk.Syntax.Async.Eval
 import LUCk.Types
 
 type HListPort x y = HListPair '[] '[x] :> HListPair '[] '[y]
@@ -19,18 +20,6 @@ type PingSendPort = OnlySendPort ()
 type PingRecvPort = OnlyRecvPort ()
 
 type Pid = String
-
-type family Concat2 l r p where
-  -- Concat2 '[] '[] p = p
-  Concat2 l r (HListPair lx rx :> HListPair ly ry)
-    =    HListPair (Concat l lx) (Concat r rx)
-      :> HListPair (Concat l ly) (Concat r ry)
-
-type family MapConcat2 l r ports where
-  -- MapConcat2 '[] '[] ports = ports
-  MapConcat2 _ _ '[] = '[]
-  MapConcat2 l r (p : ports)
-    = Concat2 l r p : MapConcat2 l r ports
 
 knownHPPortsAppendPid :: KnownHPPortsD down
                       -> KnownHPPortsD (MapConcat2 '[] '[Pid] down)
@@ -60,11 +49,15 @@ mapConcatId (KnownHPPortsS i) = case mapConcatId i of
 -- - @down@ interfaces to its subroutines,
 -- - a single `PingSendPort` interface to yield control to the environment.
 type UcProcess l r adv up down =
-  AsyncT ( Concat2 l r PingSendPort
-         : PortDual adv
-         : MapConcat2 l r (PortDual up : down)
-         )
-         NextRecv NextRecv Void
+  ExecBuilder ExecIndexInit
+              (ExecIndexSome
+                ( Concat2 l r PingSendPort
+                : PortDual adv
+                : MapConcat2 l r (PortDual up : down)
+                )
+                InitAbsent
+              )
+              ()
 
 -- |A `UcProcess` where @up@ and @down@ interfaces are appropriately marked
 -- with ESID and PID values to handle multiple sessions in one process.

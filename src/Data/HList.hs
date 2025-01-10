@@ -162,6 +162,18 @@ data KnownHPPortsD ports where
 
 type HListPair l r = (HList Identity l, HList Identity r)
 
+type family Concat2 l r p where
+  -- Concat2 '[] '[] p = p
+  Concat2 l r (HListPair lx rx :> HListPair ly ry)
+    =    HListPair (Concat l lx) (Concat r rx)
+      :> HListPair (Concat l ly) (Concat r ry)
+
+type family MapConcat2 l r ports where
+  -- MapConcat2 '[] '[] ports = ports
+  MapConcat2 _ _ '[] = '[]
+  MapConcat2 l r (p : ports)
+    = Concat2 l r p : MapConcat2 l r ports
+
 (++) :: HList f l -> HList f r -> HList f (Concat l r)
 HNil ++ ys = ys
 HCons x xs ++ ys = HCons x $ xs ++ ys
