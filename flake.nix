@@ -3,9 +3,11 @@
   inputs = {
     # ...
     flake-parts.url = "github:hercules-ci/flake-parts";
-    haskell-flake.url = "github:srid/haskell-flake";
+    haskell-flake = {
+      url = "github:srid/haskell-flake";
+    };
     nixpkgs = {
-      url = "nixpkgs/nixos-24.05";
+      url = "nixpkgs/nixos-24.11";
     };
   };
 
@@ -30,7 +32,14 @@
 
           # my-haskell-package development shell configuration
           devShell = {
-            hlsCheck.enable = false;
+            hlsCheck.enable = true;
+            tools = hp: with hp; {
+              inherit
+                cabal-install
+                ghcid
+                # haskell-language-server
+                ;
+            };
           };
 
           # What should haskell-flake add to flake outputs?
@@ -45,8 +54,6 @@
           ];
           nativeBuildInputs = with pkgs; [
             # other development tools.
-            # cabal-install
-            # haskell-language-server
           ];
         };
       };
