@@ -64,8 +64,8 @@ unflatten = case getFlattenableD @s of
   FlattenablePidMess ->
     \(PidMess pid m) -> (HNil, HListMatch2 (Identity pid) (Identity m))
 
-type family FlattenUcProcess t where
-  FlattenUcProcess (a -> NoInitExec ports) =
+type family FlattenedUcProcess t where
+  FlattenedUcProcess (a -> NoInitExec ports) =
     Flattened a -> NoInitExec (MapFlattenedPorts ports)
 
-type SingleSidIdeal' sid adv up down = FlattenUcProcess (SingleSidIdeal sid adv up down)
+type SingleSidIdeal' sid adv up down = FlattenedUcProcess (SingleSidIdeal sid adv up down)
