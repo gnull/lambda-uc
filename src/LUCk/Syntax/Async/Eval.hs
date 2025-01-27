@@ -29,6 +29,7 @@ module LUCk.Syntax.Async.Eval
   -- * Helper functions
   , getForkIndexSwap
   , InitStatus(..)
+  , InitStatusIndexRetD(..)
   )
 where
 

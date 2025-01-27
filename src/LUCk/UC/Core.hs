@@ -40,6 +40,9 @@ mapConcatId KnownHPPortsZ = Refl
 mapConcatId (KnownHPPortsS i) = case mapConcatId i of
   Refl -> Refl
 
+type NoInitExec ports
+  = ExecBuilder ExecIndexInit (ExecIndexSome ports InitAbsent) ()
+
 -- |An interactive algorithm with that we use for defining ideal
 -- functionalities and protocols.
 --
@@ -49,15 +52,10 @@ mapConcatId (KnownHPPortsS i) = case mapConcatId i of
 -- - @down@ interfaces to its subroutines,
 -- - a single `PingSendPort` interface to yield control to the environment.
 type UcProcess l r adv up down =
-  ExecBuilder ExecIndexInit
-              (ExecIndexSome
-                ( Concat2 l r PingSendPort
-                : PortDual adv
-                : MapConcat2 l r (PortDual up : down)
-                )
-                InitAbsent
-              )
-              ()
+  NoInitExec ( Concat2 l r PingSendPort
+             : PortDual adv
+             : MapConcat2 l r (PortDual up : down)
+             )
 
 -- |A `UcProcess` where @up@ and @down@ interfaces are appropriately marked
 -- with ESID and PID values to handle multiple sessions in one process.

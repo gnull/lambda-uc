@@ -8,6 +8,7 @@ import Data.List (find)
 
 import LUCk.Types
 import LUCk.Syntax
+import LUCk.Syntax.Async.Eval
 
 import LUCk.UC
 import LUCk.UC.Core
@@ -50,7 +51,7 @@ signatureIF :: SingleSidIdeal' SignSid
                                (HListPort SignatureScheme' Started)
                                (HListPort SignReq SignResp)
                                '[]
-signatureIF (Sid (SignSid {signSidSigner} )) = M.do
+signatureIF (Sid (SignSid {signSidSigner} )) = process' InitStatusIndexRetAbsent $ M.do
     m <- tryRerun $ myRecvOne InList2
     (scheme, sk, pk) <- initHelper
     state <- xcatch (processReq scheme sk pk m Map.empty) $ handleOne $ M.do
