@@ -6,6 +6,7 @@ module LUCk.Syntax.Async.Eval
   -- $exec
     Exec(..)
   , runExec
+  , runExecAsync
   -- * Monad for Building Executions
   -- $writer
   , ExecBuilder(..)
@@ -310,26 +311,26 @@ execInvariantM = execInvariant <$> ExecBuilder look
 -- bound for an execution to be defined.
 runExec :: Exec '[] (InitPresent a)
         -> L.PrAlgo a
-runExec = escapeAsyncT . f
-  where
-    f :: Exec ach st
-      -> AsyncT ach (InitStatusIndex st) (InitStatusIndex st) (InitStatusRes st)
-    f e = case e of
-      ExecProc prf p -> case prf of
-        InitStatusIndexRetAbsent -> p
-        InitStatusIndexRetPresent -> p
-      ExecSpawnOnDemand a b c d e' f' -> spawnOnDemand_ a b c d e' $ f . f'
-      ExecFork fPrf prf l r -> case fPrf of
-          InitStatusNone -> fork_ getForkPremiseD prf (f l) (f r)
-          InitStatusFst -> fork_ getForkPremiseD prf (f l) (f r)
-          InitStatusSnd -> fork_ getForkPremiseD prf (f l) (f r)
-      ExecSwap k k' p -> case execInvariant e of
-        SomeInitStatusIndexRetD InitStatusIndexRetAbsent
-          -> swap_ k k' $ f p
-        SomeInitStatusIndexRetD InitStatusIndexRetPresent
-          -> swap_ k k' $ f p
-      ExecLink k k' p -> case execInvariant e of
-        SomeInitStatusIndexRetD InitStatusIndexRetAbsent
-          -> link_ getMayOnlyReturnAfterRecvPrf k k' $ f p
-        SomeInitStatusIndexRetD InitStatusIndexRetPresent
-          -> link_ getMayOnlyReturnAfterRecvPrf k k' $ f p
+runExec = escapeAsyncT . runExecAsync
+
+runExecAsync :: Exec ach st
+  -> AsyncT ach (InitStatusIndex st) (InitStatusIndex st) (InitStatusRes st)
+runExecAsync e = case e of
+  ExecProc prf p -> case prf of
+    InitStatusIndexRetAbsent -> p
+    InitStatusIndexRetPresent -> p
+  ExecSpawnOnDemand a b c d e' runExecAsync' -> spawnOnDemand_ a b c d e' $ runExecAsync . runExecAsync'
+  ExecFork fPrf prf l r -> case fPrf of
+      InitStatusNone -> fork_ getForkPremiseD prf (runExecAsync l) (runExecAsync r)
+      InitStatusFst -> fork_ getForkPremiseD prf (runExecAsync l) (runExecAsync r)
+      InitStatusSnd -> fork_ getForkPremiseD prf (runExecAsync l) (runExecAsync r)
+  ExecSwap k k' p -> case execInvariant e of
+    SomeInitStatusIndexRetD InitStatusIndexRetAbsent
+      -> swap_ k k' $ runExecAsync p
+    SomeInitStatusIndexRetD InitStatusIndexRetPresent
+      -> swap_ k k' $ runExecAsync p
+  ExecLink k k' p -> case execInvariant e of
+    SomeInitStatusIndexRetD InitStatusIndexRetAbsent
+      -> link_ getMayOnlyReturnAfterRecvPrf k k' $ runExecAsync p
+    SomeInitStatusIndexRetD InitStatusIndexRetPresent
+      -> link_ getMayOnlyReturnAfterRecvPrf k k' $ runExecAsync p

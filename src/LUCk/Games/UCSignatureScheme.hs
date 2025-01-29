@@ -117,3 +117,9 @@ signatureIF (Sid (SignSid {signSidSigner} )) = process' InitStatusIndexRetAbsent
     tryRerun f = xcatch f $ handleOne $ M.do
       send pingAddr $ PidMess "" ()
       tryRerun f
+
+signatureProto :: SingleSidReal SignSid
+                                (HListPort SignatureScheme' Started)
+                                (HListPort SignReq SignResp)
+                                '[]
+signatureProto = undefined

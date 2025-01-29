@@ -18,6 +18,7 @@ import LUCk.Syntax.Async.Eval
 import qualified Data.HList as HList
 
 import LUCk.UC.Core
+import LUCk.UC.Flatten
 
 import qualified Data.Map.Strict as Map
 
@@ -33,6 +34,7 @@ idealToMultSid restLen downLen f = case mapConcatCompL @(sid:rest) @'[Pid] downL
                           (knownLenfromConstrAllD restLen)
                           getKnownLenPrf
                           $ \(l, r) -> f (hlistTakeHead l, r)
+
 
 -- protoToFunc :: forall sid x y down.
 --                KnownHPPortsD down
@@ -64,3 +66,31 @@ realToMultSid restLen downLen f (HNil, pid) = case mapConcatId downLen of
   where
     wrapper :: HListPair (sid:rest) '[] -> UcProcess '[] '[] (HListPort x y) (HListPort x y) down
     wrapper (HCons sid _, HNil) = f (HCons sid HNil, pid)
+
+newtype ActiveCorrReq state up down = ActiveCorrReq (state -> AsyncExT
+     '[]
+     ((() ':> Void)
+        : ([Char] ':> ActiveCorrReq state up down)
+        : MapFlattenedPorts
+            (Concat2 '[] '[] (PortDual up) : MapConcat2 '[] '[] down))
+     'NextSend
+     'NextRecv
+     Void)
+type ActiveCorrResp = String
+
+activeCorruption :: forall up down state sid.
+                    state
+                 -> (SidPid sid -> state -> SomeRxMess (NoAdvPorts up down) -> PrAlgo (state, SomeTxMess (NoAdvPorts up down)))
+                 -> SingleSidReal' sid (HListPort (ActiveCorrReq state up down) ActiveCorrResp) up down
+activeCorruption st f sidpid = process' InitStatusIndexRetAbsent helper
+  where
+    helper = M.do
+      recvAny >>=: \case
+        SomeRxMess Here contra -> case contra of {}
+        SomeRxMess (There Here) (ActiveCorrReq alg) -> alg st
+        SomeRxMess (There2 i) m -> M.do
+          (st', r) <- xlift (f sidpid st $ SomeRxMess (There i) m)
+          sendMess $ case r of
+            SomeTxMess Here r' -> SomeTxMess Here r'
+            SomeTxMess (There i') r' -> SomeTxMess (There2 i') r'
+          runExecAsync $ runExecBuilder $ activeCorruption @up @down st' f sidpid
