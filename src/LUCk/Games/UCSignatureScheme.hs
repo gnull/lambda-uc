@@ -13,6 +13,7 @@ import LUCk.Syntax.Async.Eval
 import LUCk.UC
 import LUCk.UC.Core
 import LUCk.UC.Flatten
+import LUCk.UC.Shell
 
 import Data.Type.Equality
 
@@ -118,8 +119,34 @@ signatureIF (Sid (SignSid {signSidSigner} )) = process' InitStatusIndexRetAbsent
       send pingAddr $ PidMess "" ()
       tryRerun f
 
-signatureProto :: SingleSidReal SignSid
-                                (HListPort SignatureScheme' Started)
+newtype SignProtoState = SignProtoState Sk
+
+isSigner :: SidPid SignSid -> Bool
+isSigner (SidPid sid pid) = signSidSigner sid == pid
+
+signatureProto :: SignatureScheme'
+               -> SingleSidReal' SignSid
+                                (HListPort (ActiveCorrReq (Maybe SignProtoState) (HListPort SignReq SignResp) '[]) ActiveCorrResp)
                                 (HListPort SignReq SignResp)
                                 '[]
-signatureProto = undefined
+signatureProto sch = activeCorruption Nothing $ \sidpid st -> \case
+    SomeRxMess Here contra -> case contra of {}
+    SomeRxMess (There Here) m -> case (m, st) of
+      (KGen, Nothing) -> do
+        if isSigner sidpid then do
+          (sk, pk) <- sigKey sch
+          return (Just $ SignProtoState sk, SomeTxMess (There Here) $ RespKGen pk)
+        else do
+          return (st, SomeTxMess Here ())
+      (Sign mess, Just (SignProtoState sk)) -> do
+        if isSigner sidpid then do
+          s <- sigSign sch sk mess
+          return (st, SomeTxMess (There Here) $ RespSign s)
+        else do
+          return (st, SomeTxMess Here ())
+      (Ver pk mess sign, _) -> do
+        let resp = sigVer sch pk mess sign
+        return (st, SomeTxMess (There Here) $ RespVer resp)
+      _ -> return (st, SomeTxMess Here ())
+
+    SomeRxMess (There2 contra) _ -> case contra of {}
