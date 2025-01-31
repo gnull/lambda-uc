@@ -137,20 +137,28 @@ signatureProto :: SignatureScheme'
                                 (HListPort SignReq SignResp)
                                 '[]
 signatureProto sch = activeCorruption Nothing $ \sidpid st m ->
-  case (matchUp m, st) of
-    (KGen, Nothing) -> do
-      if isSigner sidpid then do
-        (sk, pk) <- sigKey sch
-        return (Just $ SignProtoState sk, SomeTxMess (There Here) $ RespKGen pk)
-      else do
-        return (st, SomeTxMess Here ())
-    (Sign mess, Just (SignProtoState sk)) -> do
-      if isSigner sidpid then do
-        s <- sigSign sch sk mess
-        return (st, SomeTxMess (There Here) $ RespSign s)
-      else do
-        return (st, SomeTxMess Here ())
-    (Ver pk mess sign, _) -> do
-      let resp = sigVer sch pk mess sign
-      return (st, SomeTxMess (There Here) $ RespVer resp)
-    _ -> return (st, SomeTxMess Here ())
+    case (matchUp m, st) of
+      (KGen, Nothing) -> do
+        if isSigner sidpid then do
+          (sk, pk) <- sigKey sch
+          return (Just $ SignProtoState sk, SomeTxMess upAddr $ RespKGen pk)
+        else do
+          return (st, SomeTxMess pingAddr ())
+      (KGen, Just (SignProtoState pk)) -> do
+        if isSigner sidpid then do
+          return (st, SomeTxMess upAddr $ RespKGen pk)
+        else do
+          return (st, SomeTxMess pingAddr ())
+      (Sign mess, Just (SignProtoState sk)) -> do
+        if isSigner sidpid then do
+          s <- sigSign sch sk mess
+          return (st, SomeTxMess upAddr $ RespSign s)
+        else do
+          return (st, SomeTxMess pingAddr ())
+      (Ver pk mess sign, _) -> do
+        let resp = sigVer sch pk mess sign
+        return (st, SomeTxMess upAddr $ RespVer resp)
+      _ -> return (st, SomeTxMess pingAddr ())
+  where
+    pingAddr = InList0
+    upAddr = InList1
