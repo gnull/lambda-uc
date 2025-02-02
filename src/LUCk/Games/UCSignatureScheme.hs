@@ -52,13 +52,13 @@ signatureIF :: SingleSidIdeal' SignSid
                                (HListPort SignatureScheme' Started)
                                (HListPort SignReq SignResp)
                                '[]
-signatureIF (Sid (SignSid {signSidSigner} )) = process' InitStatusIndexRetAbsent $ M.do
+signatureIF = SingleSidIdeal' $ \(Sid (SignSid {signSidSigner} )) -> M.do
     m <- tryRerun $ myRecvOne InList2
     (scheme, sk, pk) <- initHelper
-    state <- xcatch (processReq scheme sk pk m Map.empty) $ handleOne $ M.do
+    state <- xcatch (processReq signSidSigner scheme sk pk m Map.empty) $ handleOne $ M.do
       send pingAddr $ PidMess "" ()
       xreturn Map.empty
-    loopHelper scheme sk pk state
+    loopHelper signSidSigner scheme sk pk state
 
   where
 
@@ -72,13 +72,13 @@ signatureIF (Sid (SignSid {signSidSigner} )) = process' InitStatusIndexRetAbsent
       (sk, pk) <- xlift $ sigKey scheme
       xreturn (scheme, sk, pk)
 
-    loopHelper scheme sk pk state = M.do
+    loopHelper signSidSigner scheme sk pk state = M.do
       state' <- tryRerun $ M.do
         m <- myRecvOne InList2
-        processReq scheme sk pk m state
-      loopHelper scheme sk pk state'
+        processReq signSidSigner scheme sk pk m state
+      loopHelper signSidSigner scheme sk pk state'
 
-    processReq scheme sk pk (PidMess pid req) state = case req of
+    processReq signSidSigner scheme sk pk (PidMess pid req) state = case req of
       KGen -> M.do
         send callerAddr $ PidMess pid $ RespKGen pk
         xreturn state
@@ -136,7 +136,7 @@ signatureProto :: SignatureScheme'
                                 (HListPort (ActiveCorrReq (Maybe SignProtoState) (HListPort SignReq SignResp) '[]) ActiveCorrResp)
                                 (HListPort SignReq SignResp)
                                 '[]
-signatureProto sch = activeCorruption Nothing $ \sidpid st m ->
+signatureProto sch = activeCorruption Nothing $ ActiveCorrWithErasures $ \sidpid st m ->
     case (matchUp m, st) of
       (KGen, Nothing) -> do
         if isSigner sidpid then do

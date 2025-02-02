@@ -43,6 +43,9 @@ mapConcatId (KnownHPPortsS i) = case mapConcatId i of
 type NoInitExec ports
   = ExecBuilder ExecIndexInit (ExecIndexSome ports InitAbsent) ()
 
+type NoInitProc ports
+  = AsyncT ports NextRecv NextRecv Void
+
 -- |An interactive algorithm with that we use for defining ideal
 -- functionalities and protocols.
 --
@@ -51,30 +54,36 @@ type NoInitExec ports
 -- - @up@ interface to its callers,
 -- - @down@ interfaces to its subroutines,
 -- - a single `PingSendPort` interface to yield control to the environment.
-type UcProcess l r adv up down =
-  NoInitExec ( Concat2 l r PingSendPort
-             : PortDual adv
-             : MapConcat2 l r (PortDual up : down)
-             )
+type UcExec l r adv up down =
+  NoInitExec (UcProcessPorts l r adv up down)
 
--- |A `UcProcess` where @up@ and @down@ interfaces are appropriately marked
+type UcProc l r adv up down =
+  NoInitProc (UcProcessPorts l r adv up down)
+
+type UcProcessPorts l r adv up down =
+  ( Concat2 l r PingSendPort
+               : PortDual adv
+               : MapConcat2 l r (PortDual up : down)
+               )
+
+-- |A `UcExec` where @up@ and @down@ interfaces are appropriately marked
 -- with ESID and PID values to handle multiple sessions in one process.
 --
 -- This is used by `multiSidIdealShell` to implement multiple sessions of
 -- `SingleSidIdeal` inside.
-type MultSidIdeal rest sid adv up down = UcProcess (sid:rest) '[Pid] (Concat2 (sid:rest) '[] adv) up down
+type MultSidIdeal rest sid adv up down = UcExec (sid:rest) '[Pid] (Concat2 (sid:rest) '[] adv) up down
 
--- |A `UcProcess` that implements a single process in a real (multi-session) protocol.
+-- |A `UcExec` that implements a single process in a real (multi-session) protocol.
 type MultSidReal rest sid adv up down =
-  HListPair '[] '[Pid] -> UcProcess (sid:rest) '[] (Concat2 (sid:rest) '[] adv) up down
+  HListPair '[] '[Pid] -> UcExec (sid:rest) '[] (Concat2 (sid:rest) '[] adv) up down
 
--- |A `UcProcess` that implements a single session. The interface it provides
+-- |A `UcExec` that implements a single session. The interface it provides
 -- to its caller is maked only with PID values.
 --
 -- Use this with `multiSidIdealShell` to get a multi-session extension.
 type SingleSidIdeal sid adv up down =
-  HListPair '[sid] '[] -> UcProcess '[] '[Pid] (Concat2 '[] '[] adv) up down
+  HListPair '[sid] '[] -> UcExec '[] '[Pid] (Concat2 '[] '[] adv) up down
 
--- |A `UcProcess` that implements a single process in a real (single-session) protocol.
+-- |A `UcExec` that implements a single process in a real (single-session) protocol.
 type SingleSidReal sid adv up down =
-  HListPair '[sid] '[Pid] -> UcProcess '[] '[] (Concat2 '[] '[] adv) up down
+  HListPair '[sid] '[Pid] -> UcExec '[] '[] (Concat2 '[] '[] adv) up down

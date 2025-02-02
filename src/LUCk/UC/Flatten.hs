@@ -72,8 +72,12 @@ type NoAdvPorts up down
 
 type family FlattenedUcProcess t where
   FlattenedUcProcess (a -> NoInitExec ports) =
-    Flattened a -> NoInitExec (MapFlattenedPorts ports)
+    Flattened a -> NoInitProc (MapFlattenedPorts ports)
 
-type SingleSidIdeal' sid adv up down = FlattenedUcProcess (SingleSidIdeal sid adv up down)
+newtype SingleSidIdeal' sid adv up down = SingleSidIdeal'
+  { runSingleSigIdeal' :: FlattenedUcProcess (SingleSidIdeal sid adv up down)
+  }
 
-type SingleSidReal' sid adv up down = FlattenedUcProcess (SingleSidReal sid adv up down)
+newtype SingleSidReal' sid adv up down = SingleSidReal'
+  { runSingleSigReal' :: FlattenedUcProcess (SingleSidReal sid adv up down)
+  }

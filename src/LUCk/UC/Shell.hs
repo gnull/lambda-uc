@@ -64,7 +64,7 @@ realToMultSid restLen downLen f (HNil, pid) = case mapConcatId downLen of
                           getKnownLenPrf
                           wrapper
   where
-    wrapper :: HListPair (sid:rest) '[] -> UcProcess '[] '[] (HListPort x y) (HListPort x y) down
+    wrapper :: HListPair (sid:rest) '[] -> UcExec '[] '[] (HListPort x y) (HListPort x y) down
     wrapper (HCons sid _, HNil) = f (HCons sid HNil, pid)
 
 newtype ActiveCorrReq state up down = ActiveCorrReq (state -> AsyncExT
@@ -78,19 +78,24 @@ newtype ActiveCorrReq state up down = ActiveCorrReq (state -> AsyncExT
      Void)
 type ActiveCorrResp = String
 
+newtype ActiveCorrWithErasures sid state up down = ActiveCorrWithErasures
+  { runActiveCorrWithErasures :: SidPid sid
+                              -> state
+                              -> SomeRxMess (NoAdvPorts up down)
+                              -> PrAlgo (state, SomeTxMess (NoAdvPorts up down))
+  }
+
 activeCorruption :: forall up down state sid.
                     state
-                 -> (SidPid sid -> state -> SomeRxMess (NoAdvPorts up down) -> PrAlgo (state, SomeTxMess (NoAdvPorts up down)))
+                 -> ActiveCorrWithErasures sid state up down
                  -> SingleSidReal' sid (HListPort (ActiveCorrReq state up down) ActiveCorrResp) up down
-activeCorruption st f sidpid = process' InitStatusIndexRetAbsent helper
-  where
-    helper = M.do
+activeCorruption st f = SingleSidReal' $ \sidpid -> M.do
       recvAny >>=: \case
         SomeRxMess Here contra -> case contra of {}
         SomeRxMess (There Here) (ActiveCorrReq alg) -> alg st
         SomeRxMess (There2 i) m -> M.do
-          (st', r) <- xlift (f sidpid st $ SomeRxMess (There i) m)
+          (st', r) <- xlift (runActiveCorrWithErasures f sidpid st $ SomeRxMess (There i) m)
           sendMess $ case r of
             SomeTxMess Here r' -> SomeTxMess Here r'
             SomeTxMess (There i') r' -> SomeTxMess (There2 i') r'
-          runExecAsync $ runExecBuilder $ activeCorruption @up @down st' f sidpid
+          runSingleSigReal' (activeCorruption @up @down st' f) sidpid
