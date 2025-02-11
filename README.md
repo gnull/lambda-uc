@@ -10,7 +10,7 @@ The goal of this project is to express the protocols and functionalities of [Uni
 Another advantage of having a programming language is automatic extraction of a prototype
   for any protocol implemented using ΛUCk.
 
-To ender development enviornment, run `nix-shell` or `nix develop` in this directory
+To enter development enviornment, run `nix-shell` or `nix develop` in this directory
   (this uses [Nix](https://nixos.org/)).
 
 From there, you can run `cabal build` or `cabal repl` to inspect the code.
