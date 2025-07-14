@@ -1,8 +1,8 @@
 # ΛUC: Purely Functional EDSL for Universal Composability
 
-[![builds.sr.ht status](https://builds.sr.ht/~ph14nix/haskell-uc.svg)](https://builds.sr.ht/~ph14nix/haskell-uc?)
+[![builds.sr.ht status](https://builds.sr.ht/~ph14nix/lambda-uc.svg)](https://builds.sr.ht/~ph14nix/lambda-uc?)
 —
-[Haddock](https://arrakeen-worm.xyz/haddock/haskell-uc/)
+[Haddock](https://arrakeen-worm.xyz/haddock/lambda-uc/)
 
 The goal of this project is to express the protocols and functionalities of [Universal Composability](https://dl.acm.org/doi/abs/10.1145/3402457) in an actual programming language,
   where programs can be written unambiguously,

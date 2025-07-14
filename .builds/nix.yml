@@ -1,8 +1,8 @@
 image: nixos/unstable
 tasks:
 - nix-shell-build: |
-    cd haskell-uc
+    cd lambda-uc
     nix-build
 - nix-develop-build: |
-    cd haskell-uc
+    cd lambda-uc
     nix --extra-experimental-features nix-command --extra-experimental-features flakes develop --command cabal test

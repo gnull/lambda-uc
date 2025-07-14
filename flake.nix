@@ -47,7 +47,7 @@
         };
 
         devShells.default = pkgs.mkShell {
-          name = "LUCk dev";
+          name = "ΛUC dev";
           inputsFrom = [
             # ...
             config.haskellProjects.default.outputs.devShell

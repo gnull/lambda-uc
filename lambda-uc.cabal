@@ -1,9 +1,9 @@
 cabal-version: 2.2
 
-name:           haskell-uc
+name:           lambda-uc
 version:        0.1.0.0
 category:       Web
-homepage:       https://git.sr.ht/~ph14nix/haskell-uc
+homepage:       https://git.sr.ht/~ph14nix/lambda-uc
 author:         Ivan Oleynikov
 maintainer:     ivan.oleynikov95@gmail.com
 copyright:      2023 Ivan Oleynikov
@@ -85,7 +85,7 @@ library
 common deft-test
   import: deft
   build-depends:       base
-                     , haskell-uc
+                     , lambda-uc
                      , tasty
                      , tasty-hunit
                      , HUnit
