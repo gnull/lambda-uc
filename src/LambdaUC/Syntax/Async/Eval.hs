@@ -1,6 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module LUCk.Syntax.Async.Eval
+module LambdaUC.Syntax.Async.Eval
   (
   -- * Execution Syntax
   -- $exec
@@ -38,10 +38,10 @@ import Control.XApplicative
 import Control.XMonad
 import Control.XMonad.XAccum
 
-import LUCk.Syntax.Async.Eval.Internal
-import LUCk.Syntax.Async
-import qualified LUCk.Syntax.PrAlgo as L
-import LUCk.Types
+import LambdaUC.Syntax.Async.Eval.Internal
+import LambdaUC.Syntax.Async
+import qualified LambdaUC.Syntax.PrAlgo as L
+import LambdaUC.Types
 
 -- $exec
 --

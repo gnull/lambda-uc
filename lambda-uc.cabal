@@ -60,23 +60,23 @@ library
       Control.XMonad.XAccum
       Control.XMonad.Trans
       Data.HList
-      LUCk.Types
-      LUCk.Syntax
-      LUCk.Syntax.PrAlgo
-      LUCk.Syntax.Async
-      LUCk.Syntax.Async.Eval
-      LUCk.Syntax.Async.Eval.Internal
-      LUCk.Syntax.Async.SomeWT
-      LUCk.Syntax.Sync
-      LUCk.Syntax.Sync.Eval
-      LUCk.UC
-      LUCk.UC.Core
-      LUCk.UC.Flatten
-      LUCk.UC.Shell
-      LUCk.Games.Common
-      LUCk.Games.SignatureScheme
-      LUCk.Games.UCSignatureScheme
-      LUCk.Games.SymEncryption
+      LambdaUC.Types
+      LambdaUC.Syntax
+      LambdaUC.Syntax.PrAlgo
+      LambdaUC.Syntax.Async
+      LambdaUC.Syntax.Async.Eval
+      LambdaUC.Syntax.Async.Eval.Internal
+      LambdaUC.Syntax.Async.SomeWT
+      LambdaUC.Syntax.Sync
+      LambdaUC.Syntax.Sync.Eval
+      LambdaUC.UC
+      LambdaUC.UC.Core
+      LambdaUC.UC.Flatten
+      LambdaUC.UC.Shell
+      LambdaUC.Games.Common
+      LambdaUC.Games.SignatureScheme
+      LambdaUC.Games.UCSignatureScheme
+      LambdaUC.Games.SymEncryption
   other-modules:
   hs-source-dirs:
       src

@@ -15,11 +15,11 @@ import Data.Fin (Fin(..))
 import Data.Nat (Nat(..))
 import Data.Type.Nat
 
-import LUCk.Syntax
-import LUCk.Syntax.Async.Eval
-import LUCk.Syntax.Async.Eval.Internal
-import LUCk.Syntax.Async.SomeWT
-import LUCk.Types
+import LambdaUC.Syntax
+import LambdaUC.Syntax.Async.Eval
+import LambdaUC.Syntax.Async.Eval.Internal
+import LambdaUC.Syntax.Async.SomeWT
+import LambdaUC.Types
 
 main :: IO ()
 main = defaultMain tests

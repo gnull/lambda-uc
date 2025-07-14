@@ -1,15 +1,15 @@
-module LUCk.UC.Flatten where
+module LambdaUC.UC.Flatten where
 
 import Data.Functor.Identity
 import Data.Kind
 import Control.Monad qualified as Monad
 
 import Data.HList
-import LUCk.Syntax
-import LUCk.Syntax.Async
-import LUCk.Syntax.Async.Eval
+import LambdaUC.Syntax
+import LambdaUC.Syntax.Async
+import LambdaUC.Syntax.Async.Eval
 
-import LUCk.UC.Core
+import LambdaUC.UC.Core
 
 data PidMess a = PidMess Pid a
 data SidMess s a = SidMess s a

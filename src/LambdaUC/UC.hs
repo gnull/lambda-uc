@@ -1,6 +1,6 @@
 {-# LANGUAGE UndecidableInstances #-}
 
-module LUCk.UC
+module LambdaUC.UC
   ( EnvProcess(..)
   , SubRespTree(..)
   , subRespEval
@@ -12,15 +12,15 @@ import qualified Control.XMonad.Do as M
 
 import Data.Functor
 
-import LUCk.Syntax
-import LUCk.Types
+import LambdaUC.Syntax
+import LambdaUC.Types
 
-import LUCk.Syntax.Async
-import LUCk.Syntax.Async.Eval
-import LUCk.Syntax.Async.Eval.Internal
+import LambdaUC.Syntax.Async
+import LambdaUC.Syntax.Async.Eval
+import LambdaUC.Syntax.Async.Eval.Internal
 
-import LUCk.UC.Core
-import LUCk.UC.Shell
+import LambdaUC.UC.Core
+import LambdaUC.UC.Shell
 
 type EnvProcess down res =
   ExecBuilder ExecIndexInit (ExecIndexSome '[PingRecvPort, down] (InitPresent res)) ()

@@ -1,4 +1,4 @@
-module LUCk.Games.UCSignatureScheme where
+module LambdaUC.Games.UCSignatureScheme where
 
 import qualified Control.XMonad.Do as M
 import Control.XMonad
@@ -6,18 +6,18 @@ import Control.XMonad
 import Data.Functor.Identity
 import Data.List (find)
 
-import LUCk.Types
-import LUCk.Syntax
-import LUCk.Syntax.Async.Eval
+import LambdaUC.Types
+import LambdaUC.Syntax
+import LambdaUC.Syntax.Async.Eval
 
-import LUCk.UC
-import LUCk.UC.Core
-import LUCk.UC.Flatten
-import LUCk.UC.Shell
+import LambdaUC.UC
+import LambdaUC.UC.Core
+import LambdaUC.UC.Flatten
+import LambdaUC.UC.Shell
 
 import Data.Type.Equality
 
-import LUCk.Games.SignatureScheme (SpSignatureScheme, SignatureScheme(..))
+import LambdaUC.Games.SignatureScheme (SpSignatureScheme, SignatureScheme(..))
 
 import qualified Data.Map as Map
 

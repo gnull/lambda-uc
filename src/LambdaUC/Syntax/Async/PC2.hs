@@ -1,4 +1,4 @@
-module LUCk.Monad.InterT.Eval.PC2 where
+module LambdaUC.Monad.InterT.Eval.PC2 where
 
 import Data.Tuple (swap)
 
@@ -8,8 +8,8 @@ import Control.Monad.Trans.Maybe (MaybeT(..))
 import qualified Control.Monad.Trans.Class as Trans
 
 import Data.HList
-import LUCk.Types
-import LUCk.Monad
+import LambdaUC.Types
+import LambdaUC.Monad
 
 type Party m iface = AsyncT m '[iface]
 

@@ -1,6 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module LUCk.UC.Shell where
+module LambdaUC.UC.Shell where
 
 import qualified Control.XMonad.Do as M
 import Control.XMonad
@@ -11,14 +11,14 @@ import Control.Arrow (first, second, (***))
 
 -- import Control.XMonad.Trans
 
-import LUCk.Syntax
-import LUCk.Types
-import LUCk.Syntax.Async.Eval
+import LambdaUC.Syntax
+import LambdaUC.Types
+import LambdaUC.Syntax.Async.Eval
 
 import qualified Data.HList as HList
 
-import LUCk.UC.Core
-import LUCk.UC.Flatten
+import LambdaUC.UC.Core
+import LambdaUC.UC.Flatten
 
 import qualified Data.Map.Strict as Map
 

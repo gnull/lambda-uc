@@ -1,7 +1,7 @@
-module LUCk.Syntax.Async.SomeWT where
+module LambdaUC.Syntax.Async.SomeWT where
 
-import LUCk.Types
-import LUCk.Syntax.Async
+import LambdaUC.Types
+import LambdaUC.Syntax.Async
 
 -- |A computation that
 --

@@ -1,16 +1,16 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module LUCk.UC.Core where
+module LambdaUC.UC.Core where
 
 -- import qualified Control.XMonad.Do as M
 -- import Control.XMonad
 -- import Control.Arrow
 -- import Control.XMonad.Trans
 
-import LUCk.Syntax
-import LUCk.Syntax.Async.Eval
-import LUCk.Types
+import LambdaUC.Syntax
+import LambdaUC.Syntax.Async.Eval
+import LambdaUC.Types
 
 type HListPort x y = HListPair '[] '[x] :> HListPair '[] '[y]
 

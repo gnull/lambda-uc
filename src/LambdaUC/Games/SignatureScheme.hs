@@ -1,9 +1,9 @@
-module LUCk.Games.SignatureScheme where
+module LambdaUC.Games.SignatureScheme where
 
-import LUCk.Types
-import LUCk.Syntax.PrAlgo
-import LUCk.Syntax.Sync
-import LUCk.Syntax.Sync.Eval
+import LambdaUC.Types
+import LambdaUC.Syntax.PrAlgo
+import LambdaUC.Syntax.Sync
+import LambdaUC.Syntax.Sync.Eval
 
 import Control.XMonad
 import Control.XFreer.Join
@@ -15,7 +15,7 @@ import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Monad (MonadPlus(..))
 -- import qualified Control.Monad.Trans.Class as Trans
 
-import LUCk.Games.Common
+import LambdaUC.Games.Common
 
 data SignatureScheme sk pk mes sig = SignatureScheme
   { sigKey :: forall m. MonadRand m => m (sk, pk)

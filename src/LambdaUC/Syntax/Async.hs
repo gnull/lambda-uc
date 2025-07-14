@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module LUCk.Syntax.Async (
+module LambdaUC.Syntax.Async (
   -- * Interactive Algorithm Monad
   -- $monad
     AsyncT
@@ -57,12 +57,12 @@ import qualified Control.XMonad.Do as M
 -- import Control.XMonad.Trans
 -- import qualified Control.XMonad.Do as M
 
-import qualified LUCk.Syntax.PrAlgo as L
+import qualified LambdaUC.Syntax.PrAlgo as L
 
 import Data.Kind
 import Data.HList
 import Data.Type.Equality
-import LUCk.Types
+import LambdaUC.Types
 
 -- import Data.Type.Equality ((:~:)(Refl))
 

@@ -1,4 +1,4 @@
-module LUCk.Syntax.Sync.Eval (
+module LambdaUC.Syntax.Sync.Eval (
   -- * Execution with Oracle
   -- $eval
     runWithOracles
@@ -20,10 +20,10 @@ import Control.XApplicative
 import Control.XMonad
 import qualified Control.XMonad.Do as M
 
-import LUCk.Types
-import LUCk.Syntax.Sync
-import LUCk.Syntax.PrAlgo
-import LUCk.Syntax.Async
+import LambdaUC.Types
+import LambdaUC.Syntax.Sync
+import LambdaUC.Syntax.PrAlgo
+import LambdaUC.Syntax.Async
 
 import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Monad (MonadPlus(..))

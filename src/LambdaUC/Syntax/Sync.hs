@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module LUCk.Syntax.Sync (
+module LambdaUC.Syntax.Sync (
   -- * Interactive Algorithm Monad
   -- $monad
     SyncT(..)
@@ -22,7 +22,7 @@ import Control.Monad.Trans.Class as Trans
 
 import Control.Monad.Free
 
-import LUCk.Types
+import LambdaUC.Types
 
 -- $actions
 --
@@ -42,7 +42,7 @@ instance Functor (SyncActions sch m) where
 
 -- |Non-indexed transformer that adds syncronous `call` (ports given
 -- by @sch@) to monad @m@ (lifted with `lift`). You will often see
--- `LUCk.Syntax.Algo.Algo` used as @m@, and `SyncT` will automatically
+-- `LambdaUC.Syntax.Algo.Algo` used as @m@, and `SyncT` will automatically
 -- implement its typeclasses such as `Print` or `Rand`.
 --
 -- If you need exceptions in `SyncT`, feel free to use regular monadic
@@ -66,7 +66,7 @@ instance Functor (SyncActions sch m) where
 -- @
 --
 -- To run the code above, implement the oracles and use
--- `LUCk.Syntax.Sync.Eval.runWithOracles2`.
+-- `LambdaUC.Syntax.Sync.Eval.runWithOracles2`.
 newtype SyncT sch m a
     = SyncT { runSyncT :: Free (SyncActions sch m) a }
   deriving (Functor)

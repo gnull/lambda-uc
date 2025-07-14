@@ -1,6 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module LUCk.Types
+module LambdaUC.Types
   ( module Data.HList
   , module Data.Void
   , module Data.Kind
@@ -93,9 +93,9 @@ instance KnownIndex NextSend where
 -- |Next operation of the asyncronous algorithm
 data Index
   = NextSend
-  -- ^Our turn to `LUCk.Monad.Class.Async.send`
+  -- ^Our turn to `LambdaUC.Monad.Class.Async.send`
   | NextRecv
-  -- ^Our turn to `LUCk.Monad.Class.Async.recvAny`
+  -- ^Our turn to `LambdaUC.Monad.Class.Async.recvAny`
 
 -- -- |The index of our monad for asynchronous algorithms
 -- data ExtendedIndex
@@ -103,4 +103,4 @@ data Index
 --   -- ^Asynchronous interaction is on, next operation is given by the `NextOp`
 --   | Off
 --   -- ^Asynchronous interaction is off, we're not allowed to call
---   -- `LUCk.Monad.Class.Async.send` or `LUCk.Monad.Class.Async.recvAny`
+--   -- `LambdaUC.Monad.Class.Async.send` or `LambdaUC.Monad.Class.Async.recvAny`

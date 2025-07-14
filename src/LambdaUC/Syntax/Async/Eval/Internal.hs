@@ -1,6 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module LUCk.Syntax.Async.Eval.Internal
+module LambdaUC.Syntax.Async.Eval.Internal
   (
   -- * Execution Implementation
   -- $core
@@ -46,8 +46,8 @@ import qualified Control.XMonad.Do as M
 import qualified Data.Map as Map
 import Data.Functor.Identity
 
-import LUCk.Syntax
-import LUCk.Types
+import LambdaUC.Syntax
+import LambdaUC.Types
 
 data ForkIndexCompD (befFst :: Index) (befSnd :: Index) where
   ForkIndexCompNone :: ForkIndexCompD NextRecv NextRecv

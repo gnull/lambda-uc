@@ -1,11 +1,11 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module LUCk.Games.SymEncryption where
+module LambdaUC.Games.SymEncryption where
 
-import LUCk.Types
-import LUCk.Syntax.PrAlgo
-import LUCk.Syntax.Async
-import LUCk.Syntax.Sync.Eval
+import LambdaUC.Types
+import LambdaUC.Syntax.PrAlgo
+import LambdaUC.Syntax.Async
+import LambdaUC.Syntax.Sync.Eval
 
 import Control.XMonad
 -- import Control.XMonad.Trans
@@ -18,7 +18,7 @@ import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Monad (MonadPlus(..))
 -- import qualified Control.Monad.Trans.Class as Trans
 
-import LUCk.Games.Common
+import LambdaUC.Games.Common
 
 data SymEncryptionScheme key mes ciph s = SymEncryptionScheme
   { symEKey :: forall m. MonadRand m => m key

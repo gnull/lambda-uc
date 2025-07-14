@@ -1,9 +1,9 @@
-module LUCk.Games.Common where
+module LambdaUC.Games.Common where
 
-import LUCk.Types
-import LUCk.Syntax.PrAlgo
-import LUCk.Syntax.Async
-import LUCk.Syntax.Sync.Eval
+import LambdaUC.Types
+import LambdaUC.Syntax.PrAlgo
+import LambdaUC.Syntax.Async
+import LambdaUC.Syntax.Sync.Eval
 
 import Control.XMonad
 -- import Control.XMonad.Trans

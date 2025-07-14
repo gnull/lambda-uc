@@ -1,4 +1,4 @@
-module LUCk.Syntax.PrAlgo
+module LambdaUC.Syntax.PrAlgo
   (
   -- * Syntax
   -- $syntax

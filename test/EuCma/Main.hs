@@ -3,11 +3,11 @@ module Main where
 import Test.Tasty            (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit      (testCase, assertEqual, (@?=))
 
-import LUCk.Syntax
-import LUCk.Syntax.Sync
-import LUCk.Types
+import LambdaUC.Syntax
+import LambdaUC.Syntax.Sync
+import LambdaUC.Types
 
-import LUCk.Games.SignatureScheme
+import LambdaUC.Games.SignatureScheme
 
 alwaysNoSch :: SpSignatureScheme () () Int Int
 alwaysNoSch _ = SignatureScheme
