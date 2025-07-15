@@ -53,9 +53,9 @@ signatureIF :: SingleSidIdeal' SignSid
                                (HListPort SignReq SignResp)
                                '[]
 signatureIF = SingleSidIdeal' $ \(Sid (SignSid {signSidSigner} )) -> M.do
-    m <- tryRerun $ myRecvOne InList2
+    m <- tryRerun $ recvOne' InList2
     (scheme, sk, pk) <- initHelper
-    state <- xcatch (processReq signSidSigner scheme sk pk m Map.empty) $ handleOne $ M.do
+    state <- xcatchOne (processReq signSidSigner scheme sk pk m Map.empty) $ M.do
       send pingAddr $ PidMess "" ()
       xreturn Map.empty
     loopHelper signSidSigner scheme sk pk state
@@ -68,13 +68,13 @@ signatureIF = SingleSidIdeal' $ \(Sid (SignSid {signSidSigner} )) -> M.do
 
     initHelper = M.do
       send advAddr $ Started
-      scheme <- tryRerun $ myRecvOne advAddr
+      scheme <- tryRerun $ recvOne' advAddr
       (sk, pk) <- xlift $ sigKey scheme
       xreturn (scheme, sk, pk)
 
     loopHelper signSidSigner scheme sk pk state = M.do
       state' <- tryRerun $ M.do
-        m <- myRecvOne InList2
+        m <- recvOne' InList2
         processReq signSidSigner scheme sk pk m state
       loopHelper signSidSigner scheme sk pk state'
 
@@ -101,21 +101,23 @@ signatureIF = SingleSidIdeal' $ \(Sid (SignSid {signSidSigner} )) -> M.do
         send callerAddr $ PidMess pid $ RespVer resp
         xreturn $ Map.insert (m, sig, pk') resp state
 
-    myRecvOne :: PortInList x y ports
+    recvOne' :: PortInList x y ports
               -> AsyncExT '[UnexpectedSenderEx :@ NextSend] ports NextRecv NextSend y
-    myRecvOne = recvOneEx Here UnexpectedSenderEx
+    recvOne' = recvOneEx Here UnexpectedSenderEx
 
-    handleOne :: AsyncT ports i j a
-              -> InList '[e' :@ i] (e :@ b) -> e -> AsyncT ports b j a
-    handleOne f Here = \_ -> f
-    handleOne _ (There contra) = case contra of {}
+    xcatchOne :: AsyncExT '[e' :@ i] ports bef aft a
+              -> AsyncT ports i aft a
+              -> AsyncT ports bef aft a
+    xcatchOne f h = xcatch f $ \case
+        Here -> const h
+        There contra -> case contra of {}
 
     tryRerun :: AsyncExT '[UnexpectedSenderEx :@ NextSend]
                          (PidMess () :> PidMess Void : ports)
                          NextRecv i a
              -> AsyncT (PidMess () :> PidMess Void : ports)
                        NextRecv i a
-    tryRerun f = xcatch f $ handleOne $ M.do
+    tryRerun f = xcatchOne f $ M.do
       send pingAddr $ PidMess "" ()
       tryRerun f
 
